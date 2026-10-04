@@ -554,6 +554,8 @@
     .handover-nudge { display: flex; flex-wrap: wrap; gap: 8px; }
     .handover-flight .muted { margin: 0; }
     .handover-nudge .is-on { background: var(--accent-soft); border-color: var(--accent); }
+    .handover-terminal { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+    .handover-terminal .tick { font-weight: 700; }
     .view-phone .handover-summary { font-size: 17px; }
     .view-phone .handover-nudge .btn { min-height: 44px; }
 
@@ -1759,6 +1761,15 @@
       min-width: 0;
       padding: 0 2px;
     }
+    .rough-handover {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-top: 4px; min-width: 0;
+    }
+    .rough-handover select,
+    .rough-handover input[type="text"] { width: 100%; max-width: 100%; box-sizing: border-box; }
+    .rough-handover .field-label { margin: 2px 0 0; font-size: 11px; }
+    .rough-handover .handover-people label,
+    .rough-handover .handover-terminal .tick { font-size: 13px; }
     .rough-stop-note {
       font-weight: 500; font-size: 11px;
       line-height: 1.25;
@@ -2569,6 +2580,7 @@
     roughTrayFilter: 'all',
     roughTraySearch: '',
     roughSelectedPlaceId: null,
+    roughSelectedHandover: null,
     roughShowUsed: false,
     roughFocusDayIndex: null,
     liveBookings: false,
@@ -6175,6 +6187,82 @@
     };
   }
 
+  /** Named people on the booking, in member order. Blank rows are left out. */
+  function memberNameRows(members, extras) {
+    const guestExtras = (extras && extras.guests) || [];
+    const rows = [];
+    (members || []).forEach((m, i) => {
+      if (!m) return;
+      const firstName = String(m.first_name || '').trim();
+      const lastName = String(m.last_name || '').trim();
+      const name = [firstName, lastName].filter(Boolean).join(' ').trim();
+      if (!name) return;
+      const extra = guestExtras[i] || {};
+      rows.push({
+        name,
+        firstName,
+        lastName,
+        email: extra.email || '',
+        personId: extra.personId || '',
+      });
+    });
+    return rows;
+  }
+
+  /**
+   * Keep this plan's guest ids and replace names from the booking's members.
+   * A failed member load does not call this, so a blank fetch cannot wipe names.
+   * Extra planner guests past the member list stay, so pick-up links keep their ids.
+   */
+  function syncPlanGuestNames(existingGuests, members, extras) {
+    const incoming = memberNameRows(members, extras);
+    const guests = (existingGuests || []).map(g => ensureGuestDebt(g));
+    const named = guests.some(g => String(g.name || '').trim());
+    if (!incoming.length) {
+      if (!guests.length) return [{ id: uid('g'), name: '' }];
+      return guests;
+    }
+    if (!guests.length || !named) {
+      return incoming.map(src => ensureGuestDebt({
+        id: uid('g'),
+        name: src.name,
+        email: src.email,
+        personId: src.personId,
+        lent: 0,
+        repayments: [],
+      }));
+    }
+    incoming.forEach((src, i) => {
+      if (!guests[i]) {
+        guests.push(ensureGuestDebt({
+          id: uid('g'),
+          name: src.name,
+          email: src.email,
+          personId: src.personId,
+          lent: 0,
+          repayments: [],
+        }));
+        return;
+      }
+      const g = guests[i];
+      g.name = src.name;
+      if (!String(g.email || '').trim() && src.email) g.email = src.email;
+      if (!String(g.personId || '').trim() && src.personId) g.personId = src.personId;
+    });
+    return guests;
+  }
+
+  /** Hotel-stay people lists also read bookingDetails.guests, so those names follow the members too. */
+  function syncBookingDetailGuestNames(plan, members, extras) {
+    if (!plan || !plan.bookingDetails || !Array.isArray(plan.bookingDetails.guests)) return;
+    const incoming = memberNameRows(members, extras);
+    if (!incoming.length) return;
+    plan.bookingDetails.guests = plan.bookingDetails.guests.map((g, i) => {
+      if (!g || !incoming[i]) return g;
+      return Object.assign({}, g, { firstName: incoming[i].firstName, lastName: incoming[i].lastName });
+    });
+  }
+
   function planFromBooking(b) {
     const key = String(b.id);
     const existing = state.plans[key];
@@ -6206,15 +6294,25 @@
     existing.organiserPersonId = existing.organiserPersonId || base.organiserPersonId || '';
     existing.organiserName = existing.organiserName || base.organiserName || '';
     existing.sharedAlbums = mergeSharedAlbums(existing.sharedAlbums, base.sharedAlbums);
-    const named = (existing.guests || []).some(g => (g.name || '').trim());
-    if (!existing.guests?.length || !named) existing.guests = base.guests;
-    else existing.guests = existing.guests.map((g, i) => {
-      ensureGuestDebt(g);
-      const fromBase = (base.guests || [])[i];
-      if (fromBase && !String(g.email || '').trim() && fromBase.email) g.email = fromBase.email;
-      if (fromBase && !String(g.personId || '').trim() && fromBase.personId) g.personId = fromBase.personId;
-      return g;
-    });
+    if (b._membersLoaded) {
+      existing.guests = syncPlanGuestNames(existing.guests, b._members, noteExtras);
+      syncBookingDetailGuestNames(existing, b._members, noteExtras);
+      (existing.days || []).forEach(day => {
+        (day.blocks || []).forEach(s => {
+          if (s && s.type === 'handover') refreshHandoverTitle(s);
+        });
+      });
+    } else {
+      const named = (existing.guests || []).some(g => (g.name || '').trim());
+      if (!existing.guests?.length || !named) existing.guests = base.guests;
+      else existing.guests = existing.guests.map((g, i) => {
+        ensureGuestDebt(g);
+        const fromBase = (base.guests || [])[i];
+        if (fromBase && !String(g.email || '').trim() && fromBase.email) g.email = fromBase.email;
+        if (fromBase && !String(g.personId || '').trim() && fromBase.personId) g.personId = fromBase.personId;
+        return g;
+      });
+    }
     if (!existing.pragueHotel?.name && base.pragueHotel.name) existing.pragueHotel = base.pragueHotel;
     // Keep airport arrival times in sync from the booking when present
     if (base.airportArrival?.hasTimes) {
@@ -6267,11 +6365,17 @@
         sb.from('booking_hotels').select('*, hotels(name)').eq('booking_id', b.id),
         sb.from('flights').select('*').eq('booking_id', b.id).order('id'),
       ]), 4000, 'Booking details timed out');
-      b._members = members.data || [];
-      b._hotel_stays = stays.data || [];
-      b._flights = flights.data || [];
+      if (members && !members.error && Array.isArray(members.data)) {
+        b._members = members.data;
+        b._membersLoaded = true;
+      } else {
+        b._membersLoaded = false;
+      }
+      b._hotel_stays = (stays && !stays.error && Array.isArray(stays.data)) ? stays.data : (b._hotel_stays || []);
+      b._flights = (flights && !flights.error && Array.isArray(flights.data)) ? flights.data : (b._flights || []);
     } catch (err) {
       console.warn('Could not load members/hotels/flights for booking', b.id, err);
+      b._membersLoaded = false;
       b._flights = b._flights || [];
     }
     b._enriched = true;
@@ -6526,6 +6630,8 @@
     s.hotelKey = String(s.hotelKey || '');
     s.placeNote = String(s.placeNote || '');
     s.flightArrivalTime = s.flightArrivalTime ? normaliseStopTime(s.flightArrivalTime, '') : '';
+    if (s.placeKind === 'airport') s.terminal = String(s.terminal) === '2' ? '2' : '1';
+    else s.terminal = '';
     return s;
   }
 
@@ -6684,6 +6790,7 @@
       s.hotelName = '';
       s.hotelKey = '';
       s.flightArrivalTime = '';
+      s.terminal = '';
       s.address = '';
     } else if (raw.indexOf('hotel:') === 0) {
       const name = raw.slice(6);
@@ -6692,8 +6799,10 @@
       s.hotelKey = HandoverStops.hotelKey(name);
       s.placeNote = '';
       s.flightArrivalTime = '';
+      s.terminal = '';
       s.address = '';
     }
+    ensureHandoverFields(s);
     refreshHandoverTitle(s);
     const day = dayContainingStop(s.id);
     if (day) sortDayBlocks(day);
@@ -6732,6 +6841,24 @@
     s.flightArrivalTime = time;
     refreshHandoverTitle(s);
     commitStopTime(stopId, time, { render: true });
+  }
+
+  function commitHandoverTerminal(stopId, value) {
+    const s = findStop(stopId);
+    if (!s || s.type !== 'handover' || s.placeKind !== 'airport') return;
+    s.terminal = String(value) === '2' ? '2' : '1';
+    refreshHandoverTitle(s);
+    scheduleAutoSave();
+    render();
+  }
+
+  function renderHandoverTerminal(stop) {
+    if (!stop || stop.placeKind !== 'airport') return '';
+    ensureHandoverFields(stop);
+    const terminal = window.HandoverStops ? HandoverStops.terminalNumber(stop) : (String(stop.terminal) === '2' ? '2' : '1');
+    const id = escapeHtml(stop.id);
+    const radio = (n) => `<label class="tick${terminal === n ? ' on-booked' : ''}"><input type="radio" name="handover-terminal-${id}" data-handover-terminal="${id}" value="${n}"${terminal === n ? ' checked' : ''}> Terminal ${n}</label>`;
+    return `<div class="field-label">Terminal</div><div class="handover-terminal" role="radiogroup" aria-label="Terminal">${radio('1')}${radio('2')}</div>`;
   }
 
   function renderHandoverGuests(stop) {
@@ -6827,6 +6954,7 @@
           <label class="field-label" for="handover-place-${id}">Place</label>
           ${renderHandoverPlaceSelect(s)}
           ${s.placeKind === 'note' ? `<label class="field-label" for="handover-note-${id}">Short note</label><input type="text" id="handover-note-${id}" data-handover-note="${id}" value="${escapeHtml(s.placeNote || '')}" placeholder="Short note" aria-label="Short note">` : ''}
+          ${renderHandoverTerminal(s)}
           ${renderAirportPickupTime(s)}
           <div class="field-label">Who it is for</div>
           ${renderHandoverGuests(s)}
@@ -7775,6 +7903,23 @@
     };
   }
 
+  function roughHandoverOnWeekSummary() {
+    let pickups = 0;
+    let dropoffs = 0;
+    ((state.plan && state.plan.days) || []).forEach(day => {
+      (day.blocks || []).forEach(s => {
+        if (!s || s.type !== 'handover') return;
+        if (s.handoverKind === 'dropoff') dropoffs += 1;
+        else pickups += 1;
+      });
+    });
+    const bits = [];
+    if (pickups) bits.push(pickups + (pickups === 1 ? ' pick-up' : ' pick-ups'));
+    if (dropoffs) bits.push(dropoffs + (dropoffs === 1 ? ' drop-off' : ' drop-offs'));
+    if (!bits.length) return 'No pick-ups or drop-offs on this week yet.';
+    return bits.join(' and ') + ' on this week.';
+  }
+
   /** How packed a Rough day column is (non-lunch place stops only — not hotel pickup / travel / lunch). */
   function roughDayLoadLevel(day) {
     const n = (day && Array.isArray(day.blocks) ? day.blocks : [])
@@ -8125,12 +8270,104 @@
     return { list, usedList, used };
   }
 
+  function roughHandoverTrayKinds() {
+    const filter = state.roughTrayFilter || 'all';
+    if (filter !== 'all' && filter !== 'handover') return [];
+    const q = String(state.roughTraySearch || '').trim().toLowerCase();
+    return ['pickup', 'dropoff'].filter(kind => {
+      if (!q) return true;
+      const label = kind === 'dropoff' ? 'drop-off' : 'pick-up';
+      return label.includes(q)
+        || (kind === 'pickup' && q.includes('pick'))
+        || (kind === 'dropoff' && q.includes('drop'))
+        || q.includes('airport')
+        || q.includes('terminal')
+        || q.includes('handover');
+    });
+  }
+
+  function renderRoughHandoverChip(kind) {
+    const label = kind === 'dropoff' ? 'Drop-off' : 'Pick-up';
+    const sel = state.roughSelectedHandover === kind ? ' selected' : '';
+    return `<button type="button" class="rough-place-chip rough-handover-chip${sel}"
+      draggable="true"
+      data-rough-handover="${kind}"
+      title="${escapeHtml(label)}">
+      <span class="rp-icon" aria-hidden="true">${renderTypeIconBadge('pickup')}</span>
+      <span class="rp-nick">${escapeHtml(label)}</span>
+    </button>`;
+  }
+
+  function newHandoverStop(kind) {
+    const hotels = handoverHotelsForPlan();
+    const first = hotels.find(h => h.group === 'this') || hotels[0] || null;
+    const stop = ensureHandoverFields({
+      id: uid('s'),
+      type: 'handover',
+      handoverKind: kind === 'dropoff' ? 'dropoff' : 'pickup',
+      time: '',
+      timeApprox: false,
+      placeKind: first ? 'hotel' : 'note',
+      hotelName: first ? first.name : '',
+      hotelKey: first ? first.key : '',
+      placeNote: '',
+      guestIds: [],
+      flightArrivalTime: '',
+      terminal: '',
+      title: '',
+      notes: '',
+      address: '',
+      period: 'Untimed',
+      messageSent: false,
+      booked: false,
+      travelMinutes: null,
+    });
+    refreshHandoverTitle(stop);
+    return stop;
+  }
+
+  function addHandoverToRoughDay(kind, dayIndex) {
+    if (!state.plan || !window.HandoverStops) return;
+    const day = state.plan.days ? state.plan.days[dayIndex] : null;
+    if (!day) { toast('Day not found'); return; }
+    const stop = newHandoverStop(kind);
+    if (!Array.isArray(day.blocks)) day.blocks = [];
+    day.blocks.push(stop);
+    sortDayBlocks(day);
+    const idx = day.blocks.findIndex(b => b && b.id === stop.id);
+    seedTravelMinutes(day, idx >= 0 ? idx : day.blocks.length - 1);
+    state.roughSelectedHandover = null;
+    state.roughSelectedPlaceId = null;
+    state.selectedDay = dayIndex;
+    scheduleAutoSave();
+    render();
+  }
+
+  function renderRoughHandoverDetails(stop) {
+    if (!stop || stop.type !== 'handover') return '';
+    ensureHandoverFields(stop);
+    const id = escapeHtml(stop.id);
+    const note = stop.placeKind === 'note'
+      ? `<label class="field-label" for="handover-note-${id}">Short note</label><input type="text" id="handover-note-${id}" data-handover-note="${id}" value="${escapeHtml(stop.placeNote || '')}" placeholder="Short note" aria-label="Short note">`
+      : '';
+    return `<div class="rough-handover handover-box">
+      <div class="field-label">Who it is for</div>
+      ${renderHandoverGuests(stop)}
+      <label class="field-label" for="handover-place-${id}">Place</label>
+      ${renderHandoverPlaceSelect(stop)}
+      ${note}
+      ${renderHandoverTerminal(stop)}
+      ${renderAirportPickupTime(stop)}
+    </div>`;
+  }
+
   function addPlaceToRoughDay(placeId, dayIndex) {
     const place = placeById(placeId);
     if (!place) { toast('Place not found'); return; }
     const day = state.plan && state.plan.days ? state.plan.days[dayIndex] : null;
     if (!day) { toast('Day not found'); return; }
     state.roughSelectedPlaceId = null;
+    state.roughSelectedHandover = null;
     // Blank time → auto-schedule approximate spacing (editable on the stop chip)
     // Food may be added to several days; non-food may be a return visit
     addPlaceToDay(place, dayIndex, '');
@@ -8142,7 +8379,7 @@
     if (!place) { toast('Place not found'); return; }
     const days = (state.plan && state.plan.days) || [];
     if (!days.length) {
-      toast('No days yet — set tour dates on the Planner tab');
+      toast('No days yet');
       return;
     }
     const nick = placeChipLabel(place);
@@ -8174,7 +8411,7 @@
       </li>`;
     }).join('');
     body.innerHTML = `
-      <p class="rough-again-intro">Add <strong>${escapeHtml(nick)}</strong> again. Pick the day for this return visit — time is auto-spaced (you can change it on the stop).</p>
+      <p class="rough-again-intro"><strong>${escapeHtml(nick)}</strong></p>
       <ul class="rough-again-day-list" role="list">${rows}</ul>
       <div class="rough-again-actions">
         <button type="button" class="btn btn-outline" id="btnRoughAgainCancel">Cancel</button>
@@ -8217,13 +8454,13 @@
     const retCls = optsSafe.returnVisit ? ' return-visit' : '';
     const icon = renderPlaceTypeIcon(p);
     const nick = placeChipLabel(p);
-    let tip = escapeHtml(p.name || nick) + ' — drag to a day, or tap then tap a day';
+    let tip = escapeHtml(p.name || nick);
     let mark = '';
     if (optsSafe.returnVisit) {
-      tip = escapeHtml(p.name || nick) + ' — already planned once; tap to add a return visit';
+      tip = escapeHtml(p.name || nick) + ' — already planned once';
       mark = '<span class="rp-mark">return</span>';
     } else if (isUsed && food) {
-      tip = escapeHtml(p.name || nick) + ' — already on the week; food stays available for other days';
+      tip = escapeHtml(p.name || nick) + ' — already on the week';
       mark = '<span class="rp-mark">on plan</span>';
     }
     return `<button type="button" class="rough-place-chip${sel}${onPlan}${retCls}"
@@ -8248,24 +8485,31 @@
         : '';
       const hint = t.hint ? (' ' + t.hint) : '';
       return `<button type="button" class="chip ${activeFilter === t.id ? 'on' : ''}" data-rough-filter="${t.id}" title="${tip}${escapeHtml(hint)}">${escapeHtml(label)}${stat}</button>`;
-    }).join('');
-    const placeChips = list.length
+    }).join('') + `<button type="button" class="chip ${activeFilter === 'handover' ? 'on' : ''}" data-rough-filter="handover">Pick-up and drop-off</button>`;
+    const handoverHtml = roughHandoverTrayKinds().map(renderRoughHandoverChip).join('');
+    const showPlaces = activeFilter !== 'handover';
+    const placeHtml = showPlaces && list.length
       ? list.map(p => renderRoughPlaceChip(p, used, {})).join('')
-      : '<p class="muted" style="margin:0;font-size:13px;">No places in the tray for this filter — try another type, clear the search, or tick <strong>Show used</strong> for a return visit.</p>';
-    const usedBlock = state.roughShowUsed
+      : '';
+    const trayBody = handoverHtml + placeHtml
+      || (activeFilter === 'handover'
+        ? '<p class="muted" style="margin:0;font-size:13px;">No pick-up or drop-off matches that search.</p>'
+        : '<p class="muted" style="margin:0;font-size:13px;">No places in this filter.</p>');
+    const usedBlock = showPlaces && state.roughShowUsed
       ? (`<div class="rough-tray-used-block" id="roughTrayUsed">
-          <p class="rough-tray-used-head">Already planned once — tap for a return visit</p>
+          <p class="rough-tray-used-head">Already planned once</p>
           ${usedList.length
             ? usedList.map(p => renderRoughPlaceChip(p, used, { returnVisit: true })).join('')
-            : '<p class="muted" style="margin:0;font-size:12px;">Nothing used yet for this filter (food stays in the main list above).</p>'}
+            : '<p class="muted" style="margin:0;font-size:12px;">Nothing used yet for this filter.</p>'}
         </div>`)
       : '';
-    const countSentence = roughTrayCountSentence(activeFilter);
+    const countSentence = activeFilter === 'handover'
+      ? roughHandoverOnWeekSummary()
+      : roughTrayCountSentence(activeFilter);
     const showUsedChecked = state.roughShowUsed ? ' checked' : '';
     return `
       <aside class="rough-tray" aria-label="Places tray">
         <h3>Places tray</h3>
-        <p class="rough-tray-hint">Drag a chip onto a day, or tap a place then tap <strong>Add to Day</strong>. <strong>Food</strong> (restaurants / snacks) stays in the tray so you can put it on several days. Other places leave once planned — tick <strong>Show used</strong>, or tap <strong>Again</strong> on a stop and choose which day for a return visit.</p>
         <label class="field-label" for="roughTraySearch">Search</label>
         <input type="search" id="roughTraySearch" class="rough-tray-search" value="${escapeHtml(state.roughTraySearch || '')}" placeholder="Filter by nickname or name…" autocomplete="off">
         <div class="rough-tray-chips" role="group" aria-label="Filter by type">${chips}</div>
@@ -8274,7 +8518,7 @@
           <input type="checkbox" id="roughShowUsed"${showUsedChecked}>
           Show used places (return visit)
         </label>
-        <div class="rough-tray-list" id="roughTrayList">${placeChips}</div>
+        <div class="rough-tray-list" id="roughTrayList">${trayBody}</div>
         ${usedBlock}
       </aside>
     `;
@@ -8322,13 +8566,14 @@
         </div>
         <span class="rough-stop-nick">${escapeHtml(label)}${noPlace ? missingBadgeHtml('No placeId') : ''}${flagged ? missingBadgeHtml('FLAG') : ''}</span>
         ${noteSnip ? `<span class="rough-stop-note">${escapeHtml(noteSnip)}</span>` : ''}
-        ${system ? '' : renderBookingTicksHtml(s, { compact: true })}
+        ${s.type === 'handover' ? renderRoughHandoverDetails(s) : ''}
+        ${system || s.type === 'handover' ? '' : renderBookingTicksHtml(s, { compact: true })}
       </li>`;
     }).join('');
     const empty = placeStops.length
       ? ''
-      : '<p class="rough-empty-day">Drop a place here (or tap Add to Day).</p>';
-    const selReady = !!state.roughSelectedPlaceId;
+      : '';
+    const selReady = !!(state.roughSelectedPlaceId || state.roughSelectedHandover);
     const load = roughDayLoadLevel(day);
     const loadStops = load.count === 1 ? '1 place stop' : (load.count + ' place stops');
     const focusBtn = focused
@@ -8348,7 +8593,7 @@
           </button>
           <div class="rough-day-head-actions">
             ${focusBtn}
-            <button type="button" class="rough-day-add${selReady ? ' ready' : ''}" data-rough-add-day="${dayIndex}" ${selReady ? '' : 'disabled'} title="Tap a place in the tray first, then tap here">
+            <button type="button" class="rough-day-add${selReady ? ' ready' : ''}" data-rough-add-day="${dayIndex}" ${selReady ? '' : 'disabled'} title="Add to Day ${dayIndex + 1}">
               Add to Day ${dayIndex + 1}
             </button>
           </div>
@@ -8369,14 +8614,21 @@
     const focusIdx = state.roughFocusDayIndex;
     const inFocus = focusIdx != null;
     let selectedBanner = '';
-    if (state.roughSelectedPlaceId) {
+    if (state.roughSelectedHandover === 'pickup' || state.roughSelectedHandover === 'dropoff') {
+      const label = state.roughSelectedHandover === 'dropoff' ? 'Drop-off' : 'Pick-up';
+      selectedBanner = `
+        <div class="rough-selected-banner" role="status">
+          <span>Selected: <strong>${label}</strong></span>
+          <button type="button" class="btn-clear-sel" id="btnRoughClearSel">Clear</button>
+        </div>`;
+    } else if (state.roughSelectedPlaceId) {
       const p = placeById(state.roughSelectedPlaceId);
       if (p) {
         const used = placeUsedInWeek(p.id);
         const food = isFoodTrayPlace(p);
-        let note = ' — tap <em>Add to Day N</em> on a day column';
-        if (used && food) note = ' — food; add to another day if you like';
-        else if (used) note = ' — return visit; tap <em>Add to Day N</em>';
+        let note = '';
+        if (used && food) note = ' — already on the week';
+        else if (used) note = ' — already planned once';
         selectedBanner = `
           <div class="rough-selected-banner" role="status">
             <span>Selected: ${renderPlaceTypeIcon(p)} <strong>${escapeHtml(placeChipLabel(p))}</strong>${note}</span>
@@ -8392,14 +8644,13 @@
           <div class="rough-focus-bar">
             <button type="button" class="btn btn-outline btn-sm" id="btnRoughBackWeek" title="Return to the week overview">← Week overview</button>
             <span class="rough-focus-bar-label">Focus · Day ${focusIdx + 1}</span>
-            <span class="rough-focus-bar-hint">Same stops and controls — larger for easier editing. Esc or Week overview to go back.</span>
           </div>
           ${renderRoughDayLane(d, focusIdx, { focused: true })}
         </div>`;
     } else {
       const lanes = days.length
         ? days.map((d, i) => renderRoughDayLane(d, i)).join('')
-        : '<p class="muted">No days yet — set tour dates on the Planner tab (or Add day).</p>';
+        : '<p class="muted">No days yet.</p>';
       weekOrFocus = `<div class="rough-week" id="roughWeek">${lanes}</div>`;
     }
     const pace = roughWeekPaceSummary();
@@ -8408,14 +8659,13 @@
         <div class="row-between" style="align-items:flex-start;gap:10px;flex-wrap:wrap;">
           <div>
             <h2 style="margin:0;">Rough plan</h2>
-            <p class="muted" style="margin:6px 0 0;max-width:42em;">Sketch the week with Simi — drag places onto days or tap-to-add. Same plan as Planner (shared cloud save). Leave time blank when adding and we’ll suggest an approximate slot (about 1 hour 30 minutes after the last timed stop, or about 30 minutes for lunch-like places). Tap the <strong>🕐 time chip</strong> on each stop to open the scroll wheel (hour + minute), then Done. Tap a <strong>day header</strong> or <strong>Focus day</strong> to edit that day larger.</p>
             <p class="rough-week-pace pace-${pace.key}" id="roughWeekPace" aria-live="polite">${escapeHtml(pace.text)}</p>
           </div>
           <button type="button" class="btn btn-outline btn-sm" id="btnRoughGotoPlanner">Open Planner</button>
         </div>
         <div class="rough-notes">
           <label class="field-label" for="roughNotes">Week notes</label>
-          <textarea id="roughNotes" rows="4" placeholder="Jot thoughts while you sketch the week — saved with this tour.">${escapeHtml(state.plan.roughNotes || '')}</textarea>
+          <textarea id="roughNotes" rows="4" placeholder="Saved with this tour.">${escapeHtml(state.plan.roughNotes || '')}</textarea>
         </div>
         ${selectedBanner}
         <div class="rough-layout" style="margin-top:12px;">
@@ -8457,6 +8707,7 @@
     }
     document.getElementById('btnRoughClearSel')?.addEventListener('click', () => {
       state.roughSelectedPlaceId = null;
+      state.roughSelectedHandover = null;
       render();
     });
     document.getElementById('btnRoughGotoPlanner')?.addEventListener('click', () => setMainTab('planner'));
@@ -8465,12 +8716,28 @@
       const placeId = chip.getAttribute('data-rough-place');
       chip.addEventListener('click', () => {
         // Food reuse + return visit: used chips stay selectable
+        state.roughSelectedHandover = null;
         state.roughSelectedPlaceId = state.roughSelectedPlaceId === placeId ? null : placeId;
         render();
       });
       chip.addEventListener('dragstart', e => {
         e.dataTransfer.setData('text/plain', placeId);
         e.dataTransfer.setData('application/x-rough-place', placeId);
+        e.dataTransfer.effectAllowed = 'copy';
+        chip.classList.add('dragging');
+      });
+      chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+    });
+    document.querySelectorAll('[data-rough-handover]').forEach(chip => {
+      const kind = chip.getAttribute('data-rough-handover');
+      chip.addEventListener('click', () => {
+        state.roughSelectedPlaceId = null;
+        state.roughSelectedHandover = state.roughSelectedHandover === kind ? null : kind;
+        render();
+      });
+      chip.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', 'handover:' + kind);
+        e.dataTransfer.setData('application/x-rough-handover', kind);
         e.dataTransfer.effectAllowed = 'copy';
         chip.classList.add('dragging');
       });
@@ -8490,12 +8757,23 @@
       lane.addEventListener('drop', e => {
         e.preventDefault();
         lane.classList.remove('drag-over');
-        const placeId = e.dataTransfer.getData('application/x-rough-place') || e.dataTransfer.getData('text/plain');
+        const handover = e.dataTransfer.getData('application/x-rough-handover');
+        const plain = e.dataTransfer.getData('text/plain');
+        const kind = handover || (String(plain).indexOf('handover:') === 0 ? String(plain).slice(9) : '');
+        if (kind === 'pickup' || kind === 'dropoff') {
+          addHandoverToRoughDay(kind, dayIndex);
+          return;
+        }
+        const placeId = e.dataTransfer.getData('application/x-rough-place') || plain;
         if (placeId) addPlaceToRoughDay(placeId, dayIndex);
       });
-      // Tap day body (not buttons) when a place is selected → add
+      // Tap day body (not buttons or the stop’s own time and people) when something is selected → add
       lane.addEventListener('click', e => {
-        if (e.target.closest('button')) return;
+        if (e.target.closest('button, input, select, textarea, label, .rough-handover')) return;
+        if (state.roughSelectedHandover) {
+          addHandoverToRoughDay(state.roughSelectedHandover, dayIndex);
+          return;
+        }
         if (!state.roughSelectedPlaceId) return;
         addPlaceToRoughDay(state.roughSelectedPlaceId, dayIndex);
       });
@@ -8504,8 +8782,12 @@
     document.querySelectorAll('[data-rough-add-day]').forEach(btn => {
       btn.addEventListener('click', () => {
         const dayIndex = Number(btn.getAttribute('data-rough-add-day'));
+        if (state.roughSelectedHandover) {
+          addHandoverToRoughDay(state.roughSelectedHandover, dayIndex);
+          return;
+        }
         if (!state.roughSelectedPlaceId) {
-          toast('Tap a place in the tray first');
+          toast('Tap a place, pick-up, or drop-off in the tray first');
           return;
         }
         addPlaceToRoughDay(state.roughSelectedPlaceId, dayIndex);
@@ -10661,6 +10943,12 @@ function renderDayTabs() {
     });
     document.querySelectorAll('[data-handover-place]').forEach(sel => {
       sel.addEventListener('change', () => commitHandoverPlace(sel.getAttribute('data-handover-place'), sel.value));
+    });
+    document.querySelectorAll('[data-handover-terminal]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        if (!inp.checked) return;
+        commitHandoverTerminal(inp.getAttribute('data-handover-terminal'), inp.value);
+      });
     });
     document.querySelectorAll('[data-handover-guest]').forEach(inp => {
       inp.addEventListener('change', () => commitHandoverGuests(inp.getAttribute('data-handover-guest')));

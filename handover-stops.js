@@ -171,9 +171,15 @@
     return kind === 'dropoff' ? 'Drop-off' : 'Pick-up';
   }
 
+  /** Airport stops are Terminal 1 unless he has chosen Terminal 2. Never blank. */
+  function terminalNumber(stop) {
+    if (!stop || stop.placeKind !== 'airport') return '';
+    return String(stop.terminal) === '2' ? '2' : '1';
+  }
+
   function placeLabel(stop) {
     if (!stop) return 'Place not set';
-    if (stop.placeKind === 'airport') return 'Airport';
+    if (stop.placeKind === 'airport') return 'Airport, Terminal ' + terminalNumber(stop);
     if (stop.placeKind === 'note') {
       var note = String(stop.placeNote || '').trim();
       return note || 'Place not set';
@@ -204,6 +210,7 @@
     adjustTime: adjustTime,
     nudgeFrom: nudgeFrom,
     kindLabel: kindLabel,
+    terminalNumber: terminalNumber,
     placeLabel: placeLabel,
     summary: summary,
   };

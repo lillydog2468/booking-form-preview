@@ -96,7 +96,16 @@ test('summaries use the hotel, airport, or note and the ticked people', () => {
     handoverKind: 'pickup',
     placeKind: 'airport',
     guestIds: ['g5'],
-  }, guests), 'Pick-up · Airport · Molly');
+  }, guests), 'Pick-up · Airport, Terminal 1 · Molly');
+  assert.equal(H.terminalNumber({ placeKind: 'airport' }), '1');
+  assert.equal(H.terminalNumber({ placeKind: 'airport', terminal: '' }), '1');
+  assert.equal(H.terminalNumber({ placeKind: 'airport', terminal: '2' }), '2');
+  assert.equal(H.terminalNumber({ placeKind: 'hotel', terminal: '2' }), '');
+  assert.equal(H.summary({
+    handoverKind: 'dropoff',
+    placeKind: 'airport',
+    terminal: '2',
+  }, guests), 'Drop-off · Airport, Terminal 2');
   assert.equal(H.summary({
     handoverKind: 'dropoff',
     placeKind: 'note',
