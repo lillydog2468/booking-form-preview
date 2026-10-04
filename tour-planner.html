@@ -2267,6 +2267,159 @@
       color: var(--scan);
     }
 
+    /* Week viewer — read-only look at the same plan, for a phone */
+    body.view-week .autosave-toggle,
+    body.view-week #autosaveStatus,
+    body.view-week #btnForceCloudSave,
+    body.view-week #btnExportPlan,
+    body.view-week nav.view-nav,
+    body.view-week #globalSearchMount,
+    body.view-week #btnTheme,
+    body.view-week .wip-banner { display: none !important; }
+    body.view-week .wrap { padding: 12px 12px 8px; }
+    .week-open {
+      width: 100%;
+      margin-bottom: 12px;
+      min-height: 48px;
+      font-size: 16px;
+    }
+    .week-look {
+      max-width: 520px;
+      margin: 0 auto;
+      /* Room to scroll the last day up under the header, clear of the dock. */
+      padding-bottom: calc(100dvh - 200px);
+      touch-action: pan-y;
+    }
+    .look-range {
+      margin: 0 0 6px;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--scan-date);
+      letter-spacing: -0.02em;
+    }
+    .look-intro {
+      margin: 0 0 14px;
+      font-size: 16px;
+      line-height: 1.4;
+      color: var(--text-secondary);
+    }
+    .look-day {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 14px 6px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .look-day.is-today { box-shadow: 0 0 0 2px var(--accent-glow); }
+    .look-day-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .look-dow {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-secondary);
+    }
+    .look-date {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--scan-date);
+    }
+    .look-zoom {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--accent-soft);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 800;
+      border-radius: 10px;
+      min-height: 44px;
+      padding: 8px 14px;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .look-stops { list-style: none; margin: 0; padding: 0; }
+    .look-stop {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      min-height: 48px;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    .look-time {
+      flex: 0 0 auto;
+      min-width: 3.4em;
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--scan-date);
+      line-height: 1.25;
+    }
+    .look-time.is-blank { color: var(--text-secondary); font-weight: 700; }
+    .look-stop .dot {
+      width: 12px;
+      height: 12px;
+      margin-top: 5px;
+      border-width: 2px;
+      flex: 0 0 auto;
+    }
+    .look-name {
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.25;
+      color: var(--scan);
+    }
+    .look-empty {
+      padding: 12px 0 8px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+    .look-day.is-zoomed { padding: 16px 16px 8px; }
+    .look-day.is-zoomed .look-dow { font-size: 18px; }
+    .look-day.is-zoomed .look-date { font-size: 34px; }
+    .look-day.is-zoomed .look-stop { min-height: 64px; padding: 14px 0; }
+    .look-day.is-zoomed .look-time { font-size: 28px; min-width: 4.2em; }
+    .look-day.is-zoomed .look-name { font-size: 26px; }
+    .look-dock {
+      position: fixed;
+      z-index: 35;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(12px + env(safe-area-inset-bottom));
+      width: min(520px, calc(100% - 24px));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px 10px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--scan);
+    }
+    .look-dock .look-zoom {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      min-width: 132px;
+    }
+    .look-dock-note {
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 700;
+    }
+
   </style>
 </head>
 <body>
@@ -2276,7 +2429,7 @@
       <div class="topbar-left">
         <div>
           <h1>Tour planner</h1>
-          <div class="sub">Check the day’s plan on your phone</div>
+          <div class="sub" id="plannerSub">Check the day’s plan on your phone</div>
         </div>
         <nav class="view-nav" aria-label="Main">
           <a href="booking-form.html" id="navBookings">Bookings</a>
@@ -2302,6 +2455,7 @@
         </div>
         <select id="groupSelect" class="group-select" aria-label="Tour group"></select>
         <div class="view-nav" role="group" aria-label="Planner view">
+          <button type="button" id="btnLookView">Week</button>
           <button type="button" id="btnPhoneView">Phone</button>
           <button type="button" id="btnDetailedView">Detailed</button>
         </div>
@@ -2366,6 +2520,7 @@
     plans: {},
     plan: null,
     selectedDay: 0,
+    weekZoomDay: null,
     placeFilter: 'all',
     placeSearch: '',
     selectedPlaceId: null,
@@ -5880,17 +6035,30 @@
   }
 
   function effectiveView() {
-    if (state.viewPref === 'phone' || state.viewPref === 'detailed') return state.viewPref;
+    if (state.viewPref === 'phone' || state.viewPref === 'detailed' || state.viewPref === 'week') return state.viewPref;
     return window.innerWidth <= 820 ? 'phone' : 'detailed';
   }
+  function syncViewChrome(view) {
+    document.body.classList.toggle('view-phone', view === 'phone');
+    document.body.classList.toggle('view-detailed', view === 'detailed');
+    document.body.classList.toggle('view-week', view === 'week');
+    document.getElementById('btnPhoneView')?.classList.toggle('active', view === 'phone');
+    document.getElementById('btnDetailedView')?.classList.toggle('active', view === 'detailed');
+    document.getElementById('btnLookView')?.classList.toggle('active', view === 'week');
+    const sub = document.getElementById('plannerSub');
+    if (sub) {
+      sub.textContent = view === 'week'
+        ? 'Scroll the week, or zoom in on one day'
+        : 'Check the day’s plan on your phone';
+    }
+  }
   function setViewPref(v) {
+    const leavingWeek = effectiveView() === 'week' && v !== 'week';
+    if (v === 'week') state.weekZoomDay = null;
     state.viewPref = v;
     localStorage.setItem('planner_view', v);
-    document.body.classList.toggle('view-phone', effectiveView() === 'phone');
-    document.body.classList.toggle('view-detailed', effectiveView() === 'detailed');
-    document.getElementById('btnPhoneView').classList.toggle('active', effectiveView() === 'phone');
-    document.getElementById('btnDetailedView').classList.toggle('active', effectiveView() === 'detailed');
-    render();
+    syncViewChrome(effectiveView());
+    render((v === 'week' || leavingWeek) ? { resetScroll: true } : undefined);
   }
 
   function guestNamesFromMembers(members, extras) {
@@ -6126,6 +6294,7 @@
     const today = todayISO();
     const idx = state.plan.days.findIndex(d => d.date === today);
     state.selectedDay = idx >= 0 ? idx : 0;
+    state.weekZoomDay = null;
     const url = new URL(location.href);
     url.searchParams.set('booking', key);
     history.replaceState({}, '', url);
@@ -9219,8 +9388,173 @@ function renderDayTabs() {
     return 'No tours yet. Add a booking on the booking form, then open it here.';
   }
 
+  /**
+   * Read-only week viewer. Uses the open plan’s days, times and stops.
+   * A copy of the stop list is sorted for display only — the plan is not edited.
+   */
+  function lookStopLabel(stop) {
+    const title = String((stop && stop.title) || '').trim();
+    if (title) return title;
+    return roughStopLabel(stop);
+  }
+
+  function weekLookStops(day) {
+    const blocks = (day && Array.isArray(day.blocks) ? day.blocks.slice() : []).filter(s => {
+      if (!s) return false;
+      return String(s.title || '').trim() || String(s.time || '').trim();
+    });
+    blocks.sort(compareStopTime);
+    return blocks;
+  }
+
+  function renderWeekLook() {
+    const plan = state.plan;
+    const days = (plan && Array.isArray(plan.days)) ? plan.days : [];
+    let zoom = state.weekZoomDay;
+    if (zoom != null && !days[zoom]) {
+      state.weekZoomDay = null;
+      zoom = null;
+    }
+    const shown = zoom == null ? days.map((d, i) => [d, i]) : [[days[zoom], zoom]];
+    const range = (plan && (plan.arrivalDate || plan.departureDate))
+      ? `${plan.arrivalDate ? formatDateDMY(plan.arrivalDate) : '—'} – ${plan.departureDate ? formatDateDMY(plan.departureDate) : '—'}`
+      : '';
+    const intro = zoom == null
+      ? '<p class="look-intro">Scroll through the week. Zoom in when you want one day on its own.</p>'
+      : '';
+    const today = todayISO();
+    const sections = shown.map(([day, i]) => {
+      const dow = day.date ? weekdayName(day.date) : ('Day ' + (i + 1));
+      const dateLine = day.date ? formatDateDMY(day.date) : 'Date not set';
+      const isToday = !!(day.date && day.date === today);
+      const stops = weekLookStops(day);
+      const rows = stops.length
+        ? stops.map(s => {
+          const time = String(s.time || '').trim();
+          const label = lookStopLabel(s);
+          const type = placeTypeForStop(s);
+          const timeHtml = time
+            ? `<span class="look-time">${escapeHtml(time)}</span>`
+            : '<span class="look-time is-blank" aria-label="Time not set">—</span>';
+          return `<li class="look-stop">${timeHtml}<span class="dot ${escapeHtml(type)}" aria-hidden="true"></span><span class="look-name">${escapeHtml(label)}</span></li>`;
+        }).join('')
+        : '<li class="look-empty">No stops this day</li>';
+      const zoomBtn = zoom == null
+        ? `<button type="button" class="look-zoom" data-look-zoom="${i}">Zoom in</button>`
+        : '';
+      return `<section class="look-day${zoom != null ? ' is-zoomed' : ''}${isToday ? ' is-today' : ''}" id="look-day-${i}" data-look-day="${i}" data-look-dow="${escapeHtml(dow)}">
+        <div class="look-day-head">
+          <div>
+            <div class="look-dow">${isToday ? 'Today · ' : ''}${escapeHtml(dow)}</div>
+            <div class="look-date">${escapeHtml(dateLine)}</div>
+          </div>
+          ${zoomBtn}
+        </div>
+        <ol class="look-stops">${rows}</ol>
+      </section>`;
+    }).join('');
+    const firstDow = days[0] && days[0].date ? weekdayName(days[0].date) : '';
+    const progress = 'Day 1 of ' + days.length + (firstDow ? ' · ' + firstDow : '');
+    const dock = !days.length ? '' : (zoom == null
+      ? `<div class="look-dock" id="lookDock"><span id="lookScrollLabel">${escapeHtml(progress)}</span></div>`
+      : `<div class="look-dock" id="lookDock"><span class="look-dock-note">Whole week</span><button type="button" class="look-zoom look-zoom-out" data-look-zoom="out">Zoom out</button></div>`);
+    const label = zoom == null ? 'Whole week' : ((days[zoom] && days[zoom].date) ? weekdayName(days[zoom].date) : 'Day');
+    return `<div class="week-look" id="weekLook" aria-label="${escapeHtml(label)}">
+      ${range ? `<p class="look-range">${escapeHtml(range)}</p>` : ''}
+      ${intro}
+      ${days.length ? sections : '<p class="look-intro">No days on this tour yet.</p>'}
+    </div>${dock}`;
+  }
+
+  function updateWeekProgress() {
+    const label = document.getElementById('lookScrollLabel');
+    if (!label) return;
+    const days = Array.from(document.querySelectorAll('.look-day'));
+    if (!days.length) return;
+    const bar = document.querySelector('.topbar');
+    const line = (bar ? bar.getBoundingClientRect().bottom : 72) + 12;
+    let current = days[0];
+    days.forEach(el => {
+      if (el.getBoundingClientRect().top <= line) current = el;
+    });
+    const i = Number(current.getAttribute('data-look-day'));
+    const dow = current.getAttribute('data-look-dow') || '';
+    const n = Number.isFinite(i) ? i + 1 : 1;
+    label.textContent = 'Day ' + n + ' of ' + days.length + (dow ? ' · ' + dow : '');
+  }
+
+  function setWeekZoom(dayIndex) {
+    const days = (state.plan && state.plan.days) || [];
+    if (dayIndex == null) {
+      const back = state.weekZoomDay;
+      state.weekZoomDay = null;
+      render({ scrollToLookDay: back });
+      return;
+    }
+    const i = Number(dayIndex);
+    if (!Number.isFinite(i) || i < 0 || i >= days.length) return;
+    state.weekZoomDay = i;
+    state.selectedDay = i;
+    render({ resetScroll: true });
+  }
+
+  function bindWeekPinch() {
+    const root = document.getElementById('weekLook');
+    if (!root) return;
+    let start = 0;
+    let dayIndex = null;
+    const distance = (touches) => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.hypot(dx, dy);
+    };
+    root.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 2) return;
+      start = distance(e.touches);
+      const x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const el = document.elementFromPoint(x, y);
+      const day = el && el.closest ? el.closest('[data-look-day]') : null;
+      dayIndex = day ? Number(day.getAttribute('data-look-day')) : state.weekZoomDay;
+    }, { passive: true });
+    root.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 2 || !start) return;
+      const scale = distance(e.touches) / start;
+      if (scale > 1.35 && state.weekZoomDay == null && Number.isFinite(dayIndex)) {
+        start = 0;
+        setWeekZoom(dayIndex);
+      } else if (scale < 0.72 && state.weekZoomDay != null) {
+        start = 0;
+        setWeekZoom(null);
+      }
+    }, { passive: true });
+  }
+
+  function bindWeekLook() {
+    document.querySelectorAll('[data-look-zoom]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const raw = btn.getAttribute('data-look-zoom');
+        if (raw === 'out') setWeekZoom(null);
+        else setWeekZoom(Number(raw));
+      });
+    });
+    bindWeekPinch();
+    updateWeekProgress();
+    if (!window.__weekLookScrollBound) {
+      window.__weekLookScrollBound = true;
+      window.addEventListener('scroll', () => updateWeekProgress(), { passive: true });
+    }
+  }
+
   function renderWithoutPlan() {
     updateGroupHeading();
+    if (effectiveView() === 'week') {
+      const app = document.getElementById('app');
+      if (app) {
+        app.innerHTML = `<div class="week-look" id="weekLook"><p class="look-intro">${escapeHtml(emptyTourMessage())}</p></div>`;
+      }
+      return;
+    }
     const live = state.liveBookings
       ? `<span class="pill">Live bookings loaded</span>`
       : `<span class="pill warn">Bookings are not loaded. Check the connection.</span>`;
@@ -9278,15 +9612,34 @@ function renderDayTabs() {
     const uiSnap = resetScroll ? null : captureUiState();
 
     const view = effectiveView();
-    document.body.classList.toggle('view-phone', view === 'phone');
-    document.body.classList.toggle('view-detailed', view === 'detailed');
-    document.getElementById('btnPhoneView').classList.toggle('active', view === 'phone');
-    document.getElementById('btnDetailedView').classList.toggle('active', view === 'detailed');
+    syncViewChrome(view);
     if (!state.plan) {
       renderWithoutPlan();
       return;
     }
     updateGroupHeading();
+    if (view === 'week') {
+      const app = document.getElementById('app');
+      if (app) app.innerHTML = renderWeekLook();
+      bindWeekLook();
+      if (options.scrollToLookDay != null) {
+        const el = document.getElementById('look-day-' + options.scrollToLookDay);
+        if (el) {
+          requestAnimationFrame(() => {
+            const top = el.getBoundingClientRect().top + window.scrollY - 8;
+            window.scrollTo(0, Math.max(0, top));
+            updateWeekProgress();
+          });
+        }
+      } else if (resetScroll) {
+        try { window.scrollTo(0, 0); } catch (_) { /* ignore */ }
+        requestAnimationFrame(() => updateWeekProgress());
+      } else {
+        restoreUiState(uiSnap);
+        requestAnimationFrame(() => updateWeekProgress());
+      }
+      return;
+    }
 
     const today = todayISO();
     const todayIdx = state.plan.days.findIndex(d => d.date === today);
@@ -9448,6 +9801,7 @@ function renderDayTabs() {
     `;
 
     const plannerPhone = `
+      <button type="button" class="btn btn-outline week-open" id="btnOpenWeekLook">Look at the whole week</button>
       <div class="status-row">${live}${auth}</div>
       ${mainTabs}
       ${tripSummary}
@@ -9738,6 +10092,7 @@ function renderDayTabs() {
     q('#btnAddStop')?.addEventListener('click', addBlankStop);
     q('#btnOpenSheet')?.addEventListener('click', openSheet);
     q('#btnGotoPlaces')?.addEventListener('click', () => setMainTab('places'));
+    q('#btnOpenWeekLook')?.addEventListener('click', () => setViewPref('week'));
     q('#btnBackPlanner')?.addEventListener('click', () => setMainTab('planner'));
     document.querySelectorAll('[data-booking-link]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -11054,7 +11409,7 @@ function renderDayTabs() {
     const params = new URLSearchParams(location.search);
     const requested = params.get('booking');
     const viewParam = params.get('view');
-    if (viewParam === 'phone' || viewParam === 'detailed') state.viewPref = viewParam;
+    if (viewParam === 'phone' || viewParam === 'detailed' || viewParam === 'week') state.viewPref = viewParam;
     const tabParam = (params.get('tab') || '').toLowerCase();
     if (tabParam === 'people' || tabParam === 'places' || tabParam === 'issues' || tabParam === 'rough' || tabParam === 'planner' || tabParam === 'hotels') {
       state.mainTab = tabParam;
@@ -11184,6 +11539,7 @@ function renderDayTabs() {
   document.getElementById('groupSelect').addEventListener('change', e => selectPlan(e.target.value));
   document.getElementById('btnForceCloudSave').addEventListener('click', () => forceSaveToCloud());
   document.getElementById('btnExportPlan').addEventListener('click', () => exportPlanJson());
+  document.getElementById('btnLookView').addEventListener('click', () => setViewPref('week'));
   document.getElementById('btnPhoneView').addEventListener('click', () => setViewPref('phone'));
   document.getElementById('btnDetailedView').addEventListener('click', () => setViewPref('detailed'));
   document.getElementById('btnTheme').addEventListener('click', () => {
@@ -11195,8 +11551,7 @@ function renderDayTabs() {
   document.getElementById('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
   window.addEventListener('resize', () => {
     if (state.viewPref !== 'auto') return;
-    document.body.classList.toggle('view-phone', effectiveView() === 'phone');
-    document.body.classList.toggle('view-detailed', effectiveView() === 'detailed');
+    syncViewChrome(effectiveView());
   });
 
   // Sign-in required: data is only available to Keith's signed-in account.
