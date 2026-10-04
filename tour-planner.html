@@ -19,6 +19,8 @@
   <script src="global-search.js"></script>
   <script src="auth-gate.js"></script>
   <script src="booking-extras.js"></script>
+  <script src="hotel-directory.js"></script>
+  <script src="handover-stops.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -545,6 +547,15 @@
     }
     .stop-notes { color: var(--text-secondary); font-size: 13px; }
     .stop-actions { display: flex; flex-direction: column; gap: 4px; }
+    .handover-box { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .handover-box select, .handover-box input[type="text"] { width: 100%; }
+    .handover-summary { font-weight: 800; font-size: 15px; }
+    .handover-people { display: flex; flex-direction: column; gap: 4px; }
+    .handover-nudge { display: flex; flex-wrap: wrap; gap: 8px; }
+    .handover-flight .muted { margin: 0; }
+    .handover-nudge .is-on { background: var(--accent-soft); border-color: var(--accent); }
+    .view-phone .handover-summary { font-size: 17px; }
+    .view-phone .handover-nudge .btn { min-height: 44px; }
 
     .travel-note {
       display: flex; gap: 10px; align-items: flex-start;
@@ -2889,7 +2900,7 @@
   /** Hotel pickup / travel / meals do not need Message sent or Booked ticks. */
   function stopNeedsBookingTicks(s) {
     const t = (s && s.type) || '';
-    return !['pickup', 'hotel', 'meal', 'travel'].includes(t);
+    return !['pickup', 'hotel', 'meal', 'travel', 'handover'].includes(t);
   }
   /** Same messageSent / booked fields everywhere — compact for glance + Rough chips. */
   function renderBookingTicksHtml(s, opts) {
@@ -3293,6 +3304,7 @@
         // Stable id required so data-stop-time survives re-render mid-edit
         if (!s.id) s.id = uid('s');
         ensureStopTicks(s);
+        if (s.type === 'handover') ensureHandoverFields(s);
       });
     });
     // Resolve hotel place id from catalogue when possible (keeps Staying at in sync)
@@ -3474,6 +3486,7 @@
           </div>
           <button type="button" class="btn btn-primary" data-place-picker-add="${selectId}">Add selected place</button>
           <button type="button" class="btn btn-outline" id="${blankId}">Add blank stop</button>
+          <button type="button" class="btn btn-outline" data-add-handover="1">Add pick-up or drop-off</button>
         </div>
         <p class="muted" style="margin-top:6px;">Time is optional — leave blank for an automatic approximate time (about 1 hour 30 minutes after the last timed stop, or about 30 minutes for lunch / snack / restaurant). You can clear or tweak it. Untimed stops sort last. Grouped from your Places list.</p>
       </div>
@@ -4213,6 +4226,7 @@
   /** Substantive day blocks that should link to Places (skip travel/pickup skeletons). */
   function stopNeedsPlaceLink(stop) {
     if (!stop) return false;
+    if (stop.type === 'handover') return false;
     if (isSkeletonStop(stop) || isRoughSystemStop(stop)) return false;
     return !String(stop.placeId || stop.place_id || '').trim();
   }
@@ -6501,6 +6515,329 @@
     render();
   }
 
+  function ensureHandoverFields(s) {
+    if (!s || s.type !== 'handover') return s;
+    if (s.handoverKind !== 'dropoff') s.handoverKind = 'pickup';
+    if (s.placeKind !== 'airport' && s.placeKind !== 'note' && s.placeKind !== 'hotel') s.placeKind = 'hotel';
+    if (!Array.isArray(s.guestIds)) s.guestIds = [];
+    else s.guestIds = s.guestIds.map(id => String(id || '')).filter(Boolean);
+    s.hotelName = String(s.hotelName || '');
+    s.hotelKey = String(s.hotelKey || '');
+    s.placeNote = String(s.placeNote || '');
+    s.flightArrivalTime = s.flightArrivalTime ? normaliseStopTime(s.flightArrivalTime, '') : '';
+    return s;
+  }
+
+  function handoverLabel(stop) {
+    if (!stop || stop.type !== 'handover' || !window.HandoverStops) return '';
+    return HandoverStops.summary(stop, (state.plan && state.plan.guests) || []);
+  }
+
+  function refreshHandoverTitle(stop) {
+    if (!stop || stop.type !== 'handover') return;
+    stop.title = handoverLabel(stop);
+  }
+
+  function hotelNamesMatch(a, b) {
+    if (String(a || '').trim() === String(b || '').trim()) return !!String(a || '').trim();
+    if (window.HotelDirectory && HotelDirectory.sameHotelName) return HotelDirectory.sameHotelName(a, b);
+    return false;
+  }
+
+  function handoverHotelsForPlan() {
+    const HS = window.HandoverStops;
+    if (!HS) return [];
+    const plan = state.plan;
+    const booking = bookingRecordForPlan(plan);
+    const bookingId = plan && plan.bookingKey != null ? String(plan.bookingKey) : '';
+    const group = [];
+    const other = [];
+    function primaryName(b) {
+      if (!b) return '';
+      return b.hotel_name || (b.hotels && b.hotels.name) || '';
+    }
+    if (booking) {
+      group.push(primaryName(booking));
+      (booking._hotel_stays || []).forEach(stay => {
+        group.push((stay.hotels && stay.hotels.name) || stay.custom_hotel_name || '');
+      });
+    }
+    (hotelsUsedCloud.stays || []).forEach(stay => {
+      if (!stay || !stay.name) return;
+      if (bookingId && String(stay.bookingId) === bookingId) group.push(stay.name);
+      else other.push(stay.name);
+    });
+    const seenIds = new Set();
+    function addBooking(b) {
+      if (!b || b.id == null) return;
+      const id = String(b.id);
+      if (seenIds.has(id)) return;
+      seenIds.add(id);
+      const name = primaryName(b);
+      if (bookingId && id === bookingId) group.push(name);
+      else other.push(name);
+    }
+    (state.bookings || []).forEach(addBooking);
+    (hotelsUsedCloud.bookings || []).forEach(addBooking);
+    const same = window.HotelDirectory && HotelDirectory.sameHotelName;
+    return HS.orderHotels(group, other, same || null);
+  }
+
+  function handoverArrivalChoices() {
+    const HS = window.HandoverStops;
+    if (!HS) return [];
+    const booking = bookingRecordForPlan(state.plan);
+    const flights = (booking && booking._flights) || [];
+    const fallback = (state.plan && state.plan.airportArrival && state.plan.airportArrival.times) || [];
+    return HS.arrivalTimes(flights, fallback);
+  }
+
+  function flightTalk(hhmm) {
+    const HS = window.HandoverStops;
+    if (!HS) return '';
+    const time = HS.normaliseClock(hhmm);
+    if (!time) return '';
+    const spoken = HS.clockTalk(time);
+    return spoken ? (time + ' (' + spoken + ')') : time;
+  }
+
+  function applyAirportStartIfBlank(stop) {
+    const HS = window.HandoverStops;
+    if (!HS || !stop || stop.handoverKind === 'dropoff' || stop.placeKind !== 'airport') return;
+    const start = HS.airportStartTime(handoverArrivalChoices());
+    if (!start) return;
+    if (!String(stop.flightArrivalTime || '').trim()) stop.flightArrivalTime = start;
+    if (!String(stop.time || '').trim()) {
+      stop.time = start;
+      stop.flightArrivalTime = start;
+      stop.timeApprox = false;
+      stop.period = periodForTime(stop.time);
+    }
+  }
+
+  function dayContainingStop(stopId) {
+    const sid = String(stopId);
+    return (state.plan && state.plan.days || []).find(d => (d.blocks || []).some(b => b && String(b.id) === sid)) || null;
+  }
+
+  function addHandoverStop() {
+    const day = currentDay();
+    if (!day || !state.plan || !window.HandoverStops) return;
+    const hotels = handoverHotelsForPlan();
+    const first = hotels.find(h => h.group === 'this') || hotels[0] || null;
+    const stop = ensureHandoverFields({
+      id: uid('s'),
+      type: 'handover',
+      handoverKind: 'pickup',
+      time: '',
+      timeApprox: false,
+      placeKind: first ? 'hotel' : 'note',
+      hotelName: first ? first.name : '',
+      hotelKey: first ? first.key : '',
+      placeNote: '',
+      guestIds: [],
+      flightArrivalTime: '',
+      title: '',
+      notes: '',
+      address: '',
+      period: 'Untimed',
+      messageSent: false,
+      booked: false,
+      travelMinutes: null,
+    });
+    refreshHandoverTitle(stop);
+    day.blocks.push(stop);
+    sortDayBlocks(day);
+    const idx = day.blocks.findIndex(b => b && b.id === stop.id);
+    seedTravelMinutes(day, idx >= 0 ? idx : day.blocks.length - 1);
+    scheduleAutoSave();
+    closeSheet();
+    render();
+  }
+
+  function commitHandoverKind(stopId, kind) {
+    const s = findStop(stopId);
+    if (!s || s.type !== 'handover') return;
+    s.handoverKind = kind === 'dropoff' ? 'dropoff' : 'pickup';
+    if (s.handoverKind === 'pickup' && s.placeKind === 'airport') applyAirportStartIfBlank(s);
+    refreshHandoverTitle(s);
+    const day = dayContainingStop(s.id);
+    if (day) sortDayBlocks(day);
+    scheduleAutoSave();
+    render();
+  }
+
+  function commitHandoverPlace(stopId, value) {
+    const s = findStop(stopId);
+    if (!s || s.type !== 'handover' || !window.HandoverStops) return;
+    const raw = String(value || '');
+    if (raw === 'airport') {
+      s.placeKind = 'airport';
+      s.hotelName = '';
+      s.hotelKey = '';
+      s.placeNote = '';
+      s.address = PRAGUE_AIRPORT_ADDRESS;
+      if (s.handoverKind !== 'dropoff') applyAirportStartIfBlank(s);
+    } else if (raw === 'note') {
+      s.placeKind = 'note';
+      s.hotelName = '';
+      s.hotelKey = '';
+      s.flightArrivalTime = '';
+      s.address = '';
+    } else if (raw.indexOf('hotel:') === 0) {
+      const name = raw.slice(6);
+      s.placeKind = 'hotel';
+      s.hotelName = name;
+      s.hotelKey = HandoverStops.hotelKey(name);
+      s.placeNote = '';
+      s.flightArrivalTime = '';
+      s.address = '';
+    }
+    refreshHandoverTitle(s);
+    const day = dayContainingStop(s.id);
+    if (day) sortDayBlocks(day);
+    scheduleAutoSave();
+    render();
+  }
+
+  function commitHandoverGuests(stopId) {
+    const s = findStop(stopId);
+    if (!s || s.type !== 'handover' || !state.plan || !window.HandoverStops) return;
+    const allowed = new Set(HandoverStops.namedGuests(state.plan.guests).map(g => String(g.id)));
+    const checked = Array.from(document.querySelectorAll('[data-handover-guest]'))
+      .filter(el => el.getAttribute('data-handover-guest') === String(stopId) && el.checked)
+      .map(el => el.value)
+      .filter(id => allowed.has(String(id)));
+    s.guestIds = checked;
+    refreshHandoverTitle(s);
+    scheduleAutoSave();
+    render();
+  }
+
+  function nudgeHandoverTime(stopId, delta) {
+    const s = findStop(stopId);
+    if (!s || s.type !== 'handover' || !window.HandoverStops) return;
+    const next = HandoverStops.nudgeFrom(s.time, s.flightArrivalTime, delta);
+    if (!next) return;
+    refreshHandoverTitle(s);
+    commitStopTime(stopId, next, { render: true });
+  }
+
+  function useHandoverArrival(stopId, raw) {
+    const s = findStop(stopId);
+    if (!s || s.type !== 'handover' || !window.HandoverStops) return;
+    const time = HandoverStops.normaliseClock(raw);
+    if (!time) return;
+    s.flightArrivalTime = time;
+    refreshHandoverTitle(s);
+    commitStopTime(stopId, time, { render: true });
+  }
+
+  function renderHandoverGuests(stop) {
+    const HS = window.HandoverStops;
+    const guests = HS ? HS.namedGuests(state.plan && state.plan.guests) : [];
+    if (!guests.length) {
+      return '<p class="muted">No named guests on this tour yet.</p>';
+    }
+    const selected = new Set((stop.guestIds || []).map(id => String(id)));
+    return `<div class="handover-people" role="group" aria-label="Who it is for">${guests.map(g => {
+      const on = selected.has(String(g.id));
+      return `<label class="tick${on ? ' on-booked' : ''}"><input type="checkbox" data-handover-guest="${escapeHtml(stop.id)}" value="${escapeHtml(g.id)}"${on ? ' checked' : ''}> ${escapeHtml(String(g.name).trim())}</label>`;
+    }).join('')}</div>`;
+  }
+
+  function renderHandoverPlaceSelect(stop) {
+    const HS = window.HandoverStops;
+    let rows = handoverHotelsForPlan();
+    const currentName = String(stop.hotelName || '').trim();
+    if (stop.placeKind === 'hotel' && currentName && !rows.some(r => hotelNamesMatch(r.name, currentName))) {
+      rows = [{ name: currentName, key: HS ? HS.hotelKey(currentName) : currentName, group: 'this' }].concat(rows);
+    }
+    const thisGroup = rows.filter(r => r.group === 'this');
+    const other = rows.filter(r => r.group === 'other');
+    const id = escapeHtml(stop.id);
+    function option(name) {
+      const selected = stop.placeKind === 'hotel' && hotelNamesMatch(name, currentName) ? ' selected' : '';
+      return `<option value="${escapeHtml('hotel:' + name)}"${selected}>${escapeHtml(name)}</option>`;
+    }
+    let groups = '';
+    if (thisGroup.length) {
+      groups += `<optgroup label="Booked for this group">${thisGroup.map(r => option(r.name)).join('')}</optgroup>`;
+    }
+    if (other.length) {
+      groups += `<optgroup label="Other hotels from bookings">${other.map(r => option(r.name)).join('')}</optgroup>`;
+    }
+    if (!thisGroup.length && !other.length) {
+      groups += '<option value="" disabled>No hotels on bookings yet</option>';
+    }
+    groups += `<optgroup label="Extra"><option value="airport"${stop.placeKind === 'airport' ? ' selected' : ''}>Airport</option><option value="note"${stop.placeKind === 'note' ? ' selected' : ''}>Short note</option></optgroup>`;
+    return `<select id="handover-place-${id}" data-handover-place="${id}" aria-label="Place">${groups}</select>`;
+  }
+
+  function renderAirportPickupTime(stop) {
+    if (!stop || stop.handoverKind === 'dropoff' || stop.placeKind !== 'airport' || !window.HandoverStops) return '';
+    const arrivals = handoverArrivalChoices();
+    const flight = HandoverStops.normaliseClock(stop.flightArrivalTime) || HandoverStops.airportStartTime(arrivals);
+    const shown = HandoverStops.normaliseClock(stop.time);
+    let hint;
+    if (!arrivals.length && !flight) {
+      hint = 'No flight arrival time on this booking. Set the pick-up time yourself.';
+    } else if (flight && shown && shown !== flight) {
+      hint = 'Flight arrives at ' + flightTalk(flight) + '. Pick-up on the plan is ' + flightTalk(shown) + '.';
+    } else if (flight) {
+      hint = 'Flight arrives at ' + flightTalk(flight) + '. The pick-up starts from that time. Move it earlier or later if you need to — the plan shows the time you set.';
+    } else {
+      hint = 'Choose the flight arrival to start from, then move the pick-up earlier or later if you need to.';
+    }
+    const choices = arrivals.map(a => {
+      const on = HandoverStops.normaliseClock(stop.flightArrivalTime) === a.time ? ' is-on' : '';
+      return `<button type="button" class="btn btn-outline btn-sm${on}" data-handover-arrival="${escapeHtml(stop.id)}" data-arrival="${escapeHtml(a.time)}">Start from ${escapeHtml(a.label || a.time)}</button>`;
+    }).join('');
+    const nudgeDisabled = (!shown && !flight) ? ' disabled' : '';
+    return `<div class="handover-flight">
+      <p class="muted">${escapeHtml(hint)}</p>
+      ${choices ? `<div class="handover-nudge" role="group" aria-label="Flight arrival">${choices}</div>` : ''}
+      <div class="handover-nudge" role="group" aria-label="Move the pick-up time">
+        <button type="button" class="btn btn-outline btn-sm" data-handover-nudge="${escapeHtml(stop.id)}" data-delta="-15"${nudgeDisabled}>15 minutes earlier</button>
+        <button type="button" class="btn btn-outline btn-sm" data-handover-nudge="${escapeHtml(stop.id)}" data-delta="15"${nudgeDisabled}>15 minutes later</button>
+      </div>
+    </div>`;
+  }
+
+  function renderHandoverArticle(s) {
+    ensureHandoverFields(s);
+    const id = escapeHtml(s.id);
+    const kind = s.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
+    const label = handoverLabel(s);
+    return `
+      <article class="stop handover-stop" id="stop-block-${id}">
+        <div class="stop-time">
+          <input type="time" data-stop-time="${id}" data-time-src="timeline" value="${escapeHtml(s.time || '')}" aria-label="Time">
+        </div>
+        <div class="rail"><div class="dot pickup"></div></div>
+        <div class="handover-box">
+          <div><span class="badge">${escapeHtml(window.HandoverStops ? HandoverStops.kindLabel(kind) : 'Pick-up')}</span></div>
+          <div class="handover-summary">${escapeHtml(label)}</div>
+          <label class="field-label" for="handover-kind-${id}">Pick-up or drop-off</label>
+          <select id="handover-kind-${id}" data-handover-kind="${id}" aria-label="Pick-up or drop-off">
+            <option value="pickup"${kind === 'pickup' ? ' selected' : ''}>Pick-up</option>
+            <option value="dropoff"${kind === 'dropoff' ? ' selected' : ''}>Drop-off</option>
+          </select>
+          <label class="field-label" for="handover-place-${id}">Place</label>
+          ${renderHandoverPlaceSelect(s)}
+          ${s.placeKind === 'note' ? `<label class="field-label" for="handover-note-${id}">Short note</label><input type="text" id="handover-note-${id}" data-handover-note="${id}" value="${escapeHtml(s.placeNote || '')}" placeholder="Short note" aria-label="Short note">` : ''}
+          ${renderAirportPickupTime(s)}
+          <div class="field-label">Who it is for</div>
+          ${renderHandoverGuests(s)}
+        </div>
+        <div class="stop-actions">
+          <button type="button" class="icon-btn" data-move="${id}" data-dir="-1" aria-label="Move up">↑</button>
+          <button type="button" class="icon-btn" data-move="${id}" data-dir="1" aria-label="Move down">↓</button>
+          <button type="button" class="icon-btn" data-remove-stop="${id}" aria-label="Remove stop">×</button>
+        </div>
+      </article>`;
+  }
+
   function addBlankStop() {
     const day = currentDay();
     if (!day) return;
@@ -7212,6 +7549,7 @@
 
   function categoriesForStop(stop) {
     if (!stop) return ['other'];
+    if (stop.type === 'handover') return ['pickup'];
     const place = placeById(stop.placeId || stop.place_id);
     if (place) return placeTypesOf(place);
     const raw = String(stop.type || 'other').toLowerCase();
@@ -7219,6 +7557,9 @@
     return [raw || 'other'];
   }
   function stopCategoriesLabel(stop) {
+    if (stop && stop.type === 'handover' && window.HandoverStops) {
+      return HandoverStops.kindLabel(stop.handoverKind);
+    }
     return categoriesForStop(stop).map(id => typeLabel(id)).join(' · ');
   }
   function placeTypeForStop(stop) {
@@ -7253,6 +7594,7 @@
 
   function glanceLabelForStop(stop) {
     if (!stop) return '';
+    if (stop.type === 'handover') return handoverLabel(stop);
     const place = placeById(stop.placeId || stop.place_id);
     const nick = place && String(place.nickname || '').trim();
     if (nick) return nick;
@@ -7287,6 +7629,7 @@
   /** Rough stop chip label: readable nick if useful, else full place / stop title. */
   function roughStopLabel(stop) {
     if (!stop) return '';
+    if (stop.type === 'handover') return handoverLabel(stop);
     const place = placeById(stop.placeId || stop.place_id);
     const fullName = (place && String(place.name || '').trim())
       || String(stop.title || '').trim();
@@ -7942,7 +8285,7 @@
     sortDayBlocks(day);
     const today = todayISO();
     const isToday = day.date && day.date === today;
-    const stops = (day.blocks || []).filter(s => s && String(s.title || '').trim());
+    const stops = (day.blocks || []).filter(s => s && (s.type === 'handover' || String(s.title || '').trim()));
     const placeStops = stops.filter(s => !isRoughSystemStop(s));
     const rows = stops.map((s, idx) => {
       const system = isRoughSystemStop(s);
@@ -8220,7 +8563,7 @@
   function renderDayGlance(day) {
     if (!day) return '';
     sortDayBlocks(day);
-    const stops = (day.blocks || []).filter(s => s && String(s.title || '').trim());
+    const stops = (day.blocks || []).filter(s => s && (s.type === 'handover' || String(s.title || '').trim()));
     if (!stops.length) {
       return `<div class="day-glance" aria-label="Day at a glance">
         <div class="day-glance-label">Day at a glance</div>
@@ -8284,10 +8627,14 @@
     let html = '<div class="timeline">';
     blocks.forEach((s, i) => {
       ensureStopTicks(s);
+      if (s.type === 'handover') ensureHandoverFields(s);
       // Fill blank stop address from Places catalogue when linked by placeId
-      if (hydrateStopAddressFromPlace(s)) scheduleAutoSave();
+      if (s.type !== 'handover' && hydrateStopAddressFromPlace(s)) scheduleAutoSave();
       seedTravelMinutes(day, i);
       const next = blocks[i + 1];
+      if (s.type === 'handover') {
+        html += renderHandoverArticle(s);
+      } else {
       const noPlace = markEmpties && stopNeedsPlaceLink(s);
       const flagged = notesAreFlagged(s.notes);
       const stopMark = noPlace || flagged;
@@ -8318,6 +8665,7 @@
           </div>
         </article>
       `;
+      }
       if (shouldShowTravel(s, next) || true) {
         // Travel into this stop: previous place, day-1 Prague/airport origin, or tour hotel (day 2+)
         const mins = s.travelMinutes == null ? '' : String(s.travelMinutes);
@@ -8510,6 +8858,7 @@ function renderDayTabs() {
         'data-place-nickname', 'data-place-icon',
         'data-place-type', 'data-place-contact-method', 'data-add-place-time',
         'data-stop-title', 'data-stop-notes', 'data-stop-address', 'data-stop-time', 'data-stop-travel',
+        'data-handover-note',
         'data-guest-name', 'data-guest-email', 'data-guest-lent', 'data-repay-amount', 'data-repay-date',
         'data-album-name', 'data-album-url', 'data-person-email', 'data-person-name'
       ];
@@ -9213,7 +9562,7 @@ function renderDayTabs() {
     hotelsUsedCloud = cloud;
     hotelsUsedStayLoaded = true;
     hotelsUsedStayLoading = false;
-    if (state.mainTab === 'hotels') render();
+    if (state.plan || state.mainTab === 'hotels') render();
   }
 
   function hotelsUsedTabButton() {
@@ -9412,6 +9761,7 @@ function renderDayTabs() {
    * A copy of the stop list is sorted for display only — the plan is not edited.
    */
   function lookStopLabel(stop) {
+    if (stop && stop.type === 'handover') return handoverLabel(stop);
     const title = String((stop && stop.title) || '').trim();
     if (title) return title;
     return roughStopLabel(stop);
@@ -9420,6 +9770,7 @@ function renderDayTabs() {
   function weekLookStops(day) {
     const blocks = (day && Array.isArray(day.blocks) ? day.blocks.slice() : []).filter(s => {
       if (!s) return false;
+      if (s.type === 'handover') return true;
       return String(s.title || '').trim() || String(s.time || '').trim();
     });
     blocks.sort(compareStopTime);
@@ -9637,6 +9988,7 @@ function renderDayTabs() {
       renderWithoutPlan();
       return;
     }
+    ensureHotelsUsedStays();
     updateGroupHeading();
     if (view === 'week') {
       const app = document.getElementById('app');
@@ -10299,6 +10651,39 @@ function renderDayTabs() {
     });
     document.querySelectorAll('[data-remove-stop]').forEach(btn => {
       btn.addEventListener('click', () => removeStop(btn.getAttribute('data-remove-stop')));
+    });
+    document.querySelectorAll('#app [data-add-handover]').forEach(btn => {
+      btn.addEventListener('click', addHandoverStop);
+    });
+    document.querySelectorAll('[data-handover-kind]').forEach(sel => {
+      sel.addEventListener('change', () => commitHandoverKind(sel.getAttribute('data-handover-kind'), sel.value));
+    });
+    document.querySelectorAll('[data-handover-place]').forEach(sel => {
+      sel.addEventListener('change', () => commitHandoverPlace(sel.getAttribute('data-handover-place'), sel.value));
+    });
+    document.querySelectorAll('[data-handover-guest]').forEach(inp => {
+      inp.addEventListener('change', () => commitHandoverGuests(inp.getAttribute('data-handover-guest')));
+    });
+    document.querySelectorAll('[data-handover-note]').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const s = findStop(inp.getAttribute('data-handover-note'));
+        if (!s) return;
+        s.placeNote = inp.value;
+        refreshHandoverTitle(s);
+        const summary = inp.closest('.handover-box') && inp.closest('.handover-box').querySelector('.handover-summary');
+        if (summary) summary.textContent = handoverLabel(s);
+        scheduleAutoSave();
+      });
+      inp.addEventListener('change', () => {
+        if (!inp.isConnected) return;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-handover-nudge]').forEach(btn => {
+      btn.addEventListener('click', () => nudgeHandoverTime(btn.getAttribute('data-handover-nudge'), Number(btn.getAttribute('data-delta'))));
+    });
+    document.querySelectorAll('[data-handover-arrival]').forEach(btn => {
+      btn.addEventListener('click', () => useHandoverArrival(btn.getAttribute('data-handover-arrival'), btn.getAttribute('data-arrival')));
     });
     document.querySelectorAll('[data-move]').forEach(btn => {
       btn.addEventListener('click', () => moveStop(btn.getAttribute('data-move'), Number(btn.getAttribute('data-dir'))));
@@ -11191,6 +11576,9 @@ function renderDayTabs() {
       btn.addEventListener('click', () => addPlaceFromPicker(btn.getAttribute('data-place-picker-add')));
     });
     document.getElementById('btnSheetAddStop')?.addEventListener('click', addBlankStop);
+    body.querySelectorAll('[data-add-handover]').forEach(btn => {
+      btn.addEventListener('click', addHandoverStop);
+    });
     document.getElementById('btnSheetManagePlaces')?.addEventListener('click', () => {
       closeSheet();
       setMainTab('places');
