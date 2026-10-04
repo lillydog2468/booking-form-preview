@@ -2460,6 +2460,32 @@
       font-size: 15px;
       font-weight: 700;
     }
+    .page-help { margin: 0 0 8px; }
+    .page-help > summary {
+      cursor: pointer;
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 2px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface-alt);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 800;
+      width: fit-content;
+    }
+    .page-help > summary::-webkit-details-marker { display: none; }
+    .page-help-body {
+      margin-top: 6px;
+      max-width: 42em;
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--text-secondary);
+    }
+    .page-help-body p { margin: 0 0 6px; }
+    .topbar .page-help { margin: 4px 0 0; }
 
   </style>
 </head>
@@ -2470,7 +2496,12 @@
       <div class="topbar-left">
         <div>
           <h1>Tour planner</h1>
-          <div class="sub" id="plannerSub">Check the day’s plan on your phone</div>
+          <details class="page-help">
+            <summary>Help</summary>
+            <div class="page-help-body">
+              <p>Week scrolls the days. Zoom in for one day. Phone and Detailed show that day’s plan. Rough plan, Places, People, Hotels used, and Issues are the other sections.</p>
+            </div>
+          </details>
         </div>
         <nav class="view-nav" aria-label="Main">
           <a href="booking-form.html" id="navBookings">Bookings</a>
@@ -2593,6 +2624,12 @@
   function uid(prefix) {
     return (prefix || 'id') + '_' + Math.random().toString(36).slice(2, 9);
   }
+  function pageHelp(innerHtml) {
+    const body = String(innerHtml || '').trim();
+    if (!body) return '';
+    return `<details class="page-help"><summary>Help</summary><div class="page-help-body">${body}</div></details>`;
+  }
+
   function escapeHtml(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -3500,7 +3537,7 @@
           <button type="button" class="btn btn-outline" id="${blankId}">Add blank stop</button>
           <button type="button" class="btn btn-outline" data-add-handover="1">Add pick-up or drop-off</button>
         </div>
-        <p class="muted" style="margin-top:6px;">Time is optional — leave blank for an automatic approximate time (about 1 hour 30 minutes after the last timed stop, or about 30 minutes for lunch / snack / restaurant). You can clear or tweak it. Untimed stops sort last. Grouped from your Places list.</p>
+        ${pageHelp('<p>Time is optional. Leave it blank for an approximate time, about 1 hour 30 minutes after the last timed stop, or about 30 minutes for lunch, snack, or restaurant. Untimed stops sort last.</p>')}
       </div>
     `;
   }
@@ -4649,14 +4686,14 @@
             </button>
           </li>`;
         }).join('')}</ul>`
-      : `<div class="issues-empty" role="status">Nothing outstanding — gaps and contradictions drop off once the plan is updated.</div>`;
+      : '<div class="issues-empty" role="status">Nothing outstanding.</div>';
     return `
       <div class="card issues-panel">
         <div class="row-between">
           <h2>Issues${n ? ` <span class="missing-marker-badge">${n}</span>` : ''}</h2>
           <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
         </div>
-        <p class="issues-intro">Work queue of missing or contradicting information. Tap an item to jump to the field. Once sorted and saved in the plan, it leaves this list. ${archiveHint}</p>
+        ${pageHelp('<p>Work queue of missing or contradicting information. Open an item to jump to the field. Once sorted and saved in the plan, it leaves this list. ' + archiveHint + '</p>')}
         ${list}
       </div>
     `;
@@ -6090,12 +6127,6 @@
     document.getElementById('btnPhoneView')?.classList.toggle('active', view === 'phone');
     document.getElementById('btnDetailedView')?.classList.toggle('active', view === 'detailed');
     document.getElementById('btnLookView')?.classList.toggle('active', view === 'week');
-    const sub = document.getElementById('plannerSub');
-    if (sub) {
-      sub.textContent = view === 'week'
-        ? 'Scroll the week, or zoom in on one day'
-        : 'Check the day’s plan on your phone';
-    }
   }
   function setViewPref(v) {
     const leavingWeek = effectiveView() === 'week' && v !== 'week';
@@ -6907,15 +6938,18 @@
     const arrivals = handoverArrivalChoices();
     const flight = HandoverStops.normaliseClock(stop.flightArrivalTime) || HandoverStops.airportStartTime(arrivals);
     const shown = HandoverStops.normaliseClock(stop.time);
-    let hint;
+    let status = '';
+    let help = '';
     if (!arrivals.length && !flight) {
-      hint = 'No flight arrival time on this booking. Set the pick-up time yourself.';
+      status = 'No flight arrival time on this booking.';
+      help = 'Set the pick-up time yourself.';
     } else if (flight && shown && shown !== flight) {
-      hint = 'Flight arrives at ' + flightTalk(flight) + '. Pick-up on the plan is ' + flightTalk(shown) + '.';
+      status = 'Flight arrives at ' + flightTalk(flight) + '. Pick-up on the plan is ' + flightTalk(shown) + '.';
     } else if (flight) {
-      hint = 'Flight arrives at ' + flightTalk(flight) + '. The pick-up starts from that time. Move it earlier or later if you need to — the plan shows the time you set.';
+      status = 'Flight arrives at ' + flightTalk(flight) + '.';
+      help = 'The pick-up starts from that time. Move it earlier or later if you need to. The plan shows the time you set.';
     } else {
-      hint = 'Choose the flight arrival to start from, then move the pick-up earlier or later if you need to.';
+      help = 'Choose the flight arrival to start from, then move the pick-up earlier or later if you need to.';
     }
     const choices = arrivals.map(a => {
       const on = HandoverStops.normaliseClock(stop.flightArrivalTime) === a.time ? ' is-on' : '';
@@ -6923,7 +6957,8 @@
     }).join('');
     const nudgeDisabled = (!shown && !flight) ? ' disabled' : '';
     return `<div class="handover-flight">
-      <p class="muted">${escapeHtml(hint)}</p>
+      ${status ? `<p class="muted">${escapeHtml(status)}</p>` : ''}
+      ${help ? pageHelp('<p>' + escapeHtml(help) + '</p>') : ''}
       ${choices ? `<div class="handover-nudge" role="group" aria-label="Flight arrival">${choices}</div>` : ''}
       <div class="handover-nudge" role="group" aria-label="Move the pick-up time">
         <button type="button" class="btn btn-outline btn-sm" data-handover-nudge="${escapeHtml(stop.id)}" data-delta="-15"${nudgeDisabled}>15 minutes earlier</button>
@@ -7323,7 +7358,7 @@
           <button type="button" class="btn btn-outline btn-sm" data-add-repay="${g.id}">Add today’s repayment</button>
         </div>
         <div class="repay-list">${repayRows}</div>
-        <p class="repay-note">Enter amounts yourself — nothing is invented. Click the name to open that person in People.</p>
+        ${pageHelp('<p>Enter amounts yourself. Nothing is invented. The name opens that person in People.</p>')}
       </div>`;
     }).join('');
   }
@@ -7351,14 +7386,14 @@
             <button type="button" class="icon-btn" data-remove-album="${escapeHtml(a.id)}" aria-label="Remove album">×</button>
           </div>
         </div>`;
-    }).join('') || `<p class="muted" style="margin:0;">No shared albums on this plan yet. Paste an iCloud shared-album link — do not invent one.</p>`;
+    }).join('') || `<p class="muted" style="margin:0;">No shared albums on this plan yet.</p>`;
     return `
       <div class="albums-block">
         <div class="row-between">
           <label class="field-label" style="margin:0;">Shared iCloud albums</label>
           <button type="button" class="btn btn-outline btn-sm" id="btnAddAlbum">Add album</button>
         </div>
-        <p class="muted" style="margin:4px 0 8px;">Old group photos live in shared iPhoto / iCloud albums. Stored on this plan as <code>payload.sharedAlbums</code> (name + optional url / albumId).</p>
+        ${pageHelp('<p>Old group photos live in shared iPhoto or iCloud albums. Each album is a name, and a link when you have one.</p>')}
         <div class="albums-list">${rows}</div>
       </div>`;
   }
@@ -7503,7 +7538,7 @@
           <div class="type-checks" role="group" aria-label="Categories for this place">
             ${placeCategoryChecksHtml(p, p.id)}
           </div>
-          <p class="type-hint">Tick every category that fits. A place can have more than one — a factory that is also an experience, or a viewpoint that also has food. Snack is a supermarket or a bakery, not a restaurant.</p>
+          ${pageHelp('<p>Tick every category that fits. A place can have more than one. Snack is a supermarket or a bakery, not a restaurant.</p>')}
         </div>
         <div class="dir-grid" style="margin-top:8px;">
           <div>
@@ -7540,7 +7575,7 @@
         </div>` : ''}
       </div>`;
     } else {
-      detailHtml = `<p class="places-detail-empty">Select a place from the list to edit its name, nickname, icon, type, contact, address and notes. Or add a new place on the left — it will open here straight away.</p>`;
+      detailHtml = pageHelp('<p>Select a place from the list to edit its name, nickname, icon, type, contact, address, and notes. Add a place on the left and it opens here.</p>');
     }
 
     const addBox = compact ? '' : `
@@ -7551,9 +7586,8 @@
         <div class="type-checks" id="newPlaceTypes" role="group" aria-labelledby="newPlaceTypeLabel">
           ${placeCategoryChecksHtml({ type: 'other' }, 'new')}
         </div>
-        <p class="type-hint">Tick one or more. Snack is a supermarket or a bakery, not a restaurant.</p>
+        ${pageHelp('<p>Tick one or more categories. Snack is a supermarket or a bakery, not a restaurant. Only places you add appear here. Contact and address can be filled in on the right after saving.</p>')}
         <button type="button" class="btn btn-outline btn-sm" id="btnAddPlace">Save to Places</button>
-        <p class="muted" style="margin:0;">Only places you add appear here — nothing is invented. Contact and address can be filled in on the right after saving.</p>
       </div>`;
 
     return `
@@ -8019,7 +8053,7 @@
           <div class="time-wheel-col-pad" aria-hidden="true"></div>
         </div>
       </div>
-      <p class="time-wheel-hint">Scroll or drag · 15-minute steps</p>
+      ${pageHelp('<p>Scroll or drag. Times move in 15-minute steps.</p>')}
       <div class="time-wheel-actions">
         <button type="button" id="timeWheelClear" title="Leave time blank">Clear</button>
         <button type="button" class="tw-done" id="timeWheelDone">Done</button>
@@ -8850,7 +8884,7 @@
     if (!stops.length) {
       return `<div class="day-glance" aria-label="Day at a glance">
         <div class="day-glance-label">Day at a glance</div>
-        <p class="day-glance-empty">No stops yet — add places below.</p>
+        <p class="day-glance-empty">No stops yet.</p>
       </div>`;
     }
     const markEmpties = planShowsEmptyMarkers(state.plan);
@@ -8882,7 +8916,7 @@
     }).join('');
     return `<div class="day-glance" aria-label="Day at a glance">
       <div class="day-glance-label">Day at a glance</div>
-      <p class="day-glance-hint">Scroll time wheel · tap name to jump · Messaged / Booked ticks · ↑ ↓ to reorder (drag ⠿ on desktop) · ≈ means approximate</p>
+      ${pageHelp('<p>Scroll the time wheel. Tap a name to jump to that stop. Messaged and Booked are ticks. Use the arrows to reorder. ≈ means the time is approximate.</p>')}
       <ul class="day-glance-list" id="dayGlanceList">${rows}</ul>
     </div>`;
   }
@@ -8923,7 +8957,7 @@
       const stopMark = noPlace || flagged;
       const placeHint = (s.placeId || s.place_id)
         ? '<p class="muted address-places-hint">Saved to Places directory too</p>'
-        : (noPlace ? ('<p class="muted address-places-hint">' + missingBadgeHtml('No placeId') + ' Link this stop to Places when you know which one.</p>') : '');
+        : (noPlace ? ('<p class="muted address-places-hint">' + missingBadgeHtml('No placeId') + '</p>') : '');
       html += `
         <article class="stop${missingMarkerClass(stopMark)}" id="stop-block-${escapeHtml(s.id)}">
           <div class="stop-time">
@@ -9015,7 +9049,8 @@ function renderDayTabs() {
       <select id="tourHotel" class="${missingFieldClass(hotelMissing).trim()}" aria-label="Tour hotel — overnight base in the beading area" aria-invalid="${hotelMissing ? 'true' : 'false'}">
         ${opts.join('')}
       </select>
-      <p class="muted" style="margin-top:6px;">Beading-area tour hotel (overnight base). Used as the <strong>day starting point from the day after arrival</strong> — not on day 1 before the Prague pick-up. Add or edit hotels on the Places tab (Hotels category).${maps ? ' ' + maps : ''}</p>
+      ${pageHelp('<p>Beading-area tour hotel. It is the day starting point from the day after arrival, not on day 1 before the Prague pick-up. Add or edit hotels on the Places tab.</p>')}
+      ${maps || ''}
     `;
   }
 
@@ -9034,7 +9069,7 @@ function renderDayTabs() {
               <span>${escapeHtml(a.summary || 'Airport arrival time(s) from the booking')}</span>
               ${mapsButtonHtml(PRAGUE_AIRPORT_NAME, PRAGUE_AIRPORT_ADDRESS, 'Open in Apple Maps')}
             </div>
-            <div class="origin-note">Collect at the airport, then drive to the beading area. The tour hotel (<strong>Staying at</strong>) is the overnight base from tomorrow — not today’s starting point.</div>
+            ${pageHelp('<p>Collect at the airport, then drive to the beading area. Staying at is the overnight base from tomorrow, not today’s starting point.</p>')}
           </div>
         `;
       }
@@ -9049,7 +9084,7 @@ function renderDayTabs() {
             <span>Pick-up ${escapeHtml(time)}${h.address ? ' · ' + escapeHtml(h.address) : ''}</span>
             ${pragueHotelMapsButtonHtml(h.name || '', h.address || '', 'Open in Apple Maps', 'pragueDayOriginMaps')}
           </div>
-          <div class="origin-note">Collect the group in Prague, then drive to the beading area. <strong>Staying at</strong> (tour hotel) is where they sleep once there — not the day-1 origin.</div>
+          ${pageHelp('<p>Collect the group in Prague, then drive to the beading area. Staying at is where they sleep once there, not the day-1 origin.</p>')}
         </div>
       `;
     }
@@ -9058,7 +9093,7 @@ function renderDayTabs() {
     const name = (place && place.name) || state.plan.tourHotelName || '';
     if (!name) {
       const mark = planShowsEmptyMarkers(state.plan);
-      return `<div class="day-origin warn${missingMarkerClass(mark)}"><div class="muted">Day starting point${mark ? missingBadgeHtml('Hotel missing') : ''}</div><div class="name">No tour hotel selected</div><div class="meta">Choose <strong>Staying at</strong> above (Places → Hotels). We do not add a duplicate “arrive hotel” stop each day.</div></div>`;
+      return `<div class="day-origin warn${missingMarkerClass(mark)}"><div class="muted">Day starting point${mark ? missingBadgeHtml('Hotel missing') : ''}</div><div class="name">No tour hotel selected</div>${pageHelp('<p>Choose Staying at above. A duplicate arrive-hotel stop is not added each day.</p>')}</div>`;
     }
     const addr = (place && String(place.address || '').trim()) || knownTourHotelAddress(name) || '';
     return `
@@ -9066,10 +9101,10 @@ function renderDayTabs() {
         <div class="origin-kind">Overnight base · day starting point</div>
         <div class="name">🏨 ${escapeHtml(name)}</div>
         <div class="meta">
-          ${addr ? `<span>${escapeHtml(addr)}</span>` : `<span>Add an address on the Places tab for better travel estimates</span>`}
+          ${addr ? `<span>${escapeHtml(addr)}</span>` : '<span>No address saved</span>'}
           ${tourHotelMapsButtonHtml(name, addr, 'Open in Apple Maps')}
         </div>
-        <div class="origin-note">Tour hotel in the beading area — start of today’s stops after arrival day.</div>
+        ${pageHelp('<p>Tour hotel in the beading area. It is the start of today’s stops after arrival day.</p>')}
       </div>
     `;
   }
@@ -9116,14 +9151,14 @@ function renderDayTabs() {
           <label class="field-label" for="pragueName">Prague hotel name</label>
           <input type="text" id="pragueName" value="${escapeHtml(h.name || '')}" placeholder="e.g. Hotel Axa" autocomplete="off">
           <div class="maps-under-field" id="pragueNameMaps">${pragueMapsLive}</div>
-          <p class="muted" style="margin:0;font-size:12px;">Maps searches <strong>Name, Prague</strong> (or the street address below when filled). Link updates as you type.</p>
+          ${pageHelp('<p>Maps searches the hotel name plus Prague, or the street address when it is filled in. The link updates as you type.</p>')}
           <label class="field-label" for="pragueAddress">Street address in Prague</label>
           <input type="text" id="pragueAddress" value="${escapeHtml(h.address || '')}" placeholder="Street and number, Prague" autocomplete="street-address">
           <div class="prague-field-actions">
             <button type="button" class="btn btn-outline btn-sm" id="btnFindPragueAddress">Find address</button>
             <a class="maps-btn-inline" data-prague-maps="1" id="pragueMapsLookup" href="${pragueHotelAppleMapsUrl(h.name || '', h.address || '')}" target="_blank" rel="noopener" title="Look up in Apple Maps">Look up in Apple Maps</a>
           </div>
-          <div class="prague-suggest" id="pragueAddressHint">Optional: Find address suggests a street from OpenStreetMap — always double-check before you rely on it.</div>
+          <div class="prague-suggest" id="pragueAddressHint">${pageHelp('<p>Find address suggests a street from OpenStreetMap. Check it before you rely on it.</p>')}</div>
           <label class="field-label" for="pragueTime">Pick-up time</label>
           <input type="time" id="pragueTime" value="${escapeHtml(time)}">
         </div>
@@ -9443,7 +9478,7 @@ function renderDayTabs() {
       <details class="fold" id="bookingDetailsCard">
         <summary>Booking details</summary>
         <div class="fold-body">
-          <p class="muted">Saved on this plan (and copied into the booking notes when this plan is linked to a booking). Pounds sterling is the usual currency.</p>
+          ${pageHelp('<p>Saved on this plan, and copied into the booking notes when this plan is linked to a booking. Pounds sterling is the usual currency.</p>')}
           <label class="field-label">Headcount</label>
           <input type="number" min="1" step="1" data-bd="headcount" value="${escapeHtml(bd.headcount || '')}" placeholder="2 or 3 is usual">
           <div id="bdRoomWarn">${warnHtml}</div>
@@ -9456,7 +9491,7 @@ function renderDayTabs() {
             <input type="number" min="0" step="1" data-bd="rooms.doubles" value="${escapeHtml(bd.rooms.doubles || '')}">
             <label><input type="checkbox" data-bd="rooms.keithRoom" data-bd-bool="1" ${BookingExtras.keithRoomIsOn(bd.rooms) ? 'checked' : ''}> Keith’s own room</label>
           </div>
-          <p class="muted">Singles sleep 1. Twins and doubles sleep 2. Each of those is one room to book, and Keith’s own room adds one more. It starts ticked. Turn it off when he is not staying.</p>
+          ${pageHelp('<p>Singles sleep 1. Twins and doubles sleep 2. Each of those is one room to book, and Keith’s own room adds one more. It starts ticked. Turn it off when he is not staying.</p>')}
           <label class="field-label">Arrival time</label>
           <input type="time" data-bd="travel.arrivalTime" value="${escapeHtml(bd.travel.arrivalTime || '')}">
           <label class="field-label">Arrival flight</label>
@@ -9502,10 +9537,11 @@ function renderDayTabs() {
           <label class="field-label">Airport hotel</label>
           <input type="text" data-bd="extraStays.airportHotel" value="${escapeHtml(bd.extraStays.airportHotel || '')}">
           <label class="field-label">Overnight side trips</label>
-          <p class="muted">Choose Český Krumlov, Tábor, or Kutná Hora, or add a stay somewhere else. A booking can have more than one.</p>
+          ${pageHelp('<p>Choose Český Krumlov, Tábor, or Kutná Hora, or add a stay somewhere else. A booking can have more than one.</p>')}
           ${sideRows}
           <button type="button" class="btn btn-outline btn-sm" id="btnAddSideTrip">Add an overnight stay</button>
-          <p class="muted">${escapeHtml(depositLine)} Currency is GBP unless the note below says CZK or EUR.</p>
+          <p class="muted">${escapeHtml(depositLine)}</p>
+          ${pageHelp('<p>Currency is GBP unless the note below says CZK or EUR.</p>')}
           <label class="field-label">Price per person (£)</label>
           <input type="number" min="0" step="0.01" data-bd="money.pricePerPerson" value="${escapeHtml(bd.money.pricePerPerson || '')}">
           <label class="field-label">Total (£)</label>
@@ -9852,7 +9888,6 @@ function renderDayTabs() {
     const on = state.mainTab === 'hotels';
     return `<button type="button" class="main-tab ${on ? 'active' : ''}" data-main-tab="hotels" role="tab" aria-selected="${on}">
         Hotels used
-        <span class="tab-sub">Saved hotels, with or without a booking</span>
       </button>`;
   }
 
@@ -9908,7 +9943,7 @@ function renderDayTabs() {
         </select>
       </div>`;
 
-    let body = `<p class="muted">No hotels saved yet. A hotel typed under Other on an overnight stay is listed here, and so is any hotel already on a booking.</p>`;
+    let body = '<p class="muted">No hotels saved yet.</p>';
     if (rows.length) {
       const blocks = [];
       const current = thisBookingHotelKey();
@@ -9947,7 +9982,7 @@ function renderDayTabs() {
           <h2>Hotels used</h2>
           <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
         </div>
-        <p class="muted" style="margin-bottom:12px;">Choose a year to see which hotels were used then, and who stayed in them. The year is the booking’s arrival year. A hotel saved under Other with no stay yet is listed under No year yet until a booking uses it. The booking form’s hotel list only shows hotels that are on a booking.</p>
+        ${pageHelp('<p>Choose a year to see which hotels were used then, and who stayed in them. The year is the booking’s arrival year. A hotel saved under Other with no stay yet is listed under No year yet until a booking uses it. The booking form’s hotel list only shows hotels that are on a booking.</p>')}
         ${rows.length ? filter : ''}
         ${body}
       </div>`;
@@ -10073,7 +10108,7 @@ function renderDayTabs() {
       ? `${plan.arrivalDate ? formatDateDMY(plan.arrivalDate) : '—'} – ${plan.departureDate ? formatDateDMY(plan.departureDate) : '—'}`
       : '';
     const intro = zoom == null
-      ? '<p class="look-intro">Scroll through the week. Zoom in when you want one day on its own.</p>'
+      ? pageHelp('<p>Scroll through the week. Zoom in when you want one day on its own.</p>')
       : '';
     const today = todayISO();
     const sections = shown.map(([day, i]) => {
@@ -10215,19 +10250,18 @@ function renderDayTabs() {
     const auth = state.sessionEmail
       ? `<span class="pill">${escapeHtml(state.sessionEmail)}</span>`
       : '';
-    const tab = (name, label, sub) => `
+    const tab = (name, label) => `
       <button type="button" class="main-tab ${state.mainTab === name ? 'active' : ''}" data-main-tab="${name}" role="tab" aria-selected="${state.mainTab === name}">
         ${label}
-        <span class="tab-sub">${sub}</span>
       </button>`;
     const mainTabs = `
       <div class="main-tabs" role="tablist" aria-label="Planner sections">
-        ${tab('planner', 'Planner', 'Day plan, times, stops')}
-        ${tab('rough', 'Rough plan', 'Sketch the week with places')}
-        ${tab('places', 'Places', 'Hotels, factories, shops, contacts')}
-        ${tab('people', 'People', 'Guests, emails, visit history')}
+        ${tab('planner', 'Planner')}
+        ${tab('rough', 'Rough plan')}
+        ${tab('places', 'Places')}
+        ${tab('people', 'People')}
         ${hotelsUsedTabButton()}
-        ${tab('issues', 'Issues', 'Gaps and contradictions')}
+        ${tab('issues', 'Issues')}
       </div>`;
     const emptyCard = `<div class="card"><h2>Tour planner</h2><p>${escapeHtml(emptyTourMessage())}</p></div>`;
     let body = emptyCard;
@@ -10238,7 +10272,7 @@ function renderDayTabs() {
             <h2>Places directory</h2>
             <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
           </div>
-          <p class="muted" style="margin-bottom:8px;">Search and pick a place on the left; edit name, type, contact, address and notes on the right. This directory is the real venue catalogue.</p>
+          ${pageHelp('<p>Search and pick a place on the left. Edit the name, type, contact, address, and notes on the right.</p>')}
           ${renderCatalogue({ showAddToDay: false })}
         </div>`;
     } else if (state.mainTab === 'people') {
@@ -10248,7 +10282,7 @@ function renderDayTabs() {
             <h2>People directory</h2>
             <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
           </div>
-          <p class="muted" style="margin-bottom:8px;">Search and pick a person on the left; edit name, email, notes and visit history on the right.</p>
+          ${pageHelp('<p>Search and pick a person on the left. Edit the name, email, notes, and visit history on the right.</p>')}
           ${renderPeopleDirectory()}
         </div>`;
     } else if (state.mainTab === 'hotels') {
@@ -10319,10 +10353,11 @@ function renderDayTabs() {
         <datalist id="organiserPeopleList">
           ${(state.people || []).map(p => '<option value="' + escapeHtml(p.name || '') + '"></option>').join('')}
         </datalist>
-        <p class="muted" style="margin:0 0 8px;">Contact person in People — not the tour label. Typing a new name adds or links a person.${orgPersonMissing ? ' <strong>No organiserPersonId linked yet.</strong>' : ''}</p>
+        ${pageHelp('<p>Contact person in People, not the tour label. Typing a new name adds or links a person.</p>')}
+        ${orgPersonMissing ? '<p class="muted" style="margin:0 0 8px;"><strong>No organiserPersonId linked yet.</strong></p>' : ''}
         <label class="field-label">Group name</label>
         <input type="text" id="groupName" value="${escapeHtml(state.plan.groupName || '')}" placeholder="e.g. Angela Clark Boutique week 1">
-        <p class="muted" style="margin:0 0 8px;">Tour / booking label only. Keep this even when it matches the organiser’s name.</p>
+        ${pageHelp('<p>Tour label only. Keep this even when it matches the organiser’s name.</p>')}
         <div class="row-between">
           <div style="flex:1;min-width:140px;">
             <label class="field-label">Arrival${arrivalMissing ? missingBadgeHtml('Date missing') : ''}</label>
@@ -10341,7 +10376,7 @@ function renderDayTabs() {
           <button type="button" class="btn btn-outline btn-sm" id="btnDayTrip" title="One day, typically about £85 per person, for 2 guests">Day trip template</button>
           <button type="button" class="btn btn-outline btn-sm" id="btnFourNight" title="Arrive Monday, 4 nights, Park hotel in Smržovka, 3 guests">4-night template</button>
         </div>
-        <p class="muted" style="margin:0;">Day trips are usually 2 people. Multi-day tours are usually 2 or 3, and a 4-night tour arrives on a Monday.</p>
+        ${pageHelp('<p>Day trips are usually 2 people. Multi-day tours are usually 2 or 3, and a 4-night tour arrives on a Monday.</p>')}
         ${renderBookingDetailsCard()}
       </div>
     `;
@@ -10371,13 +10406,13 @@ function renderDayTabs() {
         <div class="row-between"><h2>Ladies / guests</h2>
           <button type="button" class="btn btn-outline btn-sm" id="btnAddGuest">Add name</button></div>
         <div id="guestList">${renderGuests()}</div>
-        <p class="muted">Every guest’s full name and email. Each name links to People by personId when there is a match. The organiser stays in the field above and is not the group name. Light debt tracking stays on this device with the plan.</p>
+        ${pageHelp('<p>Every guest’s full name and email. Each name links to People when there is a match. The organiser stays in the field above and is not the group name. Debt tracking stays on this device with the plan.</p>')}
       </div>
     `;
 
     const phoneTodayNote = todayIdx < 0
       ? `<p class="muted">Today (${formatDateDMY(today)}) is outside this tour — showing Day ${state.selectedDay + 1}.</p>`
-      : (todayIdx === state.selectedDay ? `<p class="muted">Today’s plan is first. Switch days above if you need another date.</p>` : '');
+      : '';
 
     const dayCard = `
       <div class="card">
@@ -10411,24 +10446,19 @@ function renderDayTabs() {
       <div class="main-tabs" role="tablist" aria-label="Planner sections">
         <button type="button" class="main-tab ${state.mainTab === 'planner' ? 'active' : ''}" data-main-tab="planner" role="tab" aria-selected="${state.mainTab === 'planner'}">
           Planner
-          <span class="tab-sub">Day plan, times, stops</span>
         </button>
         <button type="button" class="main-tab ${state.mainTab === 'rough' ? 'active' : ''}" data-main-tab="rough" role="tab" aria-selected="${state.mainTab === 'rough'}">
           Rough plan
-          <span class="tab-sub">Sketch the week with places</span>
         </button>
         <button type="button" class="main-tab ${state.mainTab === 'places' ? 'active' : ''}" data-main-tab="places" role="tab" aria-selected="${state.mainTab === 'places'}">
           Places
-          <span class="tab-sub">Hotels, factories, shops, contacts</span>
         </button>
         <button type="button" class="main-tab ${state.mainTab === 'people' ? 'active' : ''}" data-main-tab="people" role="tab" aria-selected="${state.mainTab === 'people'}">
           People
-          <span class="tab-sub">Guests, emails, visit history</span>
         </button>
         ${hotelsUsedTabButton()}
         <button type="button" class="main-tab ${state.mainTab === 'issues' ? 'active' : ''}" data-main-tab="issues" role="tab" aria-selected="${state.mainTab === 'issues'}">
           Issues${issuesBadge}
-          <span class="tab-sub">Gaps and contradictions</span>
         </button>
       </div>
     `;
@@ -10439,7 +10469,7 @@ function renderDayTabs() {
           <h2>Places directory</h2>
           <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
         </div>
-        <p class="muted" style="margin-bottom:8px;">Search and pick a place on the left; edit name, type, contact, address and notes on the right. Hotels appear in the Planner “Staying at” list as the overnight base (day starting point from the day after arrival). This directory feeds the Planner picker and saves to Supabase.</p>
+        ${pageHelp('<p>Search and pick a place on the left. Edit the name, type, contact, address, and notes on the right. Hotels in this directory appear in Staying at.</p>')}
         ${renderCatalogue({ showAddToDay: false })}
       </div>
     `;
@@ -10450,7 +10480,7 @@ function renderDayTabs() {
           <h2>People directory</h2>
           <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
         </div>
-        <p class="muted" style="margin-bottom:8px;">Search and pick a person on the left; edit name, email, notes and <strong>visit history</strong> on the right. One People row per real person (e.g. Angela Clark) — tour labels like “Boutique week 1” belong in visit history, not as separate people. The plan <strong>Organiser</strong> is the contact person; <strong>Group name</strong> is only the tour label. Booking visits attach to the organiser. Saves to Supabase like Places.</p>
+        ${pageHelp('<p>Search and pick a person on the left. Edit the name, email, notes, and visit history on the right. One row per real person. Tour labels belong in visit history, not as separate people. The organiser is the contact person. The group name is only the tour label.</p>')}
         ${renderPeopleDirectory()}
       </div>
     `;
@@ -11255,7 +11285,7 @@ function renderDayTabs() {
   function renderVisitHistoryList(person) {
     const refs = sortVisitRefs(person.visitRefs || []);
     if (!refs.length) {
-      return `<p class="muted" style="margin-top:8px;">No tour visits recorded yet. Add one below — use the real person here; tour/group names belong in the visit label, not as separate People.</p>`;
+      return '<p class="muted" style="margin-top:8px;">No tour visits recorded yet.</p>' + pageHelp('<p>Add one below. Use the real person here. Tour labels belong in the visit label, not as separate people.</p>');
     }
     return `<ul class="people-visit-list">${refs.map((r, idx) => {
       const bits = [];
@@ -11291,7 +11321,7 @@ function renderDayTabs() {
           <span class="pvisits" title="${escapeHtml(vtitle)}">${visits}</span>
         </button>`;
         }).join('')
-      : `<p class="place-name-empty">No people yet. Add someone on the left, or open a booking-linked plan — guests are absorbed automatically.</p>`;
+      : '<p class="place-name-empty">No people yet.</p>' + pageHelp('<p>Add someone on the left, or open a booking-linked plan. Guests from that plan are added here.</p>');
 
     const selected = (state.people || []).find(p => String(p.id) === String(state.selectedPersonId || '')) || null;
     let detailHtml = '';
@@ -11354,7 +11384,7 @@ function renderDayTabs() {
         </details>
       </div>`;
     } else {
-      detailHtml = `<p class="places-detail-empty">Select a person from the list to edit name, email, notes and visits. Or add someone on the left — they will open here straight away. Guests from real bookings appear here when you load or save those plans.</p>`;
+      detailHtml = pageHelp('<p>Select a person from the list to edit the name, email, notes, and visits. Add someone on the left and they open here. Guests from bookings appear when you load or save those plans.</p>');
     }
 
     const addBox = `
@@ -11363,7 +11393,7 @@ function renderDayTabs() {
         <input type="text" id="newPersonName" placeholder="Name" autocomplete="name">
         <input type="email" id="newPersonEmail" placeholder="Email (optional)" autocomplete="email">
         <button type="button" class="btn btn-outline btn-sm" id="btnAddPerson">Save to People</button>
-        <p class="muted" style="margin:0;">No seed list — only people you add, or guests absorbed from booking-linked plans.</p>
+        ${pageHelp('<p>Only people you add, or guests from booking-linked plans.</p>')}
       </div>`;
 
     return `
@@ -11857,7 +11887,7 @@ function renderDayTabs() {
         <button type="button" class="btn btn-outline btn-sm" id="btnSheetManagePlaces">Manage Places</button>
       </div>
       ${renderPlacePickerSelect('sheetPlacePicker', 'btnSheetAddStop')}
-      <p class="muted" style="margin-top:12px;">Edit contact details and addresses on the Places tab — they stay shared with this picker and Supabase.</p>
+      ${pageHelp('<p>Edit contact details and addresses on the Places tab. They stay shared with this picker.</p>')}
     `;
     sheet.classList.add('open');
     sheet.setAttribute('aria-hidden', 'false');

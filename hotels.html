@@ -62,6 +62,16 @@
     }
     .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; }
     .intro { color: var(--text-secondary); font-size: 14px; max-width: 46em; margin: 0 0 16px; }
+    .page-help { margin: 0 0 12px; }
+    .page-help > summary {
+      cursor: pointer; list-style: none; display: inline-flex; align-items: center;
+      min-height: 28px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface-alt, var(--surface)); color: var(--text-secondary);
+      font-size: 12px; font-weight: 800; width: fit-content;
+    }
+    .page-help > summary::-webkit-details-marker { display: none; }
+    .page-help-body { margin-top: 6px; max-width: 46em; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+    .page-help-body p { margin: 0 0 6px; }
     .intro strong { color: var(--text); }
     .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 16px; }
     .field label { display: block; font-size: 11px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
@@ -244,23 +254,17 @@
   </header>
 
   <main class="wrap">
-    <p class="intro">
-      One list of hotel stays already named on a <strong>booking</strong> or <strong>tour plan</strong>
-      (Prague pick-up hotel and/or tour-area hotel). Nothing here invents a hotel, date, or payment.
-      Tick <strong>Booked</strong> and set <strong>paid in advance</strong> / <strong>paid on the day</strong> when you know.
-      Those ticks are stored on the plan’s <code>hotels[]</code> field (and on this device).
-      A cancelled booking stays on this list, greyed out, with a Cancelled tag. The hotel, dates, notes, and booked or paid history stay visible.
-      A day trip has no hotel for Keith to book, so it is not listed here. The pick-up place stays on the booking.
-      Each stay shows how many rooms to book: every single, twin, and double is one room, plus Keith’s own room when it is on.
-    </p>
+    <details class="page-help">
+      <summary>Help</summary>
+      <div class="page-help-body">
+        <p>One list of hotel stays already named on a booking or tour plan (Prague pick-up hotel and the tour-area hotel). Nothing here invents a hotel, date, or payment. Tick Booked and set paid in advance or paid on the day when you know. A cancelled booking stays on this list, greyed out, with a Cancelled tag. A day trip has no hotel for Keith to book, so it is not listed here. Each stay shows how many rooms to book: every single, twin, and double is one room, plus Keith’s own room when it is on.</p>
+        <p>2026 notes for this year’s stays were not found in this repository. Leave Booked, Payment, and Notes empty until they are filled from the real notes.</p>
+      </div>
+    </details>
     <p class="jumps">
       <a href="#stays">Stays</a>
       <a href="#hotels-used">Hotels used</a>
     </p>
-    <div class="note-banner" id="notesBanner">
-      2026 Notes (hotel booking write-up for this year’s stays) were not found in this repository.
-      Leave Booked / Payment / Notes empty until Keith or the Archivist fills them from the real notes.
-    </div>
     <section id="stays" aria-labelledby="staysHeading">
       <h2 class="section-title" id="staysHeading">Stays</h2>
       <div class="toolbar">
@@ -278,13 +282,12 @@
 
     <section id="hotels-used" aria-labelledby="hotelsUsedHeading">
       <h2 class="section-title" id="hotelsUsedHeading">Hotels used</h2>
-      <p class="intro">
-        Every hotel named on a booking or plan, and every hotel on the hotel list.
-        Address, website, and the short note are filled only when they are already stored.
-        An empty field stays empty until you save it.
-        Times, nights, years, groups, and who stayed come from the bookings.
-        The booked ticks above are unchanged.
-      </p>
+      <details class="page-help">
+        <summary>Help</summary>
+        <div class="page-help-body">
+          <p>Every hotel named on a booking or plan, and every hotel on the hotel list. Address, website, and the short note are filled only when they are already stored. An empty field stays empty until you save it. Times, nights, years, groups, and who stayed come from the bookings. The booked ticks above are unchanged.</p>
+        </div>
+      </details>
       <div class="toolbar">
         <div class="field">
           <label for="hotelSearch">Find a hotel</label>
@@ -851,7 +854,7 @@
       const rows = visibleStays();
       const el = document.getElementById('stayList');
       if (!rows.length) {
-        el.innerHTML = '<p class="empty">No hotel names found for this year on bookings or plans. Add a hotel on the booking form or Planner (Staying at / Prague hotel), then refresh. Booked and payment stay empty until you tick them.</p>';
+        el.innerHTML = '<p class="empty">No hotel names found for this year on bookings or plans.</p>';
         return;
       }
       el.innerHTML = rows.map(s => {

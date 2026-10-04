@@ -77,6 +77,16 @@
     .topbar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
     .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -.2px; }
     .sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .page-help { margin: 4px 0 0; }
+    .page-help > summary {
+      cursor: pointer; list-style: none; display: inline-flex; align-items: center;
+      min-height: 28px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface-alt, var(--surface)); color: var(--text-secondary);
+      font-size: 12px; font-weight: 800; width: fit-content;
+    }
+    .page-help > summary::-webkit-details-marker { display: none; }
+    .page-help-body { margin-top: 6px; max-width: 42em; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+    .page-help-body p { margin: 0 0 6px; }
 
     .view-nav {
       display: flex;
@@ -282,7 +292,10 @@
       <div class="topbar-left">
         <div>
           <h1>Places visit stats</h1>
-          <div class="sub">How often each place appears across saved tour plans</div>
+          <details class="page-help">
+            <summary>Help</summary>
+            <div class="page-help-body"><p>How often each place appears across saved tour plans. A place with two categories is counted under each one. Snack is a supermarket or a bakery, not a restaurant. Visits are matched by place ID when present, otherwise by title. Counts come from cloud plans only.</p></div>
+          </details>
         </div>
         <nav class="view-nav" aria-label="Main">
           <a href="booking-form.html" id="navBookings">Bookings</a>
@@ -316,7 +329,6 @@
       <div class="panel-head">
         <div>
           <h2>Type breakdown</h2>
-          <div class="hint">Visit counts by category. A place with two categories is counted under each one. Snack is a supermarket or a bakery, not a restaurant.</div>
         </div>
       </div>
       <div class="chips" id="typeChips"><div class="muted">Loading…</div></div>
@@ -326,7 +338,6 @@
       <div class="panel-head">
         <div>
           <h2>Places ranked by visits</h2>
-          <div class="hint">Matched by place ID when present, otherwise by title. Real counts from cloud plans only.</div>
         </div>
         <div class="filters">
           <input type="search" id="searchBox" placeholder="Search place or group…" aria-label="Search places">

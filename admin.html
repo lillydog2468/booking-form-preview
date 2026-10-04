@@ -180,6 +180,16 @@
     }
     .page-header h2 { font-size: 22px; font-weight: 700; }
     .page-header p { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+    .page-help { margin: 4px 0 0; }
+    .page-help > summary {
+      cursor: pointer; list-style: none; display: inline-flex; align-items: center;
+      min-height: 28px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface-alt); color: var(--text-secondary);
+      font-size: 12px; font-weight: 800; width: fit-content;
+    }
+    .page-help > summary::-webkit-details-marker { display: none; }
+    .page-help-body { margin-top: 6px; max-width: 42em; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+    .page-help-body p { margin: 0; }
 
     .card {
       background: var(--surface); border: 1px solid var(--border);
@@ -415,7 +425,7 @@
     <div class="page-header">
       <div>
         <h2>User Management</h2>
-        <p>Add, remove, and manage user access to the booking system.</p>
+        <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>Add, remove, and manage user access to the booking system.</p></div></details>
       </div>
     </div>
 
@@ -499,7 +509,7 @@
     <div class="page-header">
       <div>
         <h2>Hotel Management</h2>
-        <p>Manage the list of hotels available in booking forms and expenses.</p>
+        <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>Manage the list of hotels available in booking forms and expenses.</p></div></details>
       </div>
     </div>
 

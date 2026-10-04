@@ -456,6 +456,15 @@
     }
     .chart-title h3 { font-size: 14px; font-weight: 900; letter-spacing: -.2px; }
     .chart-title .hint { font-size: 12px; color: var(--text-secondary); }
+    .page-help { margin: 0; }
+    .page-help > summary {
+      cursor: pointer; list-style: none; display: inline-flex; align-items: center;
+      min-height: 28px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface); color: var(--text-secondary);
+      font-size: 12px; font-weight: 800; width: fit-content;
+    }
+    .page-help > summary::-webkit-details-marker { display: none; }
+    .page-help-body { margin-top: 6px; max-width: 42em; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
 
     .chart-wrap { position: relative; flex: 1; min-height: 260px; }
     canvas { width: 100% !important; height: 100% !important; }
@@ -696,7 +705,7 @@
 	              </div>
 	            </div>
 	            <div class="picker-list" id="tourPickerList"></div>
-		            <div class="picker-foot">Tip: no selection = All tours. Use “Select filtered” after setting Date/Currency/Include.</div>
+		            <div class="picker-foot"><details class="page-help"><summary>Help</summary><div class="page-help-body">No selection means all tours. Select filtered uses the date, currency, and include filters.</div></details></div>
 		          </div>
 		        </div>
 		        <button class="btn btn-outline" type="button" onclick="clearAllFilters()">Clear filters</button>
@@ -718,7 +727,7 @@
       <div class="chart-card" style="min-height:220px;">
         <div class="chart-title">
           <h3>Most valuable insights</h3>
-          <div class="hint">Based on the filters above</div>
+          <details class="page-help"><summary>Help</summary><div class="page-help-body">These insights follow the filters above.</div></details>
         </div>
         <ul class="insight-list" id="insightsList"></ul>
         <div class="empty" id="insightsEmpty" style="display:none;">No insights to show for the selected filters.</div>
@@ -748,7 +757,7 @@
       <div class="chart-card" style="min-height:auto;">
         <div class="chart-title">
           <h3>By year</h3>
-          <div class="hint">Year from tour arrival (or plan year) · follows filters above · tip: set Date range to All time</div>
+          <details class="page-help"><summary>Help</summary><div class="page-help-body">The year comes from the tour arrival, or the plan year. It follows the filters above. Set the date range to all time to see every year.</div></details>
         </div>
         <div class="grid" style="margin-top:4px;">
           <div class="chart-wrap" style="min-height:240px;"><canvas id="chartToursByYear"></canvas></div>
