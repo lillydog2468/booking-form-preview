@@ -187,11 +187,11 @@
           <div class="sub">Hotel stays for the year — linked to bookings and plans</div>
         </div>
         <nav class="view-nav" aria-label="Main">
-          <a href="/booking-form" id="navBookings">Bookings</a>
-          <a href="/analytics" id="navAnalytics">Analytics</a>
-          <a href="/tour-planner" id="navPlanner">Planner</a>
-          <a href="/hotels" class="active">Hotels</a>
-          <a href="/places-stats" id="navPlacesStats">Places stats</a>
+          <a href="booking-form.html" id="navBookings">Bookings</a>
+          <a href="analytics.html" id="navAnalytics">Analytics</a>
+          <a href="tour-planner.html" id="navPlanner">Planner</a>
+          <a href="hotels.html" class="active">Hotels</a>
+          <a href="places-stats.html" id="navPlacesStats">Places stats</a>
         </nav>
       </div>
       <div class="topbar-actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -579,7 +579,7 @@
           arrivalDate: arrival, departureDate: departure, hasCloudPlan: cloudPlans.has(key),
           bookingStatus, dayTrip, roomsNeededLabel: roomBits,
           peopleLabel: (link.people || []).join(', '),
-          hotelsUsedHref: '/tour-planner?booking=' + encodeURIComponent(String(b.id)) + '&tab=hotels' + (year ? '&year=' + encodeURIComponent(year) : ''),
+          hotelsUsedHref: 'tour-planner.html?booking=' + encodeURIComponent(String(b.id)) + '&tab=hotels' + (year ? '&year=' + encodeURIComponent(year) : ''),
         };
         addStay(list, Object.assign({}, base, { hotelName: tourName, role: 'tour' }));
         const extras = extraByBooking.get(b.id) || [];
@@ -616,7 +616,7 @@
           arrivalDate: plan.arrivalDate || '', departureDate: plan.departureDate || '',
           dayTrip, roomsNeededLabel: dayTrip ? '' : (link.roomsLabel || roomsNeededFor(null, plan, dayTrip)),
           peopleLabel: (link.people || []).join(', '),
-          hotelsUsedHref: year ? ('/tour-planner?tab=hotels&year=' + encodeURIComponent(year)) : '/tour-planner?tab=hotels',
+          hotelsUsedHref: year ? ('tour-planner.html?tab=hotels&year=' + encodeURIComponent(year)) : 'tour-planner.html?tab=hotels',
         };
         addStay(list, Object.assign({}, base, { hotelName: plan.tourHotelName || '', role: 'tour' }));
         addStay(list, Object.assign({}, base, {
@@ -672,13 +672,13 @@
 
     function bookingHref(s) {
       const id = stayBookingId(s);
-      if (id) return '/booking-form?booking=' + encodeURIComponent(id) + '&layout=layout';
-      return '/booking-form';
+      if (id) return 'booking-form.html?booking=' + encodeURIComponent(id) + '&layout=layout';
+      return 'booking-form.html';
     }
     function plannerHref(s) {
-      if (s.bookingId) return '/tour-planner?booking=' + encodeURIComponent(String(s.bookingId));
-      if (s.bookingKey && !(window.isLegacyDemoPlan && window.isLegacyDemoPlan(s.bookingKey, null))) return '/tour-planner?booking=' + encodeURIComponent(s.bookingKey);
-      return '/tour-planner';
+      if (s.bookingId) return 'tour-planner.html?booking=' + encodeURIComponent(String(s.bookingId));
+      if (s.bookingKey && !(window.isLegacyDemoPlan && window.isLegacyDemoPlan(s.bookingKey, null))) return 'tour-planner.html?booking=' + encodeURIComponent(s.bookingKey);
+      return 'tour-planner.html';
     }
 
     function render() {
