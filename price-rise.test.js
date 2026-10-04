@@ -116,6 +116,68 @@ test('only prices copied by the rise change, and each of those is a whole pound'
   assert.match(ctx.toasts.at(-1).msg, /rounded up to the next whole pound/);
 });
 
+test('tour prices sit under hotels, not above the booking tabs', () => {
+  const mainStart = html.indexOf('<div class="main-area">');
+  const tabBar = html.indexOf('id="tabBar"', mainStart);
+  assert.ok(mainStart >= 0 && tabBar > mainStart);
+  assert.equal(html.slice(mainStart, tabBar).includes('id="priceBook"'), false);
+  assert.match(html, /<div id="priceBookPark" hidden>/);
+  const hotelStart = html.indexOf('function hotelEditorHTML(');
+  const hotelEnd = html.indexOf('function buildFormHTML(', hotelStart);
+  assert.match(html.slice(hotelStart, hotelEnd), /id="t\$\{t\}_price_book_slot"/);
+  assert.match(extractFunction('risenPrice'), /Math\.ceil\(raised\)/);
+});
+
+test('the price list moves into the open booking’s hotels slot and back again', () => {
+  const nodes = new Map();
+  function makeEl(id) {
+    const node = {
+      id,
+      parentElement: null,
+      children: [],
+      appendChild(child) {
+        if (child.parentElement) {
+          const parent = child.parentElement;
+          parent.children = parent.children.filter((item) => item !== child);
+        }
+        child.parentElement = node;
+        node.children.push(child);
+        return child;
+      },
+      contains(other) {
+        if (other === node) return true;
+        return node.children.some((child) => child === other || child.contains(other));
+      },
+    };
+    nodes.set(id, node);
+    return node;
+  }
+  const park = makeEl('priceBookPark');
+  const book = makeEl('priceBook');
+  park.appendChild(book);
+  const slot = makeEl('ttab1_price_book_slot');
+  const context = {
+    document: {
+      getElementById(id) { return nodes.get(id) || null; },
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext([
+    extractFunction('el'),
+    extractFunction('tEl'),
+    extractFunction('parkPriceBook'),
+    extractFunction('dockPriceBook'),
+  ].join('\n'), context);
+
+  vm.runInContext('dockPriceBook("tab1")', context);
+  assert.equal(book.parentElement, slot);
+  assert.equal(park.contains(book), false);
+
+  vm.runInContext('dockPriceBook(null)', context);
+  assert.equal(book.parentElement, park);
+  assert.equal(slot.contains(book), false);
+});
+
 test('an empty source price is not copied, so the destination price stays as it was', () => {
   const ctx = loadPriceRise();
   ctx.seed({
