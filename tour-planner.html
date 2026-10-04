@@ -2267,7 +2267,26 @@
       color: var(--scan);
     }
 
-    /* Week viewer — read-only look at the same plan, for a phone */
+    /* Week viewer — read-only look at the same plan, for a phone.
+       The header stays in the page, so it is there at the top of the week
+       and slides off as the days scroll. It is not pinned. */
+    body.view-week .topbar {
+      position: static;
+      display: flex;
+      flex-direction: column;
+    }
+    body.view-week .group-heading-bar {
+      order: -1;
+      border-top: none;
+      padding: 10px 16px 4px;
+    }
+    body.view-week .topbar-inner { padding-top: 4px; }
+    body.view-week .topbar-actions { width: 100%; }
+    body.view-week select.group-select {
+      width: 100%;
+      max-width: none;
+      min-height: 44px;
+    }
     body.view-week .autosave-toggle,
     body.view-week #autosaveStatus,
     body.view-week #btnForceCloudSave,
@@ -2286,8 +2305,8 @@
     .week-look {
       max-width: 520px;
       margin: 0 auto;
-      /* Room to scroll the last day up under the header, clear of the dock. */
-      padding-bottom: calc(100dvh - 200px);
+      /* Room to bring the last day up once the header has scrolled away. */
+      padding-bottom: calc(100dvh - 72px);
       touch-action: pan-y;
     }
     .look-range {
@@ -9472,7 +9491,8 @@ function renderDayTabs() {
     const days = Array.from(document.querySelectorAll('.look-day'));
     if (!days.length) return;
     const bar = document.querySelector('.topbar');
-    const line = (bar ? bar.getBoundingClientRect().bottom : 72) + 12;
+    const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
+    const line = Math.max(12, barBottom + 12);
     let current = days[0];
     days.forEach(el => {
       if (el.getBoundingClientRect().top <= line) current = el;
