@@ -1711,12 +1711,23 @@
     .day-trip-toggle input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
     .price-fields, .price-fields-home { display: contents; }
     .price-hint { grid-column: 1 / -1; margin: 4px 0 0; }
+    .price-book-slot:empty { display: none; }
     .price-book {
-      margin: 8px 12px 0; border: 1px solid var(--border); border-radius: 12px;
-      background: var(--surface);
+      margin: 14px 0 0;
+      border: none;
+      border-top: 1px solid var(--border);
+      border-radius: 0;
+      background: transparent;
     }
-    .price-book > summary { cursor: pointer; font-weight: 750; padding: 12px 14px; }
-    .price-book-body { padding: 0 14px 14px; max-height: 50vh; overflow: auto; }
+    .price-book > summary {
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 10px 2px 2px;
+    }
+    .price-book[open] > summary { color: var(--text); }
+    .price-book-body { padding: 8px 0 4px; max-height: 50vh; overflow: auto; }
     .price-year {
       border: 1px solid var(--border); border-radius: 10px; padding: 10px;
       margin-bottom: 10px; background: var(--surface-alt);
@@ -2408,23 +2419,6 @@
 
       <!-- ── Main: tabs + form panels ── -->
       <div class="main-area">
-        <details class="price-book" id="priceBook">
-          <summary>Tour prices</summary>
-          <div class="price-book-body">
-            <p class="hint">This list is only for day trips and the usual beading holiday. A percentage rise copies prices you have already entered into another year. Each of those prices is rounded up to the next whole pound, with no pence. A price that is already a whole number of pounds stays as it is. Extra hotels, and a tour somewhere other than the usual beading area, are not on this list. Type those amounts on the booking.</p>
-            <div id="priceBookYears"></div>
-            <div class="price-book-actions">
-              <label>Year <input type="text" id="priceBookNewYear" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
-              <button type="button" class="btn btn-outline btn-sm" data-price-action="add-year">Add year</button>
-            </div>
-            <div class="price-book-actions">
-              <label>From year <input type="text" id="priceRiseFrom" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
-              <label>Into year <input type="text" id="priceRiseTo" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
-              <label>Rise % <input type="text" id="priceRisePct" inputmode="decimal" placeholder="e.g. 3" autocomplete="off"></label>
-              <button type="button" class="btn btn-outline btn-sm" data-price-action="apply-rise">Apply rise</button>
-            </div>
-          </div>
-        </details>
         <div class="tab-bar" id="tabBar">
           <button class="tab-add" onclick="openNewTab()" title="New tab">+</button>
         </div>
@@ -2493,6 +2487,26 @@
 
 <!-- ── Toast container ── -->
 <div class="toast-container" id="toastContainer"></div>
+
+<div id="priceBookPark" hidden>
+  <details class="price-book" id="priceBook">
+    <summary>Tour prices</summary>
+    <div class="price-book-body">
+      <p class="hint">This list is only for day trips and the usual beading holiday. A percentage rise copies prices you have already entered into another year. Each of those prices is rounded up to the next whole pound, with no pence. A price that is already a whole number of pounds stays as it is. Extra hotels, and a tour somewhere other than the usual beading area, are not on this list. Type those amounts on the booking.</p>
+      <div id="priceBookYears"></div>
+      <div class="price-book-actions">
+        <label>Year <input type="text" id="priceBookNewYear" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
+        <button type="button" class="btn btn-outline btn-sm" data-price-action="add-year">Add year</button>
+      </div>
+      <div class="price-book-actions">
+        <label>From year <input type="text" id="priceRiseFrom" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
+        <label>Into year <input type="text" id="priceRiseTo" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
+        <label>Rise % <input type="text" id="priceRisePct" inputmode="decimal" placeholder="e.g. 3" autocomplete="off"></label>
+        <button type="button" class="btn btn-outline btn-sm" data-price-action="apply-rise">Apply rise</button>
+      </div>
+    </div>
+  </details>
+</div>
 
 <script src="booking-extras.js"></script>
 <script>
@@ -2845,6 +2859,7 @@
   }
 
   function rerenderAllTabs() {
+    parkPriceBook();
     for (const [tabId, tabData] of tabs) {
       const panel = el('tabPanel_' + tabId);
       if (!panel) continue;
@@ -2860,6 +2875,7 @@
     updateGlobalAnalytics();
     applyLayoutZoomToOpenTabs();
     refreshAllYearCalendars();
+    dockPriceBook(activeTabId);
   }
 
   // Admin-managed hotel list — loaded from localStorage (synced with admin page) or Supabase
@@ -3709,7 +3725,8 @@
         </div>
         <div class="hotel-stays-list" id="t${t}_hotel_stays_list"></div>
         <button type="button" class="member-add" id="t${t}_add_hotel_btn" onclick="addAnotherHotel('${t}')">Add a hotel</button>
-      </div>`;
+      </div>
+      <div class="price-book-slot" id="t${t}_price_book_slot"></div>`;
   }
 
   function buildFormHTML(tabId) {
@@ -6087,6 +6104,23 @@
     book.addEventListener('click', onPriceBookClick);
   }
 
+  function parkPriceBook() {
+    const book = el('priceBook');
+    const park = el('priceBookPark');
+    if (book && park && book.parentElement !== park) park.appendChild(book);
+  }
+
+  function dockPriceBook(tabId) {
+    const book = el('priceBook');
+    if (!book) return;
+    const slot = tabId ? tEl(tabId, 'price_book_slot') : null;
+    if (slot) {
+      if (book.parentElement !== slot) slot.appendChild(book);
+      return;
+    }
+    parkPriceBook();
+  }
+
   function tourLengthFromDates(tabId) {
     const start = parseFlexibleDateUTC(tEl(tabId, 'tour_arrival_date')?.value || '');
     const end = parseFlexibleDateUTC(tEl(tabId, 'departure_date')?.value || '');
@@ -6558,6 +6592,7 @@
 
     const tabBtn = el('tabBtn_' + tabId);
     const panel = el('tabPanel_' + tabId);
+    if (panel && el('priceBook') && panel.contains(el('priceBook'))) parkPriceBook();
     if (tabBtn) tabBtn.remove();
     if (panel) panel.remove();
     tabs.delete(tabId);
@@ -6591,6 +6626,7 @@
     updateWelcomeVisibility();
     highlightSidebarRecords();
     renderYearCalendar(tabId);
+    dockPriceBook(tabId);
   }
 
   function updateWelcomeVisibility() {
