@@ -7216,8 +7216,15 @@
     applyBookingCancelledChrome(tabId);
   }
 
+  function openBookingId(tabId) {
+    const tabData = tabs.get(tabId);
+    const fromTab = tabData && tabData.bookingId != null ? String(tabData.bookingId).trim() : '';
+    if (fromTab) return fromTab;
+    return String(tEl(tabId, 'id')?.value || '').trim();
+  }
+
   function openTourPlanner(tabId) {
-    const id = tEl(tabId, 'id')?.value;
+    const id = openBookingId(tabId);
     window.location.href = id
       ? ('tour-planner.html?booking=' + encodeURIComponent(id))
       : 'tour-planner.html';
@@ -7225,7 +7232,7 @@
 
   function plannerLinkHref(tabId, tab, year) {
     const params = new URLSearchParams();
-    const id = tEl(tabId, 'id')?.value;
+    const id = openBookingId(tabId);
     if (id) params.set('booking', id);
     if (tab) params.set('tab', tab);
     if (year) params.set('year', year);

@@ -6401,7 +6401,8 @@
     (state.bookings || []).forEach(b => {
       const plan = state.plans?.[String(b.id)] || null;
       const y = planYear(plan, b);
-      if (yf !== 'all' && y !== Number(yf)) return;
+      const isOpen = state.bookingKey && String(b.id) === String(state.bookingKey);
+      if (yf !== 'all' && y !== Number(yf) && !isOpen) return;
       const date = String(b.tour_arrival_date || '').slice(0, 10);
       const label = (b.group_name || ('Booking #' + b.id)) + (date ? ' — ' + formatDateDMY(date) : '');
       entries.push({ value: String(b.id), label, date });
@@ -11595,6 +11596,45 @@ function renderDayTabs() {
     if (closeBtn) closeBtn.textContent = 'Close';
   }
 
+  const LIVE_BOOKING_COLUMNS = 'id, group_name, no_people, price_per_person, depositmade, deposit_paid_date, beading_tour_price, left_to_pay, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)';
+
+  function mapLiveBooking(b) {
+    return {
+      ...b,
+      hotel_name: b.hotels?.name,
+      _members: [],
+      _hotel_stays: [],
+      _enriched: false,
+    };
+  }
+
+  function sortLiveBookings(rows) {
+    return (rows || []).slice().sort((a, b) => compareTourListNewest(
+      { date: String(a.tour_arrival_date || '').slice(0, 10), label: a.group_name || '' },
+      { date: String(b.tour_arrival_date || '').slice(0, 10), label: b.group_name || '' }
+    ));
+  }
+
+  async function ensureRequestedBooking(id) {
+    const key = String(id || '').trim();
+    if (!/^[0-9]+$/.test(key) || legacyRow(key)) return;
+    if ((state.bookings || []).some(b => String(b.id) === key)) return;
+    try {
+      const { data, error } = await withTimeout(
+        sb.from('bookings')
+          .select(LIVE_BOOKING_COLUMNS)
+          .eq('id', Number(key))
+          .maybeSingle(),
+        5000,
+        'Requested booking lookup timed out'
+      );
+      if (error || !data || data.id == null) return;
+      state.bookings = sortLiveBookings((state.bookings || []).concat([mapLiveBooking(data)]));
+    } catch (err) {
+      console.warn('Requested booking not loaded:', err);
+    }
+  }
+
   async function loadLiveBookings() {
     try {
       try {
@@ -11605,23 +11645,14 @@ function renderDayTabs() {
       }
       const { data, error } = await withTimeout(
         sb.from('bookings')
-          .select('id, group_name, no_people, price_per_person, depositmade, deposit_paid_date, beading_tour_price, left_to_pay, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)')
+          .select(LIVE_BOOKING_COLUMNS)
           .order('tour_arrival_date', { ascending: false })
           .limit(80),
         5000,
         'Bookings lookup timed out'
       );
       if (error) throw error;
-      state.bookings = (data || []).map(b => ({
-        ...b,
-        hotel_name: b.hotels?.name,
-        _members: [],
-        _hotel_stays: [],
-        _enriched: false,
-      })).sort((a, b) => compareTourListNewest(
-        { date: String(a.tour_arrival_date || '').slice(0, 10), label: a.group_name || '' },
-        { date: String(b.tour_arrival_date || '').slice(0, 10), label: b.group_name || '' }
-      ));
+      state.bookings = sortLiveBookings((data || []).map(mapLiveBooking));
       state.liveBookings = true;
     } catch (err) {
       console.warn('Planner bookings not loaded:', err);
@@ -11847,6 +11878,10 @@ function renderDayTabs() {
 
     // Probe tables first so cloud places/plans can load before first render
     await loadLiveBookings();
+    // The list is the newest 80. A group already open on the booking form can
+    // be older than that. Read that one booking so Start planning can open it.
+    // This is a read. It does not write the booking or the saved plan.
+    if (requested && !legacyRow(requested)) await ensureRequestedBooking(requested);
 
     let cloudPlaces = await fetchCloudPlaces();
     if (Array.isArray(cloudPlaces)) {
