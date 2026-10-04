@@ -2289,9 +2289,10 @@
       color: var(--scan);
     }
 
-    /* Week viewer — read-only look at the same plan, for a phone.
+    /* Week viewer — simple look at the same plan, for a phone.
        The header stays in the page, so it is there at the top of the week
-       and slides off as the days scroll. It is not pinned. */
+       and slides off as the days scroll. It is not pinned.
+       The week still scrolls. A zoomed day can change stop times. */
     body.view-week .topbar {
       position: static;
       display: flex;
@@ -2426,9 +2427,18 @@
     .look-day.is-zoomed { padding: 16px 16px 8px; }
     .look-day.is-zoomed .look-dow { font-size: 18px; }
     .look-day.is-zoomed .look-date { font-size: 34px; }
-    .look-day.is-zoomed .look-stop { min-height: 64px; padding: 14px 0; }
+    .look-day.is-zoomed .look-stop { min-height: 64px; padding: 14px 0; align-items: center; }
+    .look-day.is-zoomed .look-stop .dot { margin-top: 0; }
     .look-day.is-zoomed .look-time { font-size: 28px; min-width: 4.2em; }
     .look-day.is-zoomed .look-name { font-size: 26px; }
+    .look-day.is-zoomed .time-wheel-wrap { flex: 0 0 auto; }
+    .look-day.is-zoomed .time-wheel-btn {
+      font-size: 22px;
+      font-weight: 800;
+      min-height: 52px;
+      min-width: 5.4em;
+      padding: 8px 10px;
+    }
     .look-dock {
       position: fixed;
       z-index: 35;
@@ -2449,11 +2459,18 @@
       font-weight: 800;
       color: var(--scan);
     }
+    .look-dock-actions { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; justify-content: flex-end; }
     .look-dock .look-zoom {
       background: var(--accent);
       color: #fff;
       border: none;
       min-width: 132px;
+    }
+    .look-dock .look-zoom.look-detailed {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      min-width: 0;
     }
     .look-dock-note {
       color: var(--text-secondary);
@@ -2499,7 +2516,7 @@
           <details class="page-help">
             <summary>Help</summary>
             <div class="page-help-body">
-              <p>Week scrolls the days. Zoom in for one day. Phone and Detailed show that day’s plan. Rough plan, Places, People, Hotels used, and Issues are the other sections.</p>
+              <p>Week scrolls the days. Zoom in for one day. On that day, tap a time to change it. Detailed view is where stops are moved. Phone and Detailed show that day’s plan. Rough plan, Places, People, Hotels used, and Issues are the other sections.</p>
             </div>
           </details>
         </div>
@@ -10107,9 +10124,9 @@ function renderDayTabs() {
     const range = (plan && (plan.arrivalDate || plan.departureDate))
       ? `${plan.arrivalDate ? formatDateDMY(plan.arrivalDate) : '—'} – ${plan.departureDate ? formatDateDMY(plan.departureDate) : '—'}`
       : '';
-    const intro = zoom == null
-      ? pageHelp('<p>Scroll through the week. Zoom in when you want one day on its own.</p>')
-      : '';
+    const intro = pageHelp(zoom == null
+      ? '<p>Scroll through the week. Zoom in when you want one day on its own. Detailed view is where stops are moved.</p>'
+      : '<p>Tap a time to change it. Detailed view is where stops are moved. Zoom out returns to the week.</p>');
     const today = todayISO();
     const sections = shown.map(([day, i]) => {
       const dow = day.date ? weekdayName(day.date) : ('Day ' + (i + 1));
@@ -10121,9 +10138,11 @@ function renderDayTabs() {
           const time = String(s.time || '').trim();
           const label = lookStopLabel(s);
           const type = placeTypeForStop(s);
-          const timeHtml = time
-            ? `<span class="look-time">${escapeHtml(time)}</span>`
-            : '<span class="look-time is-blank" aria-label="Time not set">—</span>';
+          const timeHtml = (zoom != null && s.id)
+            ? renderTimeWheelControl(s, 'week', 'Time for ' + label)
+            : (time
+              ? `<span class="look-time">${escapeHtml(time)}</span>`
+              : '<span class="look-time is-blank" aria-label="Time not set">—</span>');
           return `<li class="look-stop">${timeHtml}<span class="dot ${escapeHtml(type)}" aria-hidden="true"></span><span class="look-name">${escapeHtml(label)}</span></li>`;
         }).join('')
         : '<li class="look-empty">No stops this day</li>';
@@ -10143,9 +10162,10 @@ function renderDayTabs() {
     }).join('');
     const firstDow = days[0] && days[0].date ? weekdayName(days[0].date) : '';
     const progress = 'Day 1 of ' + days.length + (firstDow ? ' · ' + firstDow : '');
+    const detailedBtn = '<button type="button" class="look-zoom look-detailed" id="btnWeekDetailed">Detailed view</button>';
     const dock = !days.length ? '' : (zoom == null
-      ? `<div class="look-dock" id="lookDock"><span id="lookScrollLabel">${escapeHtml(progress)}</span></div>`
-      : `<div class="look-dock" id="lookDock"><span class="look-dock-note">Whole week</span><button type="button" class="look-zoom look-zoom-out" data-look-zoom="out">Zoom out</button></div>`);
+      ? `<div class="look-dock" id="lookDock"><span id="lookScrollLabel">${escapeHtml(progress)}</span><div class="look-dock-actions">${detailedBtn}</div></div>`
+      : `<div class="look-dock" id="lookDock"><span class="look-dock-note">Whole week</span><div class="look-dock-actions"><button type="button" class="look-zoom look-zoom-out" data-look-zoom="out">Zoom out</button>${detailedBtn}</div></div>`);
     const label = zoom == null ? 'Whole week' : ((days[zoom] && days[zoom].date) ? weekdayName(days[zoom].date) : 'Day');
     return `<div class="week-look" id="weekLook" aria-label="${escapeHtml(label)}">
       ${range ? `<p class="look-range">${escapeHtml(range)}</p>` : ''}
@@ -10170,6 +10190,30 @@ function renderDayTabs() {
     const dow = current.getAttribute('data-look-dow') || '';
     const n = Number.isFinite(i) ? i + 1 : 1;
     label.textContent = 'Day ' + n + ' of ' + days.length + (dow ? ' · ' + dow : '');
+  }
+
+  function currentLookDayIndex() {
+    if (state.weekZoomDay != null) return state.weekZoomDay;
+    const days = Array.from(document.querySelectorAll('.look-day'));
+    if (!days.length) return state.selectedDay || 0;
+    const bar = document.querySelector('.topbar');
+    const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
+    const line = Math.max(12, barBottom + 12);
+    let current = days[0];
+    days.forEach(el => {
+      if (el.getBoundingClientRect().top <= line) current = el;
+    });
+    const i = Number(current.getAttribute('data-look-day'));
+    return Number.isFinite(i) ? i : 0;
+  }
+
+  function openDetailedFromWeek() {
+    const days = (state.plan && state.plan.days) || [];
+    const i = currentLookDayIndex();
+    if (days[i]) state.selectedDay = i;
+    state.mainTab = 'planner';
+    try { localStorage.setItem('planner_main_tab', 'planner'); } catch (_) { /* ignore */ }
+    setViewPref('detailed');
   }
 
   function setWeekZoom(dayIndex) {
@@ -10227,6 +10271,8 @@ function renderDayTabs() {
         else setWeekZoom(Number(raw));
       });
     });
+    document.getElementById('btnWeekDetailed')?.addEventListener('click', () => openDetailedFromWeek());
+    bindTimeWheelPopoverOnce();
     bindWeekPinch();
     updateWeekProgress();
     if (!window.__weekLookScrollBound) {
