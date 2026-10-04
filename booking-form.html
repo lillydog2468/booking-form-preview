@@ -1273,6 +1273,48 @@
       justify-content: center;
     }
     [data-theme="dark"] .yc-dot { background: rgba(255,255,255,.14); color: rgba(255,255,255,.92); }
+    button.yc-cell {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: inherit;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    button.yc-cell.pickable { height: 32px; }
+    button.yc-cell:hover,
+    button.yc-cell:focus-visible {
+      border-color: var(--accent);
+      z-index: 1;
+    }
+    .yc-pick-hint { margin: 0 0 8px; }
+    .yc-pick-hint[hidden] { display: none; }
+    .year-tours-calendar { margin: 0 0 14px; }
+    .tab-panel.layout-mode .year-tours-calendar { margin: 0; }
+    .yc-day-choice {
+      position: fixed;
+      z-index: 410;
+      min-width: 196px;
+      padding: 10px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+    }
+    .yc-day-choice[hidden] { display: none; }
+    .yc-day-choice-date {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .yc-day-choice-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .yc-day-choice-actions .btn { justify-content: center; width: 100%; }
 
     @media (max-width: 1100px) {
       .layout-grid {
@@ -3276,7 +3318,10 @@
     if (!event.target.closest('#datePopup')) closeDatePopup();
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeDatePopup();
+    if (event.key === 'Escape') {
+      closeDatePopup();
+      closeYearDayChoice();
+    }
   });
 
 	  function applyStoredTheme() {
@@ -3729,8 +3774,47 @@
       <div class="price-book-slot" id="t${t}_price_book_slot"></div>`;
   }
 
+  function yearToursCalendarHTML(tabId) {
+    const t = tabId;
+    const pickHintHidden = yearCalendarCanPickDates(t) ? '' : ' hidden';
+    return `
+    <div class="year-tours-calendar">
+    <div class="layout-panel lp-year-calendar">
+      <div class="layout-panel-title">Year Tours</div>
+      <p class="hint yc-pick-hint" id="t${t}_yearPickHint"${pickHintHidden}>Select a month. On a day, choose Start tour or Finish tour. The arrival and departure dates below fill in.</p>
+      <div class="year-cal-controls">
+        <button type="button" class="btn btn-outline btn-sm" onclick="changeTabCalendarYear('${t}', -1)" title="Previous year">‹</button>
+        <div class="year-label" id="t${t}_yearLabel">—</div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="changeTabCalendarYear('${t}', 1)" title="Next year">›</button>
+      </div>
+      <div class="year-cal-legend">
+        <span class="chip" id="t${t}_openTourChip"><span class="swatch"></span><span class="label" id="t${t}_openTourLabel">Open tour</span></span>
+        <span class="chip"><span class="swatch today"></span>Today</span>
+      </div>
+      <div class="year-cal-filters" id="t${t}_monthFilters">
+        <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'all')" title="Show all months">All</button>
+        <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'none')" title="Hide all months">None</button>
+        <button type="button" class="month-pill" id="t${t}_m0" onclick="toggleTabCalendarMonth('${t}', 0)">Jan</button>
+        <button type="button" class="month-pill" id="t${t}_m1" onclick="toggleTabCalendarMonth('${t}', 1)">Feb</button>
+        <button type="button" class="month-pill" id="t${t}_m2" onclick="toggleTabCalendarMonth('${t}', 2)">Mar</button>
+        <button type="button" class="month-pill" id="t${t}_m3" onclick="toggleTabCalendarMonth('${t}', 3)">Apr</button>
+        <button type="button" class="month-pill" id="t${t}_m4" onclick="toggleTabCalendarMonth('${t}', 4)">May</button>
+        <button type="button" class="month-pill" id="t${t}_m5" onclick="toggleTabCalendarMonth('${t}', 5)">Jun</button>
+        <button type="button" class="month-pill" id="t${t}_m6" onclick="toggleTabCalendarMonth('${t}', 6)">Jul</button>
+        <button type="button" class="month-pill" id="t${t}_m7" onclick="toggleTabCalendarMonth('${t}', 7)">Aug</button>
+        <button type="button" class="month-pill" id="t${t}_m8" onclick="toggleTabCalendarMonth('${t}', 8)">Sep</button>
+        <button type="button" class="month-pill" id="t${t}_m9" onclick="toggleTabCalendarMonth('${t}', 9)">Oct</button>
+        <button type="button" class="month-pill" id="t${t}_m10" onclick="toggleTabCalendarMonth('${t}', 10)">Nov</button>
+        <button type="button" class="month-pill" id="t${t}_m11" onclick="toggleTabCalendarMonth('${t}', 11)">Dec</button>
+      </div>
+      <div class="year-cal-months" id="t${t}_yearCalendar"></div>
+    </div>
+    </div>`;
+  }
+
   function buildFormHTML(tabId) {
     const t = tabId;
+    const newTourCalendar = yearCalendarCanPickDates(t) ? yearToursCalendarHTML(t) : '';
     return `
     <div class="tab-panel-header" id="t${t}_formHeader">
       <div class="tab-panel-header-title">
@@ -3770,6 +3854,7 @@
           <button type="button" class="btn btn-primary" onclick="openTourPlanner('${t}')" title="Open the day planner for this group">Start planning</button>
         </div>
       </div>
+      ${newTourCalendar}
       <div class="section">
         <div class="section-title">Tour Details</div>
         <div class="grid grid-4">
@@ -3929,35 +4014,7 @@
       <div class="layout-zoom-inner" id="t${t}_zoomInner">
       <div class="layout-grid">
         <div class="layout-col col-1">
-          <div class="layout-panel lp-year-calendar">
-            <div class="layout-panel-title">Year Tours</div>
-            <div class="year-cal-controls">
-              <button type="button" class="btn btn-outline btn-sm" onclick="changeTabCalendarYear('${t}', -1)" title="Previous year">‹</button>
-              <div class="year-label" id="t${t}_yearLabel">—</div>
-              <button type="button" class="btn btn-outline btn-sm" onclick="changeTabCalendarYear('${t}', 1)" title="Next year">›</button>
-            </div>
-            <div class="year-cal-legend">
-              <span class="chip" id="t${t}_openTourChip"><span class="swatch"></span><span class="label" id="t${t}_openTourLabel">Open tour</span></span>
-              <span class="chip"><span class="swatch today"></span>Today</span>
-            </div>
-            <div class="year-cal-filters" id="t${t}_monthFilters">
-              <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'all')" title="Show all months">All</button>
-              <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'none')" title="Hide all months">None</button>
-              <button type="button" class="month-pill" id="t${t}_m0" onclick="toggleTabCalendarMonth('${t}', 0)">Jan</button>
-              <button type="button" class="month-pill" id="t${t}_m1" onclick="toggleTabCalendarMonth('${t}', 1)">Feb</button>
-              <button type="button" class="month-pill" id="t${t}_m2" onclick="toggleTabCalendarMonth('${t}', 2)">Mar</button>
-              <button type="button" class="month-pill" id="t${t}_m3" onclick="toggleTabCalendarMonth('${t}', 3)">Apr</button>
-              <button type="button" class="month-pill" id="t${t}_m4" onclick="toggleTabCalendarMonth('${t}', 4)">May</button>
-              <button type="button" class="month-pill" id="t${t}_m5" onclick="toggleTabCalendarMonth('${t}', 5)">Jun</button>
-              <button type="button" class="month-pill" id="t${t}_m6" onclick="toggleTabCalendarMonth('${t}', 6)">Jul</button>
-              <button type="button" class="month-pill" id="t${t}_m7" onclick="toggleTabCalendarMonth('${t}', 7)">Aug</button>
-              <button type="button" class="month-pill" id="t${t}_m8" onclick="toggleTabCalendarMonth('${t}', 8)">Sep</button>
-              <button type="button" class="month-pill" id="t${t}_m9" onclick="toggleTabCalendarMonth('${t}', 9)">Oct</button>
-              <button type="button" class="month-pill" id="t${t}_m10" onclick="toggleTabCalendarMonth('${t}', 10)">Nov</button>
-              <button type="button" class="month-pill" id="t${t}_m11" onclick="toggleTabCalendarMonth('${t}', 11)">Dec</button>
-            </div>
-            <div class="year-cal-months" id="t${t}_yearCalendar"></div>
-          </div>
+          ${yearToursCalendarHTML(t)}
 
           <div class="layout-panel lp-tour">
             <div class="layout-panel-title">Tour</div>
@@ -4160,8 +4217,9 @@
     if (td) { td.calendarYearPinned = true; td.calendarMonthsPinned = true; }
     const mi = Number(monthIndex);
     if (!Number.isFinite(mi) || mi < 0 || mi > 11) return;
-    const current = getTabCalendarMonthsMask(tabId);
-    setTabCalendarMonthsMask(tabId, current ^ (1 << mi));
+    // A new tour picks one month at a time. A saved tour keeps the overview toggle.
+    if (td && td.startedNew) setTabCalendarMonthsMask(tabId, 1 << mi);
+    else setTabCalendarMonthsMask(tabId, getTabCalendarMonthsMask(tabId) ^ (1 << mi));
     renderYearCalendar(tabId);
   }
 
@@ -4182,11 +4240,11 @@
   }
 
   function getTabTourRangeUTC(tabId) {
-    const start = parseFlexibleDateUTC(tEl(tabId, 'tour_arrival_date')?.value || '');
-    if (!start) return null;
-    let end = parseFlexibleDateUTC(tEl(tabId, 'departure_date')?.value || '') || start;
-    if (end.getTime() < start.getTime()) end = start;
-    return { start, end };
+    const arrival = parseFlexibleDateUTC(tEl(tabId, 'tour_arrival_date')?.value || '');
+    const departure = parseFlexibleDateUTC(tEl(tabId, 'departure_date')?.value || '');
+    if (!arrival && !departure) return null;
+    const points = [arrival, departure].filter(Boolean).sort((a, b) => a.getTime() - b.getTime());
+    return { start: points[0], end: points[points.length - 1], arrival, departure };
   }
 
   function rangesIntersectUTC(aStart, aEnd, bStart, bEnd) {
@@ -4202,8 +4260,7 @@
   }
 
   function renderYearCalendar(tabId) {
-    const panel = el('tabPanel_' + tabId);
-    if (!panel || !panel.classList.contains('layout-mode')) return;
+    closeYearDayChoice();
     const calendarEl = tEl(tabId, 'yearCalendar');
     const yearLabel = tEl(tabId, 'yearLabel');
     const openTourLabel = tEl(tabId, 'openTourLabel');
@@ -4214,17 +4271,31 @@
     yearLabel.textContent = String(year);
 
     const tabData = tabs.get(tabId);
+    const canPick = yearCalendarCanPickDates(tabId);
+    const pickHint = tEl(tabId, 'yearPickHint');
+    if (pickHint) pickHint.hidden = !canPick;
     const currentBookingId = tabData?.bookingId || null;
     const currentRange = getTabTourRangeUTC(tabId);
     const todayUTC = utcStartOfToday();
     if (tabData && !tabData.calendarMonthsPinned) {
-      tabData.calendarMonthsMask = monthsMaskForRangeInYearUTC(currentRange, year);
+      if (tabData.startedNew && !currentRange) {
+        const today = utcStartOfToday();
+        const month = year === today.getUTCFullYear() ? today.getUTCMonth() : 0;
+        tabData.calendarMonthsMask = 1 << month;
+      } else {
+        tabData.calendarMonthsMask = monthsMaskForRangeInYearUTC(currentRange, year);
+      }
     }
     syncTabCalendarMonthFilterUI(tabId);
     const openTourName = (tEl(tabId, 'group_name')?.value || tabData?.title || '').replace(/^Edit:\s*/i, '').trim();
-    const openTourRangeText = currentRange
-      ? `${formatDateDMY(toISODateUTC(currentRange.start))}–${formatDateDMY(toISODateUTC(currentRange.end))}`
-      : '';
+    let openTourRangeText = '';
+    if (currentRange && currentRange.arrival && currentRange.departure) {
+      openTourRangeText = formatDateDMY(toISODateUTC(currentRange.arrival)) + '–' + formatDateDMY(toISODateUTC(currentRange.departure));
+    } else if (currentRange && currentRange.arrival) {
+      openTourRangeText = formatDateDMY(toISODateUTC(currentRange.arrival));
+    } else if (currentRange && currentRange.departure) {
+      openTourRangeText = formatDateDMY(toISODateUTC(currentRange.departure));
+    }
     if (openTourLabel) {
       openTourLabel.textContent = openTourName ? `${openTourName}${openTourRangeText ? ' · ' + openTourRangeText : ''}` : 'Open tour';
       openTourLabel.title = openTourLabel.textContent;
@@ -4268,10 +4339,11 @@
         }
         const dayUTC = new Date(Date.UTC(year, monthIndex, dayNum));
         const dayTime = dayUTC.getTime();
+        const iso = toISODateUTC(dayUTC);
 
         const inOpenTour = currentRange ? (dayTime >= currentRange.start.getTime() && dayTime <= currentRange.end.getTime()) : false;
-        const isStart = inOpenTour && toISODateUTC(dayUTC) === toISODateUTC(currentRange.start);
-        const isEnd = inOpenTour && toISODateUTC(dayUTC) === toISODateUTC(currentRange.end);
+        const isStart = !!(currentRange && currentRange.arrival && iso === toISODateUTC(currentRange.arrival));
+        const isEnd = !!(currentRange && currentRange.departure && iso === toISODateUTC(currentRange.departure));
         const isToday = dayTime === todayUTC.getTime();
 
         const otherTours = yearTours
@@ -4296,7 +4368,12 @@
         ].filter(Boolean).join(' ');
 
         const dot = otherCount ? `<span class="yc-dot">${otherCount}</span>` : '';
-        cells.push(`<div class="${classes}"${titleAttr}>${dayNum}${dot}</div>`);
+        if (canPick) {
+          const dayLabel = formatDateLongGB(iso);
+          cells.push(`<button type="button" class="${classes} pickable" data-yc-day="${iso}" aria-haspopup="dialog" aria-label="${escapeAttr(dayLabel + '. Choose start tour or finish tour')}"${titleAttr}>${dayNum}${dot}</button>`);
+        } else {
+          cells.push(`<div class="${classes}"${titleAttr}>${dayNum}${dot}</div>`);
+        }
       }
 
       const monthHasOpenTour = currentRange
@@ -4321,6 +4398,7 @@
     calendarEl.innerHTML = monthHtml.length
       ? monthHtml.join('')
       : `<div style="padding:10px 2px;color:var(--text-secondary);font-weight:800;font-size:12px;">No months selected.</div>`;
+    bindYearCalendarPicks(tabId, calendarEl);
 
     // Keep scrolling contained inside the calendar (avoid scrolling the whole layout panel).
     if (currentRange && currentRange.start.getUTCFullYear() === year) {
@@ -4338,6 +4416,103 @@
   function refreshAllYearCalendars() {
     for (const [tabId] of tabs) renderYearCalendar(tabId);
   }
+
+  function yearCalendarCanPickDates(tabId) {
+    const td = tabs.get(tabId);
+    return !!(td && td.startedNew);
+  }
+
+  function formatDateLongGB(iso) {
+    const d = parseISODateUTC(iso);
+    if (!d) return '';
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+  }
+
+  // Set while a year-calendar choice writes one date, so the other date is left alone.
+  let yearCalendarDateChoice = false;
+  let yearDayChoiceState = null;
+
+  function ensureYearDayChoice() {
+    let panel = document.getElementById('yearDayChoice');
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.id = 'yearDayChoice';
+    panel.className = 'yc-day-choice';
+    panel.hidden = true;
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Start tour or finish tour');
+    panel.innerHTML = `
+      <p class="yc-day-choice-date"></p>
+      <div class="yc-day-choice-actions">
+        <button type="button" class="btn btn-outline btn-sm" data-yc-choice="start">Start tour</button>
+        <button type="button" class="btn btn-outline btn-sm" data-yc-choice="finish">Finish tour</button>
+      </div>`;
+    panel.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const choice = event.target.closest('[data-yc-choice]');
+      if (!choice || !yearDayChoiceState) return;
+      applyYearCalendarChoice(yearDayChoiceState.tabId, yearDayChoiceState.iso, choice.getAttribute('data-yc-choice'));
+    });
+    document.body.appendChild(panel);
+    return panel;
+  }
+
+  function closeYearDayChoice() {
+    const panel = document.getElementById('yearDayChoice');
+    if (panel) panel.hidden = true;
+    yearDayChoiceState = null;
+  }
+
+  function openYearDayChoice(tabId, iso, anchor) {
+    if (!yearCalendarCanPickDates(tabId) || !iso || !anchor) return;
+    closeDatePopup();
+    const panel = ensureYearDayChoice();
+    yearDayChoiceState = { tabId, iso };
+    const label = panel.querySelector('.yc-day-choice-date');
+    if (label) label.textContent = formatDateLongGB(iso);
+    panel.hidden = false;
+    const width = panel.offsetWidth || 200;
+    const height = panel.offsetHeight || 130;
+    const rect = anchor.getBoundingClientRect();
+    let left = Math.min(rect.left, window.innerWidth - width - 8);
+    left = Math.max(8, left);
+    let top = rect.bottom + 6;
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 6);
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+    const first = panel.querySelector('[data-yc-choice="start"]');
+    if (first) first.focus();
+  }
+
+  function applyYearCalendarChoice(tabId, iso, role) {
+    if (!yearCalendarCanPickDates(tabId)) return;
+    const field = role === 'finish' ? 'departure_date' : 'tour_arrival_date';
+    const input = tEl(tabId, field);
+    if (!input || !parseISODateUTC(iso)) return;
+    input.value = formatDateDMY(iso);
+    closeYearDayChoice();
+    yearCalendarDateChoice = true;
+    try {
+      onTabInput(tabId, input.id, 'change');
+    } finally {
+      yearCalendarDateChoice = false;
+    }
+  }
+
+  function bindYearCalendarPicks(tabId, calendarEl) {
+    if (!calendarEl || !yearCalendarCanPickDates(tabId)) return;
+    calendarEl.querySelectorAll('[data-yc-day]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openYearDayChoice(tabId, btn.getAttribute('data-yc-day'), btn);
+      });
+    });
+  }
+
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('#yearDayChoice') || event.target.closest('[data-yc-day]')) return;
+    closeYearDayChoice();
+  });
 
   // ═══════════════════════════════════════════════════════════════
   //  MEMBER ROWS
@@ -6544,7 +6719,7 @@
     }
 
     const title = bookingRecord ? (bookingRecord.group_name || 'Booking #' + bookingRecord.id) : 'New Booking';
-    tabs.set(tabId, { bookingId, title, dirty: false, autoSaveTimer: null, planHotelsBaseline: [], planHotelsLoaded: !bookingId, dayPickupBaseline: '', planHotelTimer: null });
+    tabs.set(tabId, { bookingId, title, dirty: false, autoSaveTimer: null, planHotelsBaseline: [], planHotelsLoaded: !bookingId, dayPickupBaseline: '', planHotelTimer: null, startedNew: !bookingId });
 
     const tabBtn = document.createElement('div');
     tabBtn.className = 'tab';
@@ -6681,15 +6856,16 @@
 	      const depEl = tEl(tabId, 'departure_date');
 	      const start = parseFlexibleDateUTC(arrEl?.value || '');
 	      if (arrEl && start) arrEl.value = formatDateDMY(toISODateUTC(start));
-	      if (depEl && start) {
-	        // Keep departure >= arrival; blank departure defaults to arrival (DD/MM/YYYY).
-	        if (!depEl.value.trim()) depEl.value = formatDateDMY(toISODateUTC(start));
-	        else {
-	          const dep = parseFlexibleDateUTC(depEl.value || '');
-	          if (dep && dep.getTime() < start.getTime()) depEl.value = formatDateDMY(toISODateUTC(start));
-	          else if (dep) depEl.value = formatDateDMY(toISODateUTC(dep));
-	        }
-	      }
+      // Typing still copies a blank departure from the arrival date.
+      // A year-calendar choice fills only the date he picked.
+      if (depEl && start && !yearCalendarDateChoice) {
+        if (!depEl.value.trim()) depEl.value = formatDateDMY(toISODateUTC(start));
+        else {
+          const dep = parseFlexibleDateUTC(depEl.value || '');
+          if (dep && dep.getTime() < start.getTime()) depEl.value = formatDateDMY(toISODateUTC(start));
+          else if (dep) depEl.value = formatDateDMY(toISODateUTC(dep));
+        }
+      }
 	    }
 	    if (changedId.endsWith('_departure_date') || changedId.endsWith('_deposit_paid_date') || changedId.endsWith('_final_payment_date') || changedId.endsWith('_balance_due')) {
 	      const elChanged = changedId ? document.getElementById(changedId) : null;
