@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tax summary</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="auth-gate.js"></script>
+  <script src="booking-extras.js"></script>
+  <script src="tax-summary.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: #1a1a1a;
+      background: #f7f7f5;
+      line-height: 1.35;
+    }
+    a { color: inherit; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 20px;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+    }
+    .nav { display: flex; flex-wrap: wrap; gap: 8px; }
+    .nav a, button {
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 6px 10px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .nav a.active { font-weight: 700; border-color: #333; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .period { margin: 0 0 14px; font-size: 16px; }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+    label { font-family: system-ui, sans-serif; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+    select { font: inherit; padding: 6px 8px; }
+    .meta { font-family: system-ui, sans-serif; font-size: 13px; color: #333; margin: 0 0 10px; }
+    .table-scroll { overflow: auto; max-height: calc(100vh - 240px); background: #fff; border: 1px solid #ddd; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #fff;
+      text-align: left;
+      font-size: 12px;
+      letter-spacing: .02em;
+      border-bottom: 2px solid #222;
+      padding: 8px;
+    }
+    td { border-bottom: 1px solid #e4e4e4; padding: 8px; vertical-align: top; }
+    .num { text-align: right; white-space: nowrap; }
+    .missing, .incomplete { color: #7a4b00; }
+    .flag { display: block; margin-top: 4px; font-size: 12px; color: #7a4b00; }
+    tr.grey td { color: #6b7280; background: #f3f4f6; }
+    tr.companion td:first-child { padding-left: 22px; }
+    .badge { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 700; }
+    .excluded-box { margin: 0 0 12px; font-family: system-ui, sans-serif; font-size: 13px; }
+    .excluded-box summary { cursor: pointer; }
+    .excluded-box table { margin-top: 8px; background: #fff; }
+    .excluded-box th, .excluded-box td { font-size: 13px; }
+    .sub { display: block; font-size: 12px; color: #444; }
+    .totals { margin-top: 16px; background: #fff; border: 1px solid #ddd; padding: 12px 14px; }
+    .totals h2 { font-size: 16px; margin: 0 0 8px; }
+    .totals h3 { font-size: 14px; margin: 12px 0 4px; }
+    .note { font-family: system-ui, sans-serif; font-size: 13px; color: #333; }
+    .status { font-family: system-ui, sans-serif; font-size: 14px; }
+
+    @media print {
+      @page { size: A4 portrait; margin: 12mm; }
+      body { background: #fff; }
+      .no-print { display: none !important; }
+      main { max-width: none; padding: 0; }
+      .table-scroll { overflow: visible; max-height: none; border: none; }
+      thead th { position: static; }
+      table { font-size: 11px; }
+      tr, .totals { break-inside: avoid; }
+      a { text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar no-print">
+    <nav class="nav" aria-label="Main">
+      <a href="/booking-form">Bookings</a>
+      <a href="/analytics">Analytics</a>
+      <a href="/admin">Admin</a>
+      <a href="/tax-summary" class="active">Tax summary</a>
+    </nav>
+    <div class="nav">
+      <button type="button" id="printBtn">Print / Save as PDF</button>
+      <button type="button" id="csvBtn">Download CSV</button>
+    </div>
+  </header>
+
+  <main>
+    <h1>Tax summary</h1>
+    <p class="period" id="periodLabel"></p>
+
+    <div class="controls no-print">
+      <label>Period
+        <select id="mode">
+          <option value="tax">UK tax year (6 April to 5 April)</option>
+          <option value="calendar">Calendar year</option>
+        </select>
+      </label>
+      <label>Which year
+        <select id="which"></select>
+      </label>
+    </div>
+
+    <p class="meta" id="excludedNote"></p>
+    <div id="excludedMount"></div>
+    <p class="meta" id="arrivalNote"></p>
+    <p class="status no-print" id="status">Loading…</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Tour dates</th>
+            <th>Organiser</th>
+            <th>Group</th>
+            <th class="num">Income</th>
+            <th>Costs</th>
+            <th class="num">Profit</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <section class="totals" id="totals"></section>
+    <p class="note">Figures are only amounts already saved on the booking. A cost that was not recorded is shown as missing, and profit is incomplete until fuel, hotel costs and other costs are all recorded in the same currency. Czech koruna and euros are listed on their own and are not turned into pounds.</p>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let allBookings = [];
+    let allExpenses = [];
+    let latestSummary = null;
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+    }
+
+    function setStatus(text) {
+      const el = document.getElementById('status');
+      if (el) el.textContent = text;
+    }
+
+    function moneyHtml(bucket) {
+      if (!bucket || bucket.state === 'missing') return '<span class="missing">missing</span>';
+      if (bucket.state === 'mixed') {
+        return bucket.parts.map(function (p) {
+          return escapeHtml(TaxSummary.formatAmount(p.amount, p.currency));
+        }).join('<br>');
+      }
+      return escapeHtml(TaxSummary.formatAmount(bucket.amount, bucket.currency));
+    }
+
+    function incomeHtml(row) {
+      const bits = [moneyHtml(row.income)];
+      if (row.deposit && row.deposit.state === 'recorded') {
+        bits.push('<span class="sub">Deposit ' + escapeHtml(TaxSummary.formatAmount(row.deposit.amount, row.deposit.currency)) + '</span>');
+      }
+      if (row.leftToPay && row.leftToPay.state === 'recorded') {
+        bits.push('<span class="sub">Left to pay ' + escapeHtml(TaxSummary.formatAmount(row.leftToPay.amount, row.leftToPay.currency)) + '</span>');
+      } else if (row.leftToPay && row.leftToPay.state === 'mixed') {
+        bits.push('<span class="sub">Left to pay mixed currency</span>');
+      }
+      return bits.join('<br>');
+    }
+
+    function figureHtml(figure) {
+      if (!figure || figure.state === 'missing' || figure.state === 'incomplete') return '<span class="missing">missing</span>';
+      if (figure.currency === 'mixed' || figure.state === 'mixed') {
+        const n = Number(figure.amount);
+        const text = Number.isFinite(n)
+          ? n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : 'missing';
+        return escapeHtml(text) + ' <span class="flag">mixed currency — not in the totals</span>';
+      }
+      return escapeHtml(TaxSummary.formatAmount(figure.amount, figure.currency));
+    }
+
+    function costsHtml(row) {
+      const costs = row.costs || { state: 'missing' };
+      const lines = [];
+      if (costs.source === 'stored') {
+        lines.push(figureHtml(costs));
+      } else {
+        lines.push('Fuel ' + moneyHtml(row.fuel));
+        lines.push('Hotels ' + moneyHtml(row.hotels));
+        lines.push('Other ' + moneyHtml(row.other));
+        if (costs.state === 'recorded') {
+          lines.push(figureHtml(costs));
+          lines.push('<span class="flag">Costs worked out from fuel, hotels and other costs.</span>');
+        } else {
+          lines.push('<span class="missing">missing</span>');
+          lines.push('<span class="flag">Total expenses was blank, so the costs were not filled in from a missing part.</span>');
+        }
+      }
+      if (row.totalCost && row.totalCost.state === 'recorded') {
+        lines.push('<span class="sub">Total cost ' + figureHtml(row.totalCost) + '</span>');
+        if (row.totalCost.source === 'parts') {
+          lines.push('<span class="flag">Total cost worked out from the tour price plus expenses.</span>');
+        }
+      }
+      return lines.join('<br>');
+    }
+
+    function profitHtml(row) {
+      if (!row.profit || row.profit.state !== 'recorded') return '<span class="incomplete">incomplete</span>';
+      let html = figureHtml(row.profit);
+      if (row.profit.source === 'parts') {
+        html += '<span class="flag">Profit worked out from recorded payments minus expenses.</span>';
+      }
+      return html;
+    }
+
+    function flagHtml(row) {
+      const bits = [];
+      (row.flags || []).forEach(function (code) {
+        const name = code === 'CZK' ? 'Czech koruna' : code === 'EUR' ? 'euros' : code;
+        bits.push('Includes ' + name + '. That amount is not in the GBP totals.');
+      });
+      (row.noteFlags || []).forEach(function (code) {
+        const name = code === 'CZK' ? 'Czech koruna' : 'euros';
+        bits.push('Currency note mentions ' + name + '. The note is not turned into a figure.');
+      });
+      if (row.companionMoney) bits.push('check: companion with own money');
+      if (!bits.length) return '';
+      return '<span class="flag">' + escapeHtml(bits.join(' ')) + '</span>';
+    }
+
+    function statusHtml(row) {
+      if (row.role === 'unconfirmed') return '<span class="badge">Unconfirmed</span>';
+      if (row.role === 'companion') {
+        const of = row.parentLabel ? 'Companion of ' + row.parentLabel : 'Companion';
+        return '<span class="badge">' + escapeHtml(of) + '</span>';
+      }
+      return '';
+    }
+
+    function reasonLabel(reason) {
+      if (reason === 'cancelled') return 'Cancelled';
+      if (reason === 'duplicate') return 'Duplicate';
+      return reason || '';
+    }
+
+    function excludedBoxHtml(summary) {
+      const rows = summary.excludedRows || [];
+      const body = rows.length
+        ? '<table><thead><tr><th>Id</th><th>Name</th><th>Reason</th></tr></thead><tbody>' +
+          rows.map(function (row) {
+            return '<tr><td>' + escapeHtml(row.id) + '</td><td>' + escapeHtml(row.name || 'missing') + '</td><td>' + escapeHtml(reasonLabel(row.reason)) + '</td></tr>';
+          }).join('') + '</tbody></table>'
+        : '<p>None.</p>';
+      return '<details class="excluded-box" id="excludedBox"><summary>Excluded rows (' + rows.length + ')</summary><div class="excluded-body">' + body + '</div></details>';
+    }
+
+    function paint(summary) {
+      latestSummary = summary;
+      document.getElementById('periodLabel').textContent = summary.period.label;
+      document.title = 'Tax summary — ' + summary.period.label;
+      document.getElementById('excludedNote').textContent = TaxSummary.exclusionCountLabel(summary);
+      document.getElementById('excludedMount').innerHTML = excludedBoxHtml(summary);
+      const arrival = document.getElementById('arrivalNote');
+      arrival.textContent = summary.missingArrival
+        ? summary.missingArrival + (summary.missingArrival === 1 ? ' booking has' : ' bookings have') + ' no arrival date, so they are not placed in a period.'
+        : '';
+
+      const body = document.getElementById('rows');
+      if (!summary.rows.length) {
+        body.innerHTML = '<tr><td colspan="6">No tours arrived in this period.</td></tr>';
+      } else {
+        body.innerHTML = summary.rows.map(function (row) {
+          const cls = (row.grey ? 'grey' : '') + (row.role === 'companion' ? ' companion' : '');
+          return '<tr class="' + cls.trim() + '">' +
+            '<td>' + escapeHtml(row.datesLabel) + '</td>' +
+            '<td>' + (row.organiser ? escapeHtml(row.organiser) : '<span class="missing">missing</span>') + '</td>' +
+            '<td>' + (row.group ? escapeHtml(row.group) : '<span class="missing">missing</span>') + (statusHtml(row) ? '<br>' + statusHtml(row) : '') + flagHtml(row) + '</td>' +
+            '<td class="num">' + incomeHtml(row) + '</td>' +
+            '<td>' + costsHtml(row) + '</td>' +
+            '<td class="num">' + profitHtml(row) + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+      document.getElementById('totals').innerHTML = totalsHtml(summary);
+    }
+
+    function totalsHtml(summary) {
+      const totals = summary.totals;
+      const codes = Object.keys(totals.byCurrency);
+      if (codes.indexOf('GBP') === -1) codes.unshift('GBP');
+      codes.sort(function (a, b) {
+        if (a === 'GBP') return -1;
+        if (b === 'GBP') return 1;
+        return a < b ? -1 : 1;
+      });
+      const blocks = codes.map(function (code) {
+        const bag = totals.byCurrency[code];
+        const title = code === 'GBP' ? 'Pounds (GBP)' : code === 'CZK' ? 'Czech koruna (CZK)' : code === 'EUR' ? 'Euros (EUR)' : code;
+        if (!bag || !bag.hasAny) {
+          if (code !== 'GBP') return '';
+          return '<h3>' + title + '</h3><p>No GBP amounts in this period.</p>';
+        }
+        const incomeLine = bag.hasIncome
+          ? escapeHtml(TaxSummary.formatAmount(bag.income, code))
+          : '<span class="missing">missing</span>';
+        const costsLine = !bag.hasCosts
+          ? '<span class="missing">missing</span>'
+          : (totals.costsMissing
+            ? '<span class="incomplete">incomplete</span> — recorded so far ' + escapeHtml(TaxSummary.formatAmount(bag.costs, code))
+            : escapeHtml(TaxSummary.formatAmount(bag.costs, code)));
+        let profitLine;
+        if (!bag.profitTours) {
+          profitLine = '<span class="incomplete">incomplete</span>';
+        } else if (totals.profitIncomplete) {
+          profitLine = '<span class="incomplete">incomplete</span> — complete tours only ' + escapeHtml(TaxSummary.formatAmount(bag.profit, code));
+        } else {
+          profitLine = escapeHtml(TaxSummary.formatAmount(bag.profit, code));
+        }
+        const extra = [];
+        if (bag.deposits) extra.push('Deposits recorded: ' + TaxSummary.formatAmount(bag.deposits, code) + '.');
+        if (bag.left) extra.push('Left to pay recorded: ' + TaxSummary.formatAmount(bag.left, code) + '.');
+        return '<h3>' + escapeHtml(title) + '</h3>' +
+          '<p>Income: ' + incomeLine + '</p>' +
+          '<p>Costs: ' + costsLine + '</p>' +
+          '<p>Profit: ' + profitLine + '</p>' +
+          (extra.length ? '<p>' + extra.join(' ') + '</p>' : '');
+      }).join('');
+      const gaps = [];
+      if (totals.incomeMissing) {
+        gaps.push(totals.incomeMissing + (totals.incomeMissing === 1 ? ' tour has' : ' tours have') + ' no income figure.');
+      }
+      if (totals.costsMissing) {
+        gaps.push(totals.costsMissing + (totals.costsMissing === 1 ? ' tour is' : ' tours are') + ' missing a cost total.');
+      }
+      if (totals.mixedMoney) {
+        gaps.push(totals.mixedMoney + (totals.mixedMoney === 1 ? ' tour mixes' : ' tours mix') + ' currencies, so those amounts are not in the totals.');
+      }
+      if (totals.profitIncomplete) {
+        gaps.push('Profit for this period is incomplete.');
+      }
+      const included = totals.includedCount == null ? summary.rows.length : totals.includedCount;
+      return '<h2>Totals for ' + escapeHtml(summary.period.label) + '</h2>' +
+        '<p>' + summary.rows.length + (summary.rows.length === 1 ? ' tour' : ' tours') + ' in this period. ' + included + ' included in the totals.</p>' +
+        (gaps.length ? '<p>' + escapeHtml(gaps.join(' ')) + '</p>' : '') +
+        blocks;
+    }
+
+    function fillYearSelect() {
+      const mode = document.getElementById('mode').value;
+      const select = document.getElementById('which');
+      const today = new Date();
+      const options = TaxSummary.periodOptions(mode, allBookings, today);
+      const preferred = TaxSummary.defaultPeriod(mode, today);
+      select.innerHTML = options.map(function (p) {
+        return '<option value="' + escapeHtml(p.start + '|' + p.end) + '">' + escapeHtml(p.label) + '</option>';
+      }).join('');
+      const preferredValue = preferred.start + '|' + preferred.end;
+      select.value = options.some(function (p) { return p.start + '|' + p.end === preferredValue; })
+        ? preferredValue
+        : (options[0] ? options[0].start + '|' + options[0].end : '');
+    }
+
+    function selectedPeriod() {
+      const mode = document.getElementById('mode').value;
+      const raw = document.getElementById('which').value || '';
+      const bits = raw.split('|');
+      const match = TaxSummary.periodOptions(mode, allBookings, new Date()).find(function (p) {
+        return p.start === bits[0] && p.end === bits[1];
+      });
+      return match || TaxSummary.defaultPeriod(mode, new Date());
+    }
+
+    function renderFromSelection() {
+      const summary = TaxSummary.buildTaxSummary(allBookings, allExpenses, selectedPeriod());
+      paint(summary);
+    }
+
+    function downloadCsv() {
+      if (!latestSummary) return;
+      const csv = TaxSummary.csvForSummary(latestSummary);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tax-summary.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function loadBookings() {
+      setStatus('Loading bookings…');
+      const [bookingsRes, expensesRes] = await Promise.all([
+        sb.from('bookings').select('*').order('tour_arrival_date', { ascending: true }),
+        sb.from('booking_expenses').select('*')
+      ]);
+      if (bookingsRes.error) throw bookingsRes.error;
+      if (expensesRes.error) throw expensesRes.error;
+      allBookings = bookingsRes.data || [];
+      allExpenses = expensesRes.data || [];
+      fillYearSelect();
+      renderFromSelection();
+      setStatus('');
+    }
+
+    document.getElementById('mode').addEventListener('change', function () {
+      fillYearSelect();
+      renderFromSelection();
+    });
+    document.getElementById('which').addEventListener('change', renderFromSelection);
+    window.addEventListener('beforeprint', function () {
+      const box = document.getElementById('excludedBox');
+      if (!box) return;
+      box.dataset.wasOpen = box.open ? '1' : '0';
+      box.open = true;
+    });
+    window.addEventListener('afterprint', function () {
+      const box = document.getElementById('excludedBox');
+      if (box && box.dataset.wasOpen !== '1') box.open = false;
+    });
+    document.getElementById('printBtn').addEventListener('click', function () { window.print(); });
+    document.getElementById('csvBtn').addEventListener('click', downloadCsv);
+
+    async function signedInAsAdmin(session) {
+      const { data: profile, error } = await sb.from('profiles')
+        .select('role, status')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return !!(profile && profile.status !== 'disabled' && profile.role === 'admin');
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      AuthGate.require(sb, { title: 'Tax summary' }).then(function (session) {
+        if (!session) {
+          setStatus('Sign in is required before the tax summary can load.');
+          return;
+        }
+        signedInAsAdmin(session).then(function (ok) {
+          if (!ok) {
+            setStatus('The tax summary is only available to an admin account.');
+            return;
+          }
+          return loadBookings();
+        }).catch(function (err) {
+          console.error(err);
+          setStatus('Could not load bookings. ' + ((err && err.message) || ''));
+        });
+      });
+    });
+  </script>
+</body>
+</html>

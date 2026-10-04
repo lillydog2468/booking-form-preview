@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+  <script>
+    // Apply theme before first paint (prevents "flash" when navigating between pages).
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Booking Form — Analytics</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="place-categories.js"></script>
+  <script src="global-search.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7;
+      --surface: #ffffff;
+      --surface-alt: #f9fafb;
+      --border: #e2e4e9;
+      --text: #1a1d26;
+      --text-secondary: #6b7280;
+      --input-bg: #ffffff;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --accent-soft: #eef2ff;
+      --accent-glow: rgba(79,70,229,.12);
+      --danger: #dc2626;
+      --success: #16a34a;
+      --warning: #f59e0b;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      --shadow-lg: 0 10px 25px rgba(0,0,0,.1), 0 4px 10px rgba(0,0,0,.06);
+      --chart-grid: rgba(107,114,128,.20);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0b1220;
+      --surface: rgba(255,255,255,.06);
+      --surface-alt: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.12);
+      --text: #f3f4f6;
+      --text-secondary: rgba(243,244,246,.72);
+      --input-bg: rgba(255,255,255,.06);
+      --accent: #a78bfa;
+      --accent-hover: #8b5cf6;
+      --accent-soft: rgba(167,139,250,.12);
+      --accent-glow: rgba(167,139,250,.18);
+      --chart-grid: rgba(243,244,246,.14);
+      --shadow: none;
+      --shadow-lg: none;
+    }
+
+    body {
+      font-family: 'DM Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.3;
+    }
+
+	    a { color: inherit; text-decoration: none; }
+
+	    .topbar {
+	      background: var(--surface);
+	      border-bottom: 1px solid var(--border);
+	      position: sticky;
+	      top: 0;
+	      z-index: 50;
+	    }
+	    [data-theme="dark"] .topbar { background: var(--surface); }
+
+		    .topbar-inner {
+		      width: 100%;
+		      padding: 14px 32px;
+		      display: flex;
+		      align-items: center;
+		      justify-content: space-between;
+		      gap: 12px;
+		    }
+		    @media (max-width: 520px) {
+		      .topbar-inner { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+		      .topbar h1 { font-size: 15px; }
+		      .topbar-left { gap: 10px; flex-wrap: wrap; }
+		      .topbar-actions { gap: 6px; }
+		    }
+
+		    .topbar-left { display: flex; align-items: center; gap: 20px; min-width: 0; }
+		    .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
+
+	    /* ── View nav (match Booking Form header) ── */
+	    .view-nav {
+	      display: flex;
+	      gap: 4px;
+	      background: var(--bg);
+	      border-radius: 8px;
+	      padding: 3px;
+	    }
+	    .view-nav-btn {
+	      padding: 6px 14px;
+	      border: none;
+	      border-radius: 6px;
+	      font-family: inherit;
+	      font-size: 12px;
+	      font-weight: 600;
+	      cursor: pointer;
+	      background: transparent;
+	      color: var(--text-secondary);
+	      transition: background .15s, color .15s;
+	      display: flex;
+	      align-items: center;
+	      gap: 5px;
+	    }
+		    .view-nav-btn.active {
+		      background: var(--surface);
+		      color: var(--text);
+		      box-shadow: var(--shadow);
+		    }
+		    .view-nav-btn:hover:not(.active) { color: var(--text); }
+		    .view-nav-btn svg { width: 14px; height: 14px; }
+
+	    .topbar-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+	    .page-nav { display: none; }
+
+    /* ── User menu ── */
+    .user-menu { position: relative; display: none; }
+    .user-menu-popover {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 10px);
+      width: min(320px, 86vw);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      padding: 10px;
+      display: none;
+      z-index: 120;
+    }
+    .user-menu.open .user-menu-popover { display: block; }
+    .user-menu-header {
+      padding: 10px 10px 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .user-menu-email {
+      font-weight: 900;
+      font-size: 13px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .user-menu-role { font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-top: 2px; text-transform: uppercase; letter-spacing: .35px; }
+    .user-menu-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .user-menu-item:hover { background: var(--surface-alt); border-color: var(--border); }
+    .user-menu-item.danger { color: var(--danger); }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 9px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: var(--shadow);
+      transition: background .12s, border-color .12s, transform .05s;
+    }
+    .btn:hover { border-color: rgba(79,70,229,.35); background: var(--surface-alt); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary {
+      background: var(--accent);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: var(--shadow-lg);
+    }
+	    .btn-primary:hover { background: var(--accent-hover); }
+	    .btn-outline { background: transparent; box-shadow: none; }
+
+	    /* Consistent "Menu" button across pages */
+	    .btn.menu-btn {
+	      padding: 10px 16px;
+	      border-radius: 14px;
+	      border: 1px solid var(--border);
+	      background: var(--surface);
+	      color: var(--text);
+	      gap: 10px;
+	      font-weight: 800;
+	      box-shadow: var(--shadow);
+	    }
+	    .btn.menu-btn:hover { background: var(--surface-alt); }
+
+    .theme-toggle {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      box-shadow: var(--shadow);
+    }
+
+	    .wrap {
+	      max-width: none;
+	      margin: 0;
+	      padding: 18px 32px 40px;
+	      display: flex;
+	      flex-direction: column;
+	      gap: 14px;
+	    }
+	    @media (max-width: 520px) {
+	      .wrap { padding: 14px 14px 32px; }
+	    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+    .print-summary { display: none; }
+
+	    .filters {
+	      display: grid;
+	      grid-template-columns: 1.1fr .9fr .9fr .7fr .8fr 1.3fr auto;
+	      gap: 10px;
+	      align-items: end;
+	    }
+    .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .field label { font-size: 12px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .4px; }
+    .field input, .field select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--input-bg);
+      color: var(--text);
+      outline: none;
+    }
+	    .field input:focus, .field select:focus {
+	      border-color: var(--accent);
+	      box-shadow: 0 0 0 3px var(--accent-glow);
+	    }
+
+	    .tours-field { position: relative; }
+	    .multi-btn {
+	      width: 100%;
+	      display: inline-flex;
+	      align-items: center;
+	      justify-content: space-between;
+	      gap: 10px;
+	      padding: 10px 12px;
+	      border-radius: 12px;
+	      border: 1px solid var(--border);
+	      background: var(--input-bg);
+	      color: var(--text);
+	      font-weight: 800;
+	      cursor: pointer;
+	    }
+	    .multi-btn:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+	    .picker {
+	      position: absolute;
+	      top: calc(100% + 8px);
+	      right: 0;
+	      width: min(520px, 92vw);
+	      max-height: 420px;
+	      overflow: hidden;
+	      border: 1px solid var(--border);
+	      background: var(--surface);
+	      border-radius: 14px;
+	      box-shadow: 0 12px 36px rgba(0,0,0,.20);
+	      z-index: 50;
+	      display: none;
+	    }
+	    .picker.open { display: block; }
+	    .picker-top {
+	      padding: 10px;
+	      border-bottom: 1px solid var(--border);
+	      display: grid;
+	      grid-template-columns: 1fr auto;
+	      gap: 10px;
+	      align-items: center;
+	    }
+	    .picker-top input {
+	      width: 100%;
+	      padding: 10px 12px;
+	      border-radius: 12px;
+	      border: 1px solid var(--border);
+	      background: var(--input-bg);
+	      color: var(--text);
+	      outline: none;
+	    }
+	    .picker-actions { display: inline-flex; gap: 8px; }
+	    .picker-actions .btn { padding: 8px 10px; border-radius: 12px; font-size: 12px; }
+	    .picker-list { max-height: 280px; overflow: auto; padding: 6px 8px; }
+	    .picker-item {
+	      display: grid;
+	      grid-template-columns: 18px 1fr;
+	      gap: 10px;
+	      align-items: start;
+	      padding: 10px 10px;
+	      border-radius: 12px;
+	      cursor: pointer;
+	    }
+	    .picker-item:hover { background: var(--accent-soft); }
+	    .picker-item input { margin-top: 2px; }
+	    .picker-line1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+	    .pill {
+	      display: inline-flex;
+	      align-items: center;
+	      gap: 6px;
+	      padding: 4px 8px;
+	      border-radius: 999px;
+	      border: 1px solid var(--border);
+	      background: var(--surface-alt);
+	      font-size: 11px;
+	      font-weight: 900;
+	      color: var(--text-secondary);
+	      white-space: nowrap;
+	    }
+	    .picker-foot { padding: 10px 12px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .kpi {
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .kpi .label { font-size: 12px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .35px; }
+    .kpi .value { font-size: 22px; font-weight: 900; letter-spacing: -.3px; }
+    .kpi .sub { font-size: 12px; color: var(--text-secondary); }
+    .pos { color: var(--success); }
+    .neg { color: var(--danger); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.45fr 1fr;
+      gap: 10px;
+    }
+
+    .insights {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .insight-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-left: 18px;
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .insight-list li { color: var(--text); }
+    .insight-list .muted { color: var(--text-secondary); }
+    .insight-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-secondary);
+      margin-left: 6px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .insight-badge.good { color: var(--success); border-color: rgba(22,163,74,.22); background: rgba(22,163,74,.08); }
+    .insight-badge.warn { color: var(--warning); border-color: rgba(245,158,11,.22); background: rgba(245,158,11,.10); }
+    .insight-badge.bad { color: var(--danger); border-color: rgba(220,38,38,.22); background: rgba(220,38,38,.08); }
+
+    details.details {
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    details.details > summary {
+      cursor: pointer;
+      font-weight: 900;
+      font-size: 14px;
+      list-style: none;
+    }
+    details.details > summary::-webkit-details-marker { display: none; }
+    details.details > summary::before {
+      content: '▸';
+      display: inline-block;
+      margin-right: 8px;
+      color: var(--text-secondary);
+    }
+    details.details[open] > summary::before { content: '▾'; }
+    details.details .details-body { margin-top: 12px; }
+
+    .chart-card {
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .chart-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .chart-title h3 { font-size: 14px; font-weight: 900; letter-spacing: -.2px; }
+    .chart-title .hint { font-size: 12px; color: var(--text-secondary); }
+
+    .chart-wrap { position: relative; flex: 1; min-height: 260px; }
+    canvas { width: 100% !important; height: 100% !important; }
+
+    .table-card {
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      border-radius: 14px;
+      padding: 12px;
+      overflow: hidden;
+    }
+	    .table-header {
+	      display: flex;
+	      align-items: center;
+	      justify-content: space-between;
+	      gap: 10px;
+	      margin-bottom: 10px;
+	    }
+	    .table-title { display: flex; flex-direction: column; gap: 2px; }
+	    .table-header h3 { font-size: 14px; font-weight: 900; }
+    .table-header input {
+      width: 280px;
+      max-width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--input-bg);
+      color: var(--text);
+      outline: none;
+    }
+    .table-header input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { font-size: 11px; font-weight: 900; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .35px; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr:hover td { background: var(--accent-soft); }
+
+    .status {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--text-secondary);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--warning); }
+    .dot.ok { background: var(--success); }
+    .dot.err { background: var(--danger); }
+
+    .empty {
+      padding: 26px 10px;
+      color: var(--text-secondary);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .filters { grid-template-columns: 1fr 1fr; }
+      .filters .btn { grid-column: 1 / -1; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    @media print {
+      :root, [data-theme] {
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --surface-alt: #ffffff;
+        --border: #d1d5db;
+        --text: #111827;
+        --text-secondary: #374151;
+        --shadow: none;
+        --shadow-lg: none;
+      }
+      body { background: #fff !important; }
+	      .topbar, .topbar-actions, .filters .btn, .theme-toggle { display: none !important; }
+      .wrap { max-width: none; padding: 0; }
+      .panel { box-shadow: none; border-radius: 0; border-left: none; border-right: none; padding: 10px; }
+      .print-summary { display: block !important; }
+      .chart-card, .kpi { break-inside: avoid; page-break-inside: avoid; }
+      .table-card { break-inside: auto; page-break-inside: auto; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+      .chart-card { min-height: 240px; }
+      .chart-wrap { min-height: 220px; }
+      .table-scroll { max-height: none !important; overflow: visible !important; }
+      table { font-size: 11px; }
+      .table-header input { display: none; }
+      tr:hover td { background: transparent; }
+      @page { size: A4 landscape; margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+	  <div class="topbar">
+	    <div class="topbar-inner">
+		      <div class="topbar-left">
+		        <h1>Booking Form</h1>
+		        <div class="view-nav" aria-label="Navigation">
+		          <a class="view-nav-btn" href="/booking-form?view=form" style="text-decoration:none;">
+		            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>
+		            Form
+		          </a>
+		          <a class="view-nav-btn" href="/booking-form?view=form&layout=layout" style="text-decoration:none;">
+		            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="10" y1="9" x2="10" y2="21"/></svg>
+		            Layout
+		          </a>
+		          <a class="view-nav-btn" href="/booking-form?view=table" style="text-decoration:none;">
+		            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+		            Table
+		          </a>
+		          <a class="view-nav-btn active" href="/analytics" style="text-decoration:none;">
+		            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17v-6"/><path d="M12 17V7"/><path d="M16 17v-3"/></svg>
+		            Analytics
+		          </a>
+		          <a class="view-nav-btn" href="/tax-summary" style="text-decoration:none;">
+		            Tax summary
+		          </a>
+		          <a class="view-nav-btn" href="/tour-planner" style="text-decoration:none;">
+		            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+		            Planner
+		          </a>
+		          <a class="view-nav-btn" href="/hotels" style="text-decoration:none;" id="navHotels">
+		            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21V12h6v9"/></svg>
+		            Hotels
+		          </a>
+		          <a class="view-nav-btn" href="/places-stats" style="text-decoration:none;" id="navPlacesStats">
+		            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+		            Places stats
+		          </a>
+		        </div>
+		      </div>
+	      <div class="topbar-actions">
+        <div id="globalSearchMount" class="global-search-mount" aria-live="polite"></div>
+		        <!-- nav moved to left to match other pages -->
+	        <span class="status" id="status">
+	          <span class="dot" id="statusDot"></span>
+	          <span id="statusText">Loading…</span>
+	        </span>
+        <button class="btn btn-outline" id="refreshBtn" onclick="refreshAll()">Refresh</button>
+        <button class="btn btn-outline" id="printBtn" onclick="exportPDF()">Export PDF</button>
+	        <div class="user-menu" id="userMenu">
+	          <button class="btn btn-outline menu-btn" onclick="toggleUserMenu(event)" title="Menu">
+	            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+	            <span style="font-weight:900;">Menu</span>
+	          </button>
+          <div class="user-menu-popover" role="menu" aria-label="Account menu">
+            <div class="user-menu-header">
+              <div class="user-menu-email" id="userMenuEmail">—</div>
+              <div class="user-menu-role" id="userMenuRole">—</div>
+            </div>
+	            <button class="user-menu-item" type="button" onclick="toggleTheme(); closeUserMenu();">
+	              Theme
+	              <span id="themeModeLabel" style="color:var(--text-secondary);font-weight:900;font-size:12px;">Light</span>
+	            </button>
+            <a class="user-menu-item" id="userMenuAdminLink" href="/admin" style="display:none;">
+              Admin
+              <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">Open</span>
+            </a>
+            <a class="user-menu-item" href="/tour-planner">
+              Tour planner
+              <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">WIP</span>
+            </a>
+            <a class="user-menu-item" href="/hotels">
+              Hotels
+              <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">Year list</span>
+            </a>
+            <a class="user-menu-item" href="/places-stats">
+              Places visit stats
+              <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">Open</span>
+            </a>
+            <button class="user-menu-item danger" type="button" onclick="closeUserMenu(); handleLogout();">
+              Log out
+              <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">⇦</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap" id="app">
+    <div class="panel print-summary" id="printSummary" aria-hidden="true">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:16px;font-weight:900;letter-spacing:-.2px;">Tour Analytics</div>
+          <div style="margin-top:4px;color:var(--text-secondary);font-size:12px;" id="printSummaryFilters">—</div>
+        </div>
+        <div style="color:var(--text-secondary);font-size:12px;text-align:right;" id="printSummaryGenerated">—</div>
+      </div>
+    </div>
+	    <div class="panel">
+	      <div class="filters">
+	        <div class="field">
+	          <label>Date range (arrival)</label>
+	          <select id="datePreset" onchange="onDatePresetChange()">
+	            <option value="last180">Last 6 months</option>
+	            <option value="last90">Last 90 days</option>
+	            <option value="last30">Last 30 days</option>
+	            <option value="thisYear">This year</option>
+	            <option value="next180">Next 6 months</option>
+	            <option value="all">All time</option>
+	            <option value="custom">Custom</option>
+	          </select>
+	        </div>
+	        <div class="field">
+	          <label>From (arrival)</label>
+	          <input type="date" id="dateFrom" onchange="onFiltersChange()" disabled>
+	        </div>
+	        <div class="field">
+	          <label>To (arrival)</label>
+	          <input type="date" id="dateTo" onchange="onFiltersChange()" disabled>
+	        </div>
+	        <div class="field">
+	          <label>Currency</label>
+	          <select id="currencyFilter" onchange="onFiltersChange()">
+	            <option value="GBP">GBP</option>
+	            <option value="CZK">CZK</option>
+	          </select>
+	        </div>
+	        <div class="field">
+	          <label>Include</label>
+	          <select id="includeFilter" onchange="onFiltersChange()">
+	            <option value="all">All tours</option>
+	            <option value="past">Past only</option>
+	            <option value="upcoming">Upcoming only</option>
+	          </select>
+	        </div>
+		        <div class="field tours-field">
+		          <label>Tours</label>
+		          <button type="button" class="multi-btn" id="tourMultiBtn" onclick="toggleTourPicker(event)">
+		            <span id="tourMultiBtnLabel">All tours</span>
+		            <span style="color:var(--text-secondary);font-weight:900;">▾</span>
+		          </button>
+	          <div class="picker" id="tourPicker" role="dialog" aria-label="Tour selection">
+	            <div class="picker-top">
+	              <input type="text" id="tourPickerSearch" placeholder="Search tours…" oninput="renderTourPickerList()">
+	              <div class="picker-actions">
+	                <button class="btn btn-outline" type="button" onclick="clearTourSelection()">All tours</button>
+	                <button class="btn btn-outline" type="button" onclick="selectFilteredTours()">Select filtered</button>
+	              </div>
+	            </div>
+	            <div class="picker-list" id="tourPickerList"></div>
+		            <div class="picker-foot">Tip: no selection = All tours. Use “Select filtered” after setting Date/Currency/Include.</div>
+		          </div>
+		        </div>
+		        <button class="btn btn-outline" type="button" onclick="clearAllFilters()">Clear filters</button>
+		      </div>
+		    </div>
+
+    <div class="panel">
+      <div class="kpis">
+        <div class="kpi"><div class="label">Tours</div><div class="value" id="kpiTours">—</div><div class="sub" id="kpiToursSub">—</div></div>
+        <div class="kpi"><div class="label">Revenue</div><div class="value" id="kpiRevenue">—</div><div class="sub" id="kpiRevenueSub">—</div></div>
+        <div class="kpi"><div class="label">Profit</div><div class="value" id="kpiProfit">—</div><div class="sub" id="kpiProfitSub">—</div></div>
+        <div class="kpi"><div class="label">Margin</div><div class="value" id="kpiMargin">—</div><div class="sub" id="kpiMarginSub">—</div></div>
+        <div class="kpi"><div class="label">Expenses</div><div class="value" id="kpiExpenses">—</div><div class="sub" id="kpiExpensesSub">—</div></div>
+        <div class="kpi"><div class="label">Outstanding</div><div class="value" id="kpiOutstanding">—</div><div class="sub" id="kpiOutstandingSub">—</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="chart-card" style="min-height:220px;">
+        <div class="chart-title">
+          <h3>Most valuable insights</h3>
+          <div class="hint">Based on the filters above</div>
+        </div>
+        <ul class="insight-list" id="insightsList"></ul>
+        <div class="empty" id="insightsEmpty" style="display:none;">No insights to show for the selected filters.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="grid">
+        <div class="chart-card">
+          <div class="chart-title">
+            <h3>Profit trend</h3>
+            <div class="hint">Monthly totals (arrival date)</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartProfitExpenses"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">
+            <h3>Top tours</h3>
+            <div class="hint">Highest profit in selection</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartTopTours"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="chart-card" style="min-height:auto;">
+        <div class="chart-title">
+          <h3>By year</h3>
+          <div class="hint">Year from tour arrival (or plan year) · follows filters above · tip: set Date range to All time</div>
+        </div>
+        <div class="grid" style="margin-top:4px;">
+          <div class="chart-wrap" style="min-height:240px;"><canvas id="chartToursByYear"></canvas></div>
+          <div class="table-card" style="box-shadow:none; padding:0; background:transparent; border:none;">
+            <div class="table-scroll" style="overflow:auto; max-height: 280px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Year</th>
+                    <th class="num">Tours</th>
+                    <th class="num">Guests</th>
+                    <th class="num">Avg size</th>
+                    <th class="num">1–4</th>
+                    <th class="num">5–8</th>
+                    <th class="num">9+</th>
+                  </tr>
+                </thead>
+                <tbody id="yearStatsBody"></tbody>
+              </table>
+              <div class="empty" id="yearStatsEmpty" style="display:none;">No tours in the selected filters.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="grid">
+        <div class="chart-card">
+          <div class="chart-title">
+            <h3>Group size by year</h3>
+            <div class="hint">How many tours fall in each size band</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartSizeByYear"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">
+            <h3>Repeat organisers</h3>
+            <div class="hint">People linked to more than one visit</div>
+          </div>
+          <div class="table-scroll" style="overflow:auto; max-height: 280px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Organiser</th>
+                  <th class="num">Visits</th>
+                  <th>Years</th>
+                </tr>
+              </thead>
+              <tbody id="repeatOrgsBody"></tbody>
+            </table>
+            <div class="empty" id="repeatOrgsEmpty" style="display:none;">No repeat organisers in People data yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="details">
+      <summary>Tour details</summary>
+      <div class="details-body">
+        <div class="table-card">
+	          <div class="table-header">
+	            <div class="table-title">
+	              <h3>Tours</h3>
+	              <div class="hint">Fully paid tours only · payment reminders stay in Insights</div>
+	            </div>
+	            <input type="text" id="tableSearch" placeholder="Search tours…" oninput="renderTable()">
+	          </div>
+          <div class="table-scroll" style="overflow:auto; max-height: 440px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Arrival</th>
+                  <th>Departure</th>
+                  <th class="num">People</th>
+                  <th class="num">Paid</th>
+                  <th class="num">Expenses</th>
+                  <th class="num">Profit</th>
+                  <th class="num">Left</th>
+                </tr>
+              </thead>
+              <tbody id="toursBody"></tbody>
+            </table>
+            <div class="empty" id="toursEmpty" style="display:none;">No tours match your filters.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const DEFAULT_CURRENCY = 'GBP';
+    const CURRENCY_SYMBOL = { GBP: '£', CZK: 'Kč' };
+
+    function normalizeCurrency(code) {
+      const cur = String(code || '').toUpperCase();
+      if (cur === 'EUR') return 'GBP';
+      if (cur === 'GBP' || cur === 'CZK') return cur;
+      return DEFAULT_CURRENCY;
+    }
+
+    function formatMoney(amount, currency) {
+      const cur = normalizeCurrency(currency);
+      const symbol = CURRENCY_SYMBOL[cur] || '';
+      const n = Number(amount);
+      const formatted = Number.isFinite(n) ? n.toFixed(2) : '0.00';
+      return symbol ? `${symbol}${formatted}` : `${formatted} ${cur}`;
+    }
+
+    function parseISODateUTC(iso) {
+      if (!iso) return null;
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
+      if (!m) return null;
+      return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    }
+
+    function formatDateDMY(iso) {
+      const d = parseISODateUTC(iso);
+      if (!d) return iso ? String(iso) : '';
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const yyyy = String(d.getUTCFullYear());
+      return `${dd}/${mm}/${yyyy}`;
+    }
+
+    function utcStartOfToday() {
+      const now = new Date();
+      return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    }
+
+    function setStatus(text, type = 'info') {
+      const dot = document.getElementById('statusDot');
+      const label = document.getElementById('statusText');
+      label.textContent = text;
+      dot.className = 'dot' + (type === 'ok' ? ' ok' : type === 'err' ? ' err' : '');
+    }
+
+	    function toggleTheme() {
+	      const html = document.documentElement;
+	      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+	      html.setAttribute('data-theme', next);
+	      localStorage.setItem('theme', next);
+	      updateThemeModeLabel();
+	      applyChartTheme();
+	      renderAll();
+	    }
+
+	    function updateThemeModeLabel() {
+	      const label = document.getElementById('themeModeLabel');
+	      if (!label) return;
+	      label.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Dark' : 'Light';
+	    }
+
+		    function applyStoredTheme() {
+		      const stored = localStorage.getItem('theme');
+		      if (stored) document.documentElement.setAttribute('data-theme', stored);
+		      else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.setAttribute('data-theme', 'dark');
+		      updateThemeModeLabel();
+		    }
+
+    function toggleUserMenu(e) {
+      if (e) e.stopPropagation();
+      const menu = document.getElementById('userMenu');
+      if (!menu) return;
+      menu.classList.toggle('open');
+    }
+
+    function closeUserMenu() {
+      const menu = document.getElementById('userMenu');
+      if (menu) menu.classList.remove('open');
+    }
+
+    async function handleLogout() {
+      try {
+        await sb.auth.signOut();
+      } catch {}
+      window.location.href = 'booking-form.html';
+    }
+
+    function exportPDF() {
+      // Uses browser print-to-PDF for best fidelity across platforms.
+      updatePrintSummary();
+      document.documentElement.classList.add('print-mode');
+      setTimeout(() => window.print(), 50);
+    }
+
+	    let allBookings = [];
+	    let allExpenses = [];
+	    let charts = { trend: null, topTours: null, byYear: null, sizeByYear: null };
+	    let allPeople = [];
+
+	    let globalSearchApi = null;
+	    function initGlobalSearch() {
+	      if (!window.GlobalSearch || globalSearchApi) return;
+	      globalSearchApi = window.GlobalSearch.init({
+	        supabase: sb,
+	        requireAuth: true,
+	        isSignedIn: async () => {
+	          try {
+	            const { data: { session } } = await sb.auth.getSession();
+	            return !!session;
+	          } catch { return false; }
+	        },
+	        getBookings: () => allBookings || [],
+	        getPeople: () => (allPeople || []).map(p => ({
+	          id: p.client_id || p.id,
+	          name: p.name,
+	          email: p.email,
+	          notes: p.notes,
+	          visit_refs: p.visit_refs,
+	          visit_count: p.visit_count,
+	        })),
+	        getPlaces: () => null,
+	      });
+	    }
+
+	    let selectedTourIds = new Set(); // empty = "All tours"
+
+	    const FILTERS_STORAGE_KEY = 'analyticsFiltersV2';
+
+	    function getFilters() {
+	      const df = document.getElementById('dateFrom').value || '';
+	      const dt = document.getElementById('dateTo').value || '';
+	      const preset = document.getElementById('datePreset')?.value || 'last180';
+	      const currency = document.getElementById('currencyFilter').value || 'GBP';
+	      const include = document.getElementById('includeFilter').value || 'all';
+	      const tourIds = selectedTourIds.size ? [...selectedTourIds] : [];
+	      return { df, dt, preset, currency, include, tourIds };
+	    }
+
+	    function saveFiltersToStorage() {
+	      try {
+	        const { df, dt, preset, currency, include, tourIds } = getFilters();
+	        localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify({ df, dt, preset, currency, include, tourIds }));
+	      } catch {}
+	    }
+
+	    function loadFiltersFromStorage() {
+	      try {
+	        const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
+	        if (!raw) return;
+	        const v = JSON.parse(raw);
+	        if (!v || typeof v !== 'object') return;
+	        if (v.currency) document.getElementById('currencyFilter').value = v.currency;
+	        if (v.include) document.getElementById('includeFilter').value = v.include;
+	        if (v.preset) document.getElementById('datePreset').value = v.preset;
+	        if (typeof v.df === 'string') document.getElementById('dateFrom').value = v.df;
+	        if (typeof v.dt === 'string') document.getElementById('dateTo').value = v.dt;
+	        if (Array.isArray(v.tourIds)) selectedTourIds = new Set(v.tourIds.map(x => String(x)));
+	      } catch {}
+	    }
+
+	    function isoUTC(d) {
+	      if (!d || !Number.isFinite(d.getTime())) return '';
+	      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+	    }
+
+	    function applyDatePreset(preset) {
+	      const dfEl = document.getElementById('dateFrom');
+	      const dtEl = document.getElementById('dateTo');
+	      const isCustom = preset === 'custom';
+	      dfEl.disabled = !isCustom;
+	      dtEl.disabled = !isCustom;
+
+	      if (isCustom) return;
+
+	      const today = utcStartOfToday();
+	      if (preset === 'all') {
+	        dfEl.value = '';
+	        dtEl.value = '';
+	        return;
+	      }
+	      if (preset === 'thisYear') {
+	        const y = today.getUTCFullYear();
+	        dfEl.value = `${y}-01-01`;
+	        dtEl.value = `${y}-12-31`;
+	        return;
+	      }
+	      if (preset === 'next180') {
+	        dfEl.value = isoUTC(today);
+	        dtEl.value = isoUTC(new Date(today.getTime() + 180 * 86400000));
+	        return;
+	      }
+	      const days = preset === 'last30' ? 30 : preset === 'last90' ? 90 : 180;
+	      dfEl.value = isoUTC(new Date(today.getTime() - days * 86400000));
+	      dtEl.value = isoUTC(today);
+	    }
+
+		    function onDatePresetChange() {
+		      const preset = document.getElementById('datePreset')?.value || 'last180';
+		      applyDatePreset(preset);
+		      saveFiltersToStorage();
+		      renderAll();
+		    }
+
+		    function clearAllFilters() {
+		      try { localStorage.removeItem(FILTERS_STORAGE_KEY); } catch {}
+
+		      const presetEl = document.getElementById('datePreset');
+		      if (presetEl) presetEl.value = 'last180';
+		      applyDatePreset('last180');
+
+		      const currencyEl = document.getElementById('currencyFilter');
+		      if (currencyEl) currencyEl.value = 'GBP';
+		      const incEl = document.getElementById('includeFilter');
+		      if (incEl) incEl.value = 'all';
+
+		      selectedTourIds = new Set();
+		      const tourSearch = document.getElementById('tourPickerSearch');
+		      if (tourSearch) tourSearch.value = '';
+		      closeTourPicker();
+		      setTourBtnLabel();
+		      renderTourPickerList();
+
+		      const tableSearch = document.getElementById('tableSearch');
+		      if (tableSearch) tableSearch.value = '';
+
+		      saveFiltersToStorage();
+		      renderAll();
+		    }
+
+	    function getBookingBaseCurrency(b) {
+	      return normalizeCurrency(b?.beading_tour_price_currency || DEFAULT_CURRENCY);
+	    }
+
+    function isPastTour(b) {
+      const cutoffIso = b?.departure_date || b?.tour_arrival_date;
+      const cutoff = parseISODateUTC(cutoffIso);
+      if (!cutoff) return false;
+      return cutoff.getTime() < utcStartOfToday().getTime();
+    }
+
+    function isFullyPaid(b) {
+      return (Number(b.left_to_pay) || 0) <= 0;
+    }
+
+    function computeFinalPaymentDueUTC(b) {
+      const start = parseISODateUTC(b?.tour_arrival_date);
+      if (!start) return null;
+      return new Date(start.getTime() - 42 * 86400000);
+    }
+
+    function formatDateUTC(d) {
+      if (!d || !Number.isFinite(d.getTime())) return '—';
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const yyyy = String(d.getUTCFullYear());
+      return `${dd}/${mm}/${yyyy}`;
+    }
+
+	    function filterBookingsRaw() {
+	      const { df, dt, currency, include, tourIds } = getFilters();
+	      const from = parseISODateUTC(df);
+	      const to = parseISODateUTC(dt);
+
+      let rows = [...allBookings];
+
+      if (from) rows = rows.filter(b => {
+        const d = parseISODateUTC(b.tour_arrival_date);
+        return d && d.getTime() >= from.getTime();
+      });
+      if (to) rows = rows.filter(b => {
+        const d = parseISODateUTC(b.tour_arrival_date);
+        return d && d.getTime() <= to.getTime();
+      });
+
+      if (include !== 'all') {
+        rows = rows.filter(b => include === 'past' ? isPastTour(b) : !isPastTour(b));
+      }
+
+	      rows = rows.filter(b => getBookingBaseCurrency(b) === currency);
+	      if (tourIds && tourIds.length) {
+	        const set = new Set(tourIds.map(x => String(x)));
+	        rows = rows.filter(b => set.has(String(b.id)));
+	      }
+
+	      return rows;
+	    }
+
+    function getFilteredSets() {
+      const raw = filterBookingsRaw();
+      const paid = raw.filter(isFullyPaid);
+      const outstanding = raw.filter(b => (Number(b.left_to_pay) || 0) > 0);
+      return { raw, paid, outstanding };
+    }
+
+    function getPotentialProfit(b) {
+      // Potential profit before tour completes: expected revenue minus expected expenses.
+      const revenue = Number(b.beading_tour_price) || 0;
+      const expenses = Number(b.totalexpenses) || 0;
+      return revenue - expenses;
+    }
+
+    function groupByMonth(paidBookings, rawBookings) {
+      const map = new Map();
+      for (const b of rawBookings) {
+        const d = parseISODateUTC(b.tour_arrival_date);
+        if (!d) continue;
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        if (!map.has(key)) map.set(key, { revenue: 0, realizedProfit: 0, potentialProfit: 0, expenses: 0, left: 0 });
+        const v = map.get(key);
+        const left = Number(b.left_to_pay) || 0;
+        if (left > 0) v.left += left;
+      }
+      for (const b of paidBookings) {
+        const d = parseISODateUTC(b.tour_arrival_date);
+        if (!d) continue;
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        if (!map.has(key)) map.set(key, { revenue: 0, realizedProfit: 0, potentialProfit: 0, expenses: 0, left: 0 });
+        const v = map.get(key);
+        v.revenue += Number(b.beading_tour_price) || 0;
+        v.expenses += Number(b.totalexpenses) || 0;
+        if (isPastTour(b)) v.realizedProfit += Number(b.totalprofit) || 0;
+        else v.potentialProfit += getPotentialProfit(b);
+      }
+      const keys = [...map.keys()].sort();
+      return {
+        labels: keys.map(k => {
+          const [y, m] = k.split('-');
+          return `${m}/${y}`; // month label only; date format request applies to dates, not month buckets
+        }),
+        revenue: keys.map(k => map.get(k).revenue),
+        realizedProfit: keys.map(k => map.get(k).realizedProfit),
+        potentialProfit: keys.map(k => map.get(k).potentialProfit),
+        expenses: keys.map(k => map.get(k).expenses),
+        left: keys.map(k => map.get(k).left),
+      };
+    }
+
+    function computeExpenseBreakdown(bookings) {
+      const ids = new Set(bookings.map(b => b.id));
+      let fuel = 0, hotels = 0, additional = 0;
+
+      for (const b of bookings) fuel += Number(b.fuelcost) || 0;
+
+      for (const e of allExpenses) {
+        if (!ids.has(e.booking_id)) continue;
+        const cost = Number(e.cost) || 0;
+        if (e.hotel_id || e.custom_hotel_name) hotels += cost;
+        else if (e.description) additional += cost;
+      }
+
+      return { fuel, hotels, additional };
+    }
+
+    function formatPercent(p) {
+      const n = Number(p);
+      if (!Number.isFinite(n)) return '—';
+      return `${(n * 100).toFixed(1)}%`;
+    }
+
+    function bookingYear(b) {
+      // Prefer explicit plan/booking year, then tour dates.
+      const fromPayload = Number(b?.payload?.year ?? b?.year);
+      if (Number.isFinite(fromPayload) && fromPayload >= 1990 && fromPayload <= 2100) return fromPayload;
+      const iso = b?.tour_arrival_date || b?.departure_date || '';
+      const y = Number(String(iso).slice(0, 4));
+      return (Number.isFinite(y) && y >= 1990 && y <= 2100) ? y : null;
+    }
+
+    function peopleCount(b) {
+      const n = Number(b?.no_people);
+      return (Number.isFinite(n) && n > 0) ? n : null;
+    }
+
+    function sizeBand(n) {
+      if (n == null) return 'unknown';
+      if (n <= 4) return '1–4';
+      if (n <= 8) return '5–8';
+      return '9+';
+    }
+
+    function computeYearStats(bookings) {
+      const map = new Map();
+      for (const b of bookings) {
+        const year = bookingYear(b);
+        if (!year) continue;
+        if (!map.has(year)) {
+          map.set(year, {
+            year,
+            tours: 0,
+            guests: 0,
+            sized: 0,
+            bands: { '1–4': 0, '5–8': 0, '9+': 0, unknown: 0 },
+          });
+        }
+        const row = map.get(year);
+        row.tours += 1;
+        const n = peopleCount(b);
+        if (n != null) {
+          row.guests += n;
+          row.sized += 1;
+        }
+        row.bands[sizeBand(n)] += 1;
+      }
+      return [...map.values()]
+        .map(r => ({
+          ...r,
+          avgSize: r.sized ? (r.guests / r.sized) : null,
+        }))
+        .sort((a, b) => a.year - b.year);
+    }
+
+    function visitYearFromRef(ref) {
+      if (!ref) return null;
+      if (typeof ref === 'number' && ref >= 1990 && ref <= 2100) return ref;
+      if (typeof ref === 'string') {
+        const y = Number(String(ref).slice(0, 4));
+        return (y >= 1990 && y <= 2100) ? y : null;
+      }
+      if (typeof ref === 'object') {
+        const y1 = Number(ref.year);
+        if (y1 >= 1990 && y1 <= 2100) return y1;
+        const d = String(ref.date || '');
+        const y2 = Number(d.slice(0, 4));
+        return (y2 >= 1990 && y2 <= 2100) ? y2 : null;
+      }
+      return null;
+    }
+
+    function computeRepeatOrganisers(people) {
+      const rows = [];
+      for (const p of people || []) {
+        const visits = Number(p.visit_count) || 0;
+        const refs = Array.isArray(p.visit_refs) ? p.visit_refs : [];
+        const count = Math.max(visits, refs.length);
+        if (count < 2) continue;
+        const years = [...new Set(refs.map(visitYearFromRef).filter(Boolean))].sort((a, b) => a - b);
+        rows.push({
+          name: p.name || '—',
+          visits: count,
+          years,
+        });
+      }
+      return rows.sort((a, b) => b.visits - a.visits || a.name.localeCompare(b.name)).slice(0, 12);
+    }
+
+    function renderYearStats(rawBookings) {
+      const stats = computeYearStats(rawBookings);
+      const body = document.getElementById('yearStatsBody');
+      const empty = document.getElementById('yearStatsEmpty');
+      if (!body || !empty) return stats;
+
+      if (!stats.length) {
+        body.innerHTML = '';
+        empty.style.display = 'block';
+        return stats;
+      }
+      empty.style.display = 'none';
+      body.innerHTML = stats.map(r => `
+        <tr>
+          <td><strong>${r.year}</strong></td>
+          <td class="num">${r.tours}</td>
+          <td class="num">${r.guests || '—'}</td>
+          <td class="num">${r.avgSize != null ? r.avgSize.toFixed(1) : '—'}</td>
+          <td class="num">${r.bands['1–4'] || 0}</td>
+          <td class="num">${r.bands['5–8'] || 0}</td>
+          <td class="num">${r.bands['9+'] || 0}</td>
+        </tr>
+      `).join('');
+      return stats;
+    }
+
+    function renderRepeatOrganisers() {
+      const body = document.getElementById('repeatOrgsBody');
+      const empty = document.getElementById('repeatOrgsEmpty');
+      if (!body || !empty) return;
+      const rows = computeRepeatOrganisers(allPeople);
+      if (!rows.length) {
+        body.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      body.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.name}</td>
+          <td class="num">${r.visits}</td>
+          <td>${r.years.length ? r.years.join(', ') : '—'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderInsights(paidBookings, outstandingBookings) {
+      const list = document.getElementById('insightsList');
+      const empty = document.getElementById('insightsEmpty');
+      if (!list || !empty) return;
+      const { currency, include } = getFilters();
+
+      if (!paidBookings.length && !outstandingBookings.length) {
+        list.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      const tours = paidBookings.length;
+      const completed = paidBookings.filter(isPastTour);
+      const upcoming = paidBookings.filter(b => !isPastTour(b));
+
+      const revenue = paidBookings.reduce((s, b) => s + (Number(b.beading_tour_price) || 0), 0);
+      const realizedProfit = completed.reduce((s, b) => s + (Number(b.totalprofit) || 0), 0);
+      const potentialProfit = upcoming.reduce((s, b) => s + getPotentialProfit(b), 0);
+      const potentialMargin = revenue ? (potentialProfit / revenue) : 0;
+
+      const outstandingTours = outstandingBookings;
+      const outstanding = outstandingTours.reduce((s, b) => s + (Number(b.left_to_pay) || 0), 0);
+
+      const dueTours = outstandingTours
+        .map(b => {
+          const due = computeFinalPaymentDueUTC(b);
+          return { b, due };
+        })
+        .filter(x => x.due)
+        .sort((a, b) => a.due.getTime() - b.due.getTime());
+      const today = utcStartOfToday().getTime();
+      const dueSoon = dueTours.filter(x => x.due.getTime() >= today && x.due.getTime() <= today + 14 * 86400000);
+      const overdue = dueTours.filter(x => x.due.getTime() < today);
+
+      const breakdown = computeExpenseBreakdown(paidBookings);
+      const expTotal = breakdown.fuel + breakdown.hotels + breakdown.additional;
+      const hotelShare = expTotal ? (breakdown.hotels / expTotal) : 0;
+
+      const items = [];
+      items.push(`<strong>Realized profit (completed, fully paid):</strong> ${formatMoney(realizedProfit, currency)} across ${completed.length} tours`);
+      items.push(`<strong>Potential profit (upcoming, fully paid):</strong> ${formatMoney(potentialProfit, currency)} <span class="insight-badge ${potentialMargin >= 0.25 ? 'good' : potentialMargin >= 0.12 ? 'warn' : 'bad'}">Potential margin ${formatPercent(potentialMargin)}</span>`);
+      if (outstandingTours.length) {
+        const badge = overdue.length ? `<span class="insight-badge bad">${overdue.length} overdue</span>` : dueSoon.length ? `<span class="insight-badge warn">${dueSoon.length} due soon</span>` : '';
+        items.push(`<strong>Payments:</strong> ${formatMoney(outstanding, currency)} left to pay across ${outstandingTours.length} tours ${badge}`);
+      } else {
+        items.push(`<strong>Payments:</strong> No outstanding balances`);
+      }
+      items.push(`<strong>Expense mix:</strong> Hotels are ${formatPercent(hotelShare)} of tracked expenses`);
+      {
+        const yearStats = computeYearStats(paidBookings.length ? paidBookings : outstandingBookings);
+        if (yearStats.length >= 2) {
+          const busiest = [...yearStats].sort((a, b) => b.tours - a.tours || b.guests - a.guests)[0];
+          const latest = yearStats[yearStats.length - 1];
+          items.push(`<strong>Years in view:</strong> ${yearStats[0].year}–${latest.year} · busiest ${busiest.year} (${busiest.tours} tours, ${busiest.guests || 0} guests)`);
+        } else if (yearStats.length === 1) {
+          const y = yearStats[0];
+          items.push(`<strong>${y.year}:</strong> ${y.tours} tours · ${y.guests || 0} guests · avg group ${y.avgSize != null ? y.avgSize.toFixed(1) : '—'}`);
+        }
+      }
+      if (outstandingTours.length) {
+        const topDue = dueTours.slice(0, 3).map(x => {
+          const name = x.b.group_name || ('Booking #' + x.b.id);
+          return `${name} (due ${formatDateUTC(x.due)})`;
+        });
+        if (topDue.length) items.push(`<span class="muted">Next due:</span> ${topDue.join(' · ')}`);
+      }
+
+      list.innerHTML = items.map(x => `<li>${x}</li>`).join('');
+    }
+
+    function topToursByProfit(bookings, limit = 8) {
+      return [...bookings]
+        .filter(b => b.group_name)
+        .sort((a, b) => (Number(b.totalprofit) || 0) - (Number(a.totalprofit) || 0))
+        .slice(0, limit);
+    }
+
+    function computePayments(bookings) {
+      let paid = 0;
+      let left = 0;
+      for (const b of bookings) {
+        paid += (Number(b.depositmade) || 0) + (Number(b.finalpayment) || 0);
+        left += Number(b.left_to_pay) || 0;
+      }
+      return { paid, left };
+    }
+
+    function setKPI(id, val, sub = '') {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+      const subEl = document.getElementById(id + 'Sub');
+      if (subEl) subEl.textContent = sub;
+    }
+
+    function getCurrencyLabelSuffix() {
+      const c = document.getElementById('currencyFilter').value || 'GBP';
+      return ` (${c})`;
+    }
+
+    function renderKPIs(paidBookings, outstandingBookings) {
+      const { currency } = getFilters();
+      const suffix = getCurrencyLabelSuffix();
+      const tours = paidBookings.length;
+      const completed = paidBookings.filter(isPastTour);
+      const upcoming = tours - completed.length;
+      const realizedProfit = completed.reduce((s, b) => s + (Number(b.totalprofit) || 0), 0);
+      const expenses = paidBookings.reduce((s, b) => s + (Number(b.totalexpenses) || 0), 0);
+      const revenue = paidBookings.reduce((s, b) => s + (Number(b.beading_tour_price) || 0), 0);
+      const outstanding = outstandingBookings.reduce((s, b) => s + Math.max(0, Number(b.left_to_pay) || 0), 0);
+      const potentialProfit = paidBookings.filter(b => !isPastTour(b)).reduce((s, b) => s + getPotentialProfit(b), 0);
+      const potentialMargin = revenue ? (potentialProfit / revenue) : 0;
+
+      setKPI('kpiTours', String(tours), `${completed.length} completed · ${upcoming} upcoming · fully paid`);
+      setKPI('kpiRevenue', formatMoney(revenue, currency), `Total${suffix}`);
+      setKPI('kpiProfit', formatMoney(realizedProfit, currency), `Completed tours only${suffix}`);
+      setKPI('kpiMargin', formatPercent(potentialMargin), `Potential (upcoming)`);
+      setKPI('kpiExpenses', formatMoney(expenses, currency), `Total${suffix}`);
+      setKPI('kpiOutstanding', formatMoney(outstanding, currency), `Left to pay${suffix}`);
+    }
+
+    function chartBaseOptions() {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const text = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || (isDark ? '#f3f4f6' : '#111827');
+      const grid = getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim() || (isDark ? 'rgba(243,244,246,.14)' : 'rgba(107,114,128,.20)');
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: { labels: { color: text, boxWidth: 10, boxHeight: 10 } },
+          tooltip: { enabled: true },
+        },
+        scales: {
+          x: { ticks: { color: text }, grid: { color: grid } },
+          y: { ticks: { color: text }, grid: { color: grid } },
+        }
+      };
+    }
+
+    function applyChartTheme() {
+      for (const key of Object.keys(charts)) {
+        const ch = charts[key];
+        if (!ch) continue;
+        ch.options = Object.assign({}, chartBaseOptions(), ch.options || {});
+        ch.update();
+      }
+    }
+
+    function renderCharts(paidBookings, rawBookings) {
+      const { currency } = getFilters();
+      const opts = chartBaseOptions();
+      const month = groupByMonth(paidBookings, rawBookings);
+
+      const canvas1 = document.getElementById('chartProfitExpenses');
+      if (charts.trend) charts.trend.destroy();
+      charts.trend = new Chart(canvas1, {
+        type: 'line',
+        data: {
+          labels: month.labels,
+          datasets: [
+            { label: 'Revenue', data: month.revenue, borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.10)', tension: .25, fill: true },
+            { label: 'Realized profit', data: month.realizedProfit, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.10)', tension: .25, fill: true },
+            { label: 'Potential profit', data: month.potentialProfit, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.08)', tension: .25, fill: true },
+            { label: 'Outstanding', data: month.left, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.10)', tension: .25, fill: true },
+          ]
+        },
+        options: Object.assign({}, opts, {
+          plugins: Object.assign({}, opts.plugins || {}, {
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.parsed.y || 0, currency)}`
+              }
+            }
+          })
+        }),
+      });
+
+      // Hide not-fully-paid tours from the "Top tours" view by default.
+      const top = topToursByProfit(paidBookings.filter(isPastTour), 8);
+      const canvas3 = document.getElementById('chartTopTours');
+      if (charts.topTours) charts.topTours.destroy();
+      charts.topTours = new Chart(canvas3, {
+        type: 'bar',
+        data: {
+          labels: top.map(b => b.group_name || `#${b.id}`),
+          datasets: [{ label: 'Profit', data: top.map(b => Number(b.totalprofit) || 0), backgroundColor: 'rgba(22,163,74,.65)' }]
+        },
+        options: Object.assign({}, opts, {
+          indexAxis: 'y',
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (ctx) => `Profit: ${formatMoney(ctx.parsed.x || 0, currency)}` } }
+          }
+        }),
+      });
+
+      const yearStats = computeYearStats(rawBookings);
+      const yearLabels = yearStats.map(r => String(r.year));
+
+      const canvasYear = document.getElementById('chartToursByYear');
+      if (charts.byYear) charts.byYear.destroy();
+      if (canvasYear) {
+        charts.byYear = new Chart(canvasYear, {
+          type: 'bar',
+          data: {
+            labels: yearLabels,
+            datasets: [
+              { label: 'Tours', data: yearStats.map(r => r.tours), backgroundColor: 'rgba(79,70,229,.70)', yAxisID: 'y' },
+              { label: 'Guests', data: yearStats.map(r => r.guests), type: 'line', borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.12)', tension: .25, fill: true, yAxisID: 'y1' },
+            ]
+          },
+          options: Object.assign({}, opts, {
+            scales: {
+              x: opts.scales.x,
+              y: Object.assign({}, opts.scales.y, { position: 'left', title: { display: true, text: 'Tours', color: opts.scales.y.ticks.color }, ticks: Object.assign({}, opts.scales.y.ticks, { precision: 0 }) }),
+              y1: Object.assign({}, opts.scales.y, { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Guests', color: opts.scales.y.ticks.color }, ticks: Object.assign({}, opts.scales.y.ticks, { precision: 0 }) }),
+            },
+            plugins: Object.assign({}, opts.plugins || {}, {
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y ?? 0}`
+                }
+              }
+            })
+          }),
+        });
+      }
+
+      const canvasSize = document.getElementById('chartSizeByYear');
+      if (charts.sizeByYear) charts.sizeByYear.destroy();
+      if (canvasSize) {
+        charts.sizeByYear = new Chart(canvasSize, {
+          type: 'bar',
+          data: {
+            labels: yearLabels,
+            datasets: [
+              { label: '1–4 people', data: yearStats.map(r => r.bands['1–4'] || 0), backgroundColor: 'rgba(79,70,229,.75)', stack: 'size' },
+              { label: '5–8 people', data: yearStats.map(r => r.bands['5–8'] || 0), backgroundColor: 'rgba(16,185,129,.75)', stack: 'size' },
+              { label: '9+ people', data: yearStats.map(r => r.bands['9+'] || 0), backgroundColor: 'rgba(245,158,11,.80)', stack: 'size' },
+            ]
+          },
+          options: Object.assign({}, opts, {
+            scales: {
+              x: Object.assign({}, opts.scales.x, { stacked: true }),
+              y: Object.assign({}, opts.scales.y, { stacked: true, ticks: Object.assign({}, opts.scales.y.ticks, { precision: 0 }) }),
+            },
+            plugins: Object.assign({}, opts.plugins || {}, {
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y ?? 0}`
+                }
+              }
+            })
+          }),
+        });
+      }
+    }
+
+    function renderTable() {
+      const { paid } = getFilteredSets();
+      const search = (document.getElementById('tableSearch').value || '').toLowerCase().trim();
+      const { currency } = getFilters();
+      const rows = search
+        ? paid.filter(b => (b.group_name || '').toLowerCase().includes(search) || String(b.id).includes(search))
+        : paid;
+
+      const body = document.getElementById('toursBody');
+      const empty = document.getElementById('toursEmpty');
+      if (!rows.length) {
+        body.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      body.innerHTML = rows
+        .sort((a, b) => {
+          const da = parseISODateUTC(a.tour_arrival_date)?.getTime() ?? 0;
+          const db = parseISODateUTC(b.tour_arrival_date)?.getTime() ?? 0;
+          return db - da;
+        })
+        .map(b => {
+          const paid = (Number(b.depositmade) || 0) + (Number(b.finalpayment) || 0);
+          const expenses = Number(b.totalexpenses) || 0;
+          const profit = isPastTour(b) ? (Number(b.totalprofit) || 0) : getPotentialProfit(b);
+          const left = Math.max(0, Number(b.left_to_pay) || 0);
+          const cls = profit >= 0 ? 'pos' : 'neg';
+          const cur = currency;
+          return `
+            <tr>
+              <td>${b.group_name || ('Booking #' + b.id)}</td>
+              <td>${b.tour_arrival_date ? formatDateDMY(b.tour_arrival_date) : '—'}</td>
+              <td>${b.departure_date ? formatDateDMY(b.departure_date) : '—'}</td>
+              <td class="num">${b.no_people || '—'}</td>
+              <td class="num">${formatMoney(paid, cur)}</td>
+              <td class="num">${formatMoney(expenses, cur)}</td>
+              <td class="num ${cls}">${formatMoney(profit, cur)}${isPastTour(b) ? '' : '<span class=\"muted\" style=\"margin-left:6px;\">Potential</span>'}</td>
+              <td class="num">${formatMoney(left, cur)}</td>
+            </tr>
+          `;
+        }).join('');
+    }
+
+    function renderAll() {
+      const { raw, paid, outstanding } = getFilteredSets();
+      renderKPIs(paid, outstanding);
+      renderInsights(paid, outstanding);
+      renderCharts(paid, raw);
+      renderYearStats(raw);
+      renderRepeatOrganisers();
+      renderTable();
+      updatePrintSummary();
+    }
+
+    function onFiltersChange() {
+      saveFiltersToStorage();
+      renderAll();
+    }
+
+	    function setQuickRange(daysBack) {
+	      // Back-compat helper used by older links/buttons.
+	      const presetEl = document.getElementById('datePreset');
+	      if (presetEl) presetEl.value = 'custom';
+	      applyDatePreset('custom');
+	      const to = utcStartOfToday();
+	      const from = new Date(to.getTime() - (Number(daysBack) || 0) * 86400000);
+	      document.getElementById('dateFrom').value = isoUTC(from);
+	      document.getElementById('dateTo').value = isoUTC(to);
+	      onFiltersChange();
+	    }
+
+    async function requireSession() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) return true;
+      setStatus('Not signed in — redirecting to Booking Form', 'err');
+      setTimeout(() => { window.location.href = 'booking-form.html'; }, 800);
+      return false;
+    }
+
+    async function applyNavRoleVisibility() {
+      const menu = document.getElementById('userMenu');
+      if (!menu) return;
+      menu.classList.remove('open');
+      menu.style.display = 'none';
+      const emailEl = document.getElementById('userMenuEmail');
+      const roleEl = document.getElementById('userMenuRole');
+      const adminLink = document.getElementById('userMenuAdminLink');
+      if (adminLink) adminLink.style.display = 'none';
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session) return;
+        const { data: profile } = await sb.from('profiles')
+          .select('role, status')
+          .eq('id', session.user.id)
+          .single();
+        if (profile?.status === 'disabled') return;
+        menu.style.display = 'inline-flex';
+        if (emailEl) emailEl.textContent = session.user.email || '—';
+        if (roleEl) roleEl.textContent = profile?.role || 'user';
+        if (adminLink) adminLink.style.display = profile?.role === 'admin' ? 'flex' : 'none';
+      } catch {}
+    }
+
+    async function refreshAll() {
+      try {
+        setStatus('Loading data…');
+        document.getElementById('refreshBtn').disabled = true;
+        const ok = await requireSession();
+        if (!ok) return;
+
+        const [bookingsRes, expensesRes, peopleRes] = await Promise.all([
+          sb.from('bookings').select('*').order('tour_arrival_date', { ascending: true }),
+          sb.from('booking_expenses').select('*'),
+          sb.from('planner_people').select('client_id, name, email, notes, visit_count, visit_refs').order('visit_count', { ascending: false }),
+        ]);
+        if (bookingsRes.error) throw bookingsRes.error;
+        if (expensesRes.error) throw expensesRes.error;
+        // People is optional — analytics still works if the table is missing.
+        if (peopleRes.error) console.warn('People load skipped:', peopleRes.error.message || peopleRes.error);
+
+	        allBookings = bookingsRes.data || [];
+	        allExpenses = expensesRes.data || [];
+	        allPeople = peopleRes.error ? [] : (peopleRes.data || []);
+	        initGlobalSearch();
+	        if (globalSearchApi) globalSearchApi.refresh();
+	        populateTourPicker();
+
+	        const presetEl = document.getElementById('datePreset');
+	        const preset = presetEl?.value || 'last180';
+	        // If user hasn't set anything yet, default to last 6 months.
+	        if (!localStorage.getItem(FILTERS_STORAGE_KEY) && !document.getElementById('dateFrom').value && !document.getElementById('dateTo').value) {
+	          if (presetEl) presetEl.value = 'last180';
+	          applyDatePreset('last180');
+	        } else {
+	          applyDatePreset(preset);
+	        }
+
+	        renderAll();
+	        setStatus('Ready', 'ok');
+      } catch (err) {
+        console.error(err);
+        setStatus('Failed to load data: ' + (err?.message || 'Unknown error'), 'err');
+      } finally {
+        document.getElementById('refreshBtn').disabled = false;
+      }
+    }
+
+	    document.addEventListener('DOMContentLoaded', async () => {
+	      applyStoredTheme();
+	      loadFiltersFromStorage();
+	      applyDatePreset(document.getElementById('datePreset')?.value || 'last180');
+	      Chart.defaults.font.family = "'DM Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+	      await refreshAll();
+	      await applyNavRoleVisibility();
+	      applyChartTheme();
+
+	      document.addEventListener('click', (e) => {
+	        const menu = document.getElementById('userMenu');
+	        if (!menu) return;
+	        if (!menu.classList.contains('open')) return;
+	        if (!menu.contains(e.target)) closeUserMenu();
+	      });
+	      document.addEventListener('click', (e) => {
+	        const picker = document.getElementById('tourPicker');
+	        const btn = document.getElementById('tourMultiBtn');
+	        if (!picker || !btn) return;
+	        if (!picker.classList.contains('open')) return;
+	        if (picker.contains(e.target) || btn.contains(e.target)) return;
+	        closeTourPicker();
+	      });
+	      document.addEventListener('keydown', (e) => {
+	        if (e.key === 'Escape') closeUserMenu();
+	        if (e.key === 'Escape') closeTourPicker();
+	      });
+	    });
+
+    window.addEventListener('afterprint', () => {
+      document.documentElement.classList.remove('print-mode');
+    });
+
+	    function updatePrintSummary() {
+	      const { df, dt, currency, include, tourIds } = getFilters();
+	      let tourLabel = 'Tours: All';
+	      if (tourIds && tourIds.length) {
+	        if (tourIds.length === 1) {
+	          const selTour = allBookings.find(b => String(b.id) === String(tourIds[0]));
+	          tourLabel = selTour
+	            ? `Tour: ${(selTour.group_name || ('Booking #' + selTour.id))} (${selTour.tour_arrival_date ? formatDateDMY(selTour.tour_arrival_date) : '—'}${selTour.departure_date ? '–' + formatDateDMY(selTour.departure_date) : ''})`
+	            : `Tour: #${tourIds[0]}`;
+	        } else {
+	          const names = tourIds.slice(0, 2).map(id => {
+	            const b = allBookings.find(x => String(x.id) === String(id));
+	            return b?.group_name || ('#' + id);
+	          });
+	          tourLabel = `Tours: ${tourIds.length} selected (${names.join(' · ')}${tourIds.length > 2 ? ' · …' : ''})`;
+	        }
+	      }
+	      const filters = [
+	        df ? `From: ${formatDateDMY(df)}` : 'From: —',
+	        dt ? `To: ${formatDateDMY(dt)}` : 'To: —',
+	        `Currency: ${currency}`,
+	        include === 'past' ? 'Past only' : include === 'upcoming' ? 'Upcoming only' : 'All tours',
+	        tourLabel,
+      ].join(' · ');
+      const now = new Date();
+      const gen = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const fEl = document.getElementById('printSummaryFilters');
+      const gEl = document.getElementById('printSummaryGenerated');
+	      if (fEl) fEl.textContent = filters;
+	      if (gEl) gEl.textContent = `Generated: ${gen}`;
+	    }
+
+	    function toggleTourPicker(e) {
+	      if (e) e.stopPropagation();
+	      const picker = document.getElementById('tourPicker');
+	      if (!picker) return;
+	      picker.classList.toggle('open');
+	      if (picker.classList.contains('open')) {
+	        renderTourPickerList();
+	        setTimeout(() => document.getElementById('tourPickerSearch')?.focus(), 0);
+	      }
+	    }
+
+	    function closeTourPicker() {
+	      const picker = document.getElementById('tourPicker');
+	      if (picker) picker.classList.remove('open');
+	    }
+
+	    function setTourBtnLabel() {
+	      const label = document.getElementById('tourMultiBtnLabel');
+	      if (!label) return;
+	      if (!selectedTourIds.size) { label.textContent = 'All tours'; return; }
+	      const n = selectedTourIds.size;
+	      if (n === 1) {
+	        const id = [...selectedTourIds][0];
+	        const b = allBookings.find(x => String(x.id) === String(id));
+	        label.textContent = b?.group_name ? `${b.group_name}` : `Tour #${id}`;
+	      } else {
+	        label.textContent = `${n} tours selected`;
+	      }
+	    }
+
+	    function populateTourPicker() {
+	      const ids = new Set(allBookings.map(b => String(b.id)));
+	      selectedTourIds = new Set([...selectedTourIds].filter(id => ids.has(String(id))));
+	      setTourBtnLabel();
+	      renderTourPickerList();
+	    }
+
+	    function clearTourSelection() {
+	      selectedTourIds = new Set();
+	      setTourBtnLabel();
+	      saveFiltersToStorage();
+	      renderTourPickerList();
+	      renderAll();
+	    }
+
+		    function selectFilteredTours() {
+		      // Select tours matching current Date/Currency/Include filters (ignores current tour selection).
+		      const prev = selectedTourIds;
+		      selectedTourIds = new Set();
+		      const { raw } = getFilteredSets();
+		      selectedTourIds = prev;
+		      selectedTourIds = new Set(raw.map(b => String(b.id)));
+		      setTourBtnLabel();
+		      saveFiltersToStorage();
+		      renderTourPickerList();
+		      renderAll();
+		    }
+
+	    function renderTourPickerList() {
+	      const list = document.getElementById('tourPickerList');
+	      if (!list) return;
+	      const q = (document.getElementById('tourPickerSearch')?.value || '').toLowerCase().trim();
+	      const sorted = [...allBookings].sort((a, b) => {
+	        const da = parseISODateUTC(a.tour_arrival_date)?.getTime() ?? 0;
+	        const db = parseISODateUTC(b.tour_arrival_date)?.getTime() ?? 0;
+	        return db - da;
+	      });
+	      const rows = q
+	        ? sorted.filter(b => {
+	            const name = (b.group_name || '').toLowerCase();
+	            return name.includes(q) || String(b.id).includes(q);
+	          })
+	        : sorted;
+	      if (!rows.length) {
+	        list.innerHTML = `<div class="empty" style="display:block;padding:12px;">No tours match.</div>`;
+	        return;
+	      }
+	      list.innerHTML = rows.map(b => {
+	        const id = String(b.id);
+	        const name = b.group_name || ('Booking #' + b.id);
+	        const a = b.tour_arrival_date ? formatDateDMY(b.tour_arrival_date) : '—';
+	        const d = b.departure_date ? formatDateDMY(b.departure_date) : '—';
+	        const checked = selectedTourIds.has(id) ? 'checked' : '';
+	        return `
+	          <label class="picker-item" data-id="${id}">
+	            <input type="checkbox" ${checked} onchange="toggleTourId('${id}', this.checked)">
+	            <div>
+	              <div class="picker-line1">
+	                <div style="font-weight:900;">${name}</div>
+	                <span class="pill">#${id}</span>
+	              </div>
+	              <div class="hint" style="margin-top:2px;">${a}–${d}</div>
+	            </div>
+	          </label>
+	        `;
+	      }).join('');
+	    }
+
+	    function toggleTourId(id, checked) {
+	      const sid = String(id);
+	      if (checked) selectedTourIds.add(sid);
+	      else selectedTourIds.delete(sid);
+	      setTourBtnLabel();
+	      saveFiltersToStorage();
+	      renderAll();
+	    }
+	  </script>
+	</body>
+	</html>

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+  <script>
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Hotels — Keith Dudman beading tours</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="place-categories.js"></script>
+  <script src="global-search.js"></script>
+  <script src="auth-gate.js"></script>
+  <script src="booking-extras.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7; --surface: #ffffff; --surface-alt: #f9fafb; --border: #e2e4e9;
+      --text: #1a1d26; --text-secondary: #6b7280; --input-bg: #ffffff;
+      --accent: #4f46e5; --accent-soft: #eef2ff; --success: #16a34a; --warning: #d97706;
+      --scan: #0b1220; --scan-date: #1e3a8a;
+      --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    [data-theme="dark"] {
+      --bg: #0b1220; --surface: rgba(255,255,255,.06); --surface-alt: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.12); --text: #f3f4f6; --text-secondary: rgba(243,244,246,.72);
+      --input-bg: rgba(255,255,255,.06); --accent: #a78bfa; --accent-soft: rgba(167,139,250,.12);
+      --success: #22c55e; --warning: #fbbf24; --shadow: none;
+      --scan: #ffffff; --scan-date: #fde047;
+    }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.4; min-height: 100vh;
+    }
+    a { color: inherit; }
+    .topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; }
+    .topbar-inner {
+      padding: 14px 24px; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -.2px; }
+    .sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .view-nav { display: flex; gap: 4px; background: var(--bg); border-radius: 8px; padding: 3px; flex-wrap: wrap; }
+    .view-nav a {
+      color: var(--text-secondary); font: inherit; font-size: 13px; font-weight: 700;
+      padding: 7px 12px; border-radius: 6px; text-decoration: none;
+    }
+    .view-nav a.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+    .view-nav a:hover:not(.active) { color: var(--text); }
+    .btn {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; }
+    .intro { color: var(--text-secondary); font-size: 14px; max-width: 46em; margin: 0 0 16px; }
+    .intro strong { color: var(--text); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 16px; }
+    .field label { display: block; font-size: 11px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+    select, input[type="search"], textarea {
+      font: inherit; font-size: 15px; padding: 8px 10px; min-height: 42px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text);
+    }
+    .status { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+    .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--warning); }
+    .dot.ok { background: var(--success); }
+    .dot.err { background: #dc2626; }
+    .note-banner {
+      background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+      border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600; margin-bottom: 14px;
+    }
+    [data-theme="dark"] .note-banner { background: rgba(245,158,11,.16); border-color: rgba(245,158,11,.35); color: #fbbf24; }
+    .cards { display: flex; flex-direction: column; gap: 12px; }
+    .stay {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px 16px; box-shadow: var(--shadow);
+      display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 12px 18px;
+      align-items: start;
+    }
+    .stay.cancelled {
+      background: #eef0f3; border-color: #d1d5db; border-left: 4px solid #6b7280; box-shadow: none;
+    }
+    [data-theme="dark"] .stay.cancelled {
+      background: rgba(156,163,175,.08); border-color: rgba(156,163,175,.35);
+    }
+    .stay.cancelled .tour-name,
+    .stay.cancelled .tour-name a,
+    .stay.cancelled .hotel-name,
+    .stay.cancelled .dates,
+    .stay.cancelled .rooms-needed,
+    .stay.cancelled .meta { color: #6b7280; }
+    [data-theme="dark"] .stay.cancelled .tour-name,
+    [data-theme="dark"] .stay.cancelled .tour-name a,
+    [data-theme="dark"] .stay.cancelled .hotel-name,
+    [data-theme="dark"] .stay.cancelled .dates,
+    [data-theme="dark"] .stay.cancelled .rooms-needed,
+    [data-theme="dark"] .stay.cancelled .meta { color: rgba(243,244,246,.55); }
+    .stay.cancelled .role { background: #e5e7eb; color: #4b5563; }
+    [data-theme="dark"] .stay.cancelled .role { background: rgba(255,255,255,.08); color: rgba(243,244,246,.7); }
+    .cancelled-tag {
+      display: inline-flex; align-items: center; margin-left: 8px;
+      padding: 2px 8px; border-radius: 999px;
+      background: #4b5563; color: #fff;
+      font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+      vertical-align: middle;
+    }
+    [data-theme="dark"] .cancelled-tag { background: #d1d5db; color: #111827; }
+    .tour-name { font-weight: 800; font-size: 16px; }
+    .tour-name a { color: var(--accent); text-decoration: none; }
+    .tour-name a:hover { text-decoration: underline; }
+    .hotel-name { font-weight: 800; font-size: 18px; margin-top: 2px; }
+    .meta { color: var(--text-secondary); font-size: 13px; font-weight: 600; margin-top: 4px; }
+    .dates { font-size: 16px; font-weight: 800; margin-top: 6px; }
+    .rooms-needed { font-size: 16px; font-weight: 800; margin-top: 6px; color: var(--scan, var(--text)); }
+    .stay-people { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+    .role {
+      display: inline-block; font-size: 12px; font-weight: 800; padding: 3px 8px;
+      border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-top: 6px;
+    }
+    .stay-fields { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .tick {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid var(--border); background: var(--surface-alt);
+      border-radius: 10px; padding: 8px 12px; min-height: 44px;
+      font-size: 16px; font-weight: 800; cursor: pointer; user-select: none;
+    }
+    .tick input { width: 20px; height: 20px; accent-color: var(--accent); }
+    .tick.on { border-color: var(--success); background: #ecfdf5; }
+    [data-theme="dark"] .tick.on { background: rgba(34,197,94,.14); }
+    .stay-fields select { min-width: 11em; font-weight: 700; }
+    .stay textarea { width: 100%; min-height: 44px; resize: vertical; }
+    .empty { text-align: center; color: var(--text-secondary); padding: 36px 12px; }
+    .links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 13px; font-weight: 700; }
+    .links a { color: var(--accent); text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+    @media (max-width: 800px) {
+      .stay { grid-template-columns: 1fr; }
+      .topbar-inner, .wrap { padding-left: 14px; padding-right: 14px; }
+    }
+
+    /* Stay cards: group name, hotel, and dates lead the scan.
+       Ticks, payment, notes, role, and links stay as they are. */
+    .tour-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    .tour-name a { color: var(--scan); }
+    .tour-name a:hover { color: var(--accent); }
+    .hotel-name {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--scan);
+      margin-top: 4px;
+    }
+    .dates {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--scan-date);
+      letter-spacing: -0.01em;
+      margin-top: 8px;
+    }
+    .rooms-needed {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--scan);
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <div>
+          <h1>Hotels</h1>
+          <div class="sub">Hotel stays for the year — linked to bookings and plans</div>
+        </div>
+        <nav class="view-nav" aria-label="Main">
+          <a href="/booking-form" id="navBookings">Bookings</a>
+          <a href="/analytics" id="navAnalytics">Analytics</a>
+          <a href="/tour-planner" id="navPlanner">Planner</a>
+          <a href="/hotels" class="active">Hotels</a>
+          <a href="/places-stats" id="navPlacesStats">Places stats</a>
+        </nav>
+      </div>
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div id="globalSearchMount" class="global-search-mount" aria-live="polite"></div>
+        <span class="status"><span class="dot" id="statusDot"></span><span id="statusText">Loading…</span></span>
+        <button type="button" class="btn" id="refreshBtn">Refresh</button>
+        <button type="button" class="btn" id="themeBtn">Theme</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p class="intro">
+      One list of hotel stays already named on a <strong>booking</strong> or <strong>tour plan</strong>
+      (Prague pick-up hotel and/or tour-area hotel). Nothing here invents a hotel, date, or payment.
+      Tick <strong>Booked</strong> and set <strong>paid in advance</strong> / <strong>paid on the day</strong> when you know.
+      Those ticks are stored on the plan’s <code>hotels[]</code> field (and on this device).
+      A cancelled booking stays on this list, greyed out, with a Cancelled tag. The hotel, dates, notes, and booked or paid history stay visible.
+      A day trip has no hotel for Keith to book, so it is not listed here. The pick-up place stays on the booking.
+      Each stay shows how many rooms to book: every single, twin, and double is one room, plus Keith’s own room when it is on.
+    </p>
+    <div class="note-banner" id="notesBanner">
+      2026 Notes (hotel booking write-up for this year’s stays) were not found in this repository.
+      Leave Booked / Payment / Notes empty until Keith or the Archivist fills them from the real notes.
+    </div>
+    <div class="toolbar">
+      <div class="field">
+        <label for="yearFilter">Year</label>
+        <select id="yearFilter" aria-label="Filter hotel stays by year"></select>
+      </div>
+      <div class="field">
+        <label for="searchBox">Search</label>
+        <input type="search" id="searchBox" placeholder="Tour or hotel name" autocomplete="off">
+      </div>
+    </div>
+    <div class="cards" id="stayList"></div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const PLAN_STORAGE_KEY = 'keith_tour_planner_v1';
+    const META_STORAGE_KEY = 'keith_hotel_stays_v1';
+    const LIVE_BOOKINGS_ORIGIN = 'https://keith-booking-form.netlify.app';
+
+    let stays = [];
+    let yearFilter = String(new Date().getUTCFullYear());
+    const requestedYear = new URLSearchParams(location.search).get('year');
+    if (requestedYear === 'all' || /^\d{4}$/.test(requestedYear || '')) yearFilter = requestedYear;
+    let search = '';
+    let saveTimer = null;
+    let hotelBaselines = {};
+    let planHotelsByKey = {};
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function setStatus(text, type) {
+      document.getElementById('statusText').textContent = text;
+      document.getElementById('statusDot').className = 'dot' + (type === 'ok' ? ' ok' : type === 'err' ? ' err' : '');
+    }
+    function parseISODateUTC(iso) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+      if (!m) return null;
+      return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    }
+    function formatDateDMY(iso) {
+      const d = parseISODateUTC(iso);
+      if (!d) return iso ? String(iso) : '';
+      return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + d.getUTCFullYear();
+    }
+    function yearFromIso(iso) {
+      const d = parseISODateUTC(iso);
+      return d ? String(d.getUTCFullYear()) : '';
+    }
+    function normName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+    function isPragueName(name) { return /prague|praha/i.test(String(name || '')); }
+    function roleLabel(role) {
+      if (role === 'prague') return 'Prague pick-up hotel';
+      if (role === 'tour') return 'Tour-area hotel';
+      return 'Other stay';
+    }
+    function stayKey(bookingKey, role, hotelName) {
+      return String(bookingKey || '') + '|' + String(role || '') + '|' + normName(hotelName);
+    }
+    /** A planner hotel with no real name is not a stay. Do not replace it with a guessed name. */
+    function isPlaceholderHotelName(name) {
+      const n = normName(name);
+      if (!n) return true;
+      return n.includes('name not in notes');
+    }
+    function stayBookingId(stay) {
+      const direct = stay && stay.bookingId != null ? String(stay.bookingId).trim() : '';
+      if (/^\d+$/.test(direct)) return direct;
+      const key = String(stay && stay.bookingKey || '').trim();
+      if (/^\d+$/.test(key)) return key;
+      const prefixed = /^booking:(\d+)$/.exec(key);
+      return prefixed ? prefixed[1] : '';
+    }
+    function bookingStatusOf(booking) {
+      const value = String(booking && booking.status || '').trim().toLowerCase();
+      return value === 'cancelled' ? 'cancelled' : '';
+    }
+    function compactHotelName(name) {
+      return normName(name).replace(/[^a-z0-9]+/g, '');
+    }
+    /** Same stay when the plan overlay uses a longer form, e.g. Park hotel / Parkhotel Smržovka. */
+    function looseHotelName(a, b) {
+      const ca = compactHotelName(a);
+      const cb = compactHotelName(b);
+      if (ca.length < 8 || cb.length < 8) return false;
+      return ca === cb || ca.startsWith(cb) || cb.startsWith(ca);
+    }
+    function isKelliBoyleBooking(bookingId) {
+      return String(bookingId ?? '') === '27';
+    }
+    function isHotelParisName(name) {
+      const n = normName(name);
+      return n === 'hotel paris' || n === 'hotel paris prague';
+    }
+    /**
+     * Booking 27, Kelli Boyle. Hotel Paris is only the morning pick-up, not a hotel
+     * Keith booked. A later save must not put that unpaid stay back on this list.
+     * The placeholder hotel named "day trip" is never listed.
+     * Other groups' Hotel Paris stays are not affected. The pick-up stop is not touched.
+     */
+    function planRowMarksBookedOrPaid(row, stay) {
+      if (!row) return false;
+      const sameName = normName(row.hotelName) === normName(stay.hotelName)
+        || (row.role === stay.role && looseHotelName(row.hotelName, stay.hotelName));
+      if (!sameName) return false;
+      return !!row.booked || row.paid === 'advance' || row.paid === 'on_day';
+    }
+    function omitUnpaidKelliStay(stay, planHotels) {
+      if (!stay || !isKelliBoyleBooking(stay.bookingId || stay.bookingKey)) return false;
+      const name = normName(stay.hotelName);
+      if (name === 'day trip') return true;
+      if (!isHotelParisName(stay.hotelName)) return false;
+      const marked = (planHotels || []).some(h => planRowMarksBookedOrPaid(h, stay));
+      return !marked;
+    }
+    function isDayTripHotelName(name) {
+      return normName(name) === 'day trip';
+    }
+    /** A day trip has no hotel for Keith to book. The Prague name is only the pick-up. */
+    function bookingIsDayTrip(booking, plan) {
+      if (window.BookingExtras && BookingExtras.bookingIsDayTrip) return BookingExtras.bookingIsDayTrip(booking, plan);
+      const hotelName = (booking && booking.hotels && booking.hotels.name) || (plan && plan.tourHotelName) || '';
+      const group = (booking && booking.group_name) || (plan && plan.groupName) || '';
+      if (isDayTripHotelName(hotelName)) return true;
+      if (/\bday trip\b/i.test(String(group)) && !normName(hotelName)) return true;
+      return false;
+    }
+    function stayLink(booking, plan) {
+      if (window.BookingExtras && BookingExtras.bookingLink) return BookingExtras.bookingLink(booking, plan);
+      return { year: '', people: [], hotel: '', places: [], dayTrip: false, roomsLabel: '' };
+    }
+    /** Guest rooms plus Keith’s own room when it is on. A day trip has no room demand. */
+    function roomsNeededFor(booking, plan, dayTrip) {
+      const link = stayLink(booking, plan);
+      if (dayTrip || link.dayTrip) return '';
+      if (link.roomsLabel) return link.roomsLabel;
+      if (!window.BookingExtras) return '';
+      let source = null;
+      let column;
+      if (booking) {
+        const split = BookingExtras.splitNotesAndExtras(booking.extra_notes || '');
+        source = (split.rawExtras && Object.keys(split.rawExtras).length) ? split.rawExtras : null;
+        column = booking.keith_own_room;
+      } else if (plan && plan.bookingDetails) {
+        source = plan.bookingDetails;
+      }
+      return BookingExtras.roomsNeededLabel(source, column);
+    }
+    function omitHotelStay(stay, planHotels) {
+      if (!stay) return false;
+      if (isDayTripHotelName(stay.hotelName)) return true;
+      if (stay.dayTrip) return true;
+      return omitUnpaidKelliStay(stay, planHotels);
+    }
+    function loadMeta() {
+      try { return JSON.parse(localStorage.getItem(META_STORAGE_KEY) || '{}') || {}; }
+      catch { return {}; }
+    }
+    function saveMeta(meta) {
+      try { localStorage.setItem(META_STORAGE_KEY, JSON.stringify(meta)); } catch {}
+    }
+    function loadLocalPlans() {
+      try {
+        const store = JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || '{}') || {};
+        const plans = store.plans && typeof store.plans === 'object' ? store.plans : {};
+        let changed = false;
+        Object.keys(plans).forEach(key => {
+          if (!(window.isLegacyDemoPlan && window.isLegacyDemoPlan(key, plans[key]))) return;
+          delete plans[key];
+          changed = true;
+        });
+        if (changed) {
+          store.plans = plans;
+          localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(store));
+        }
+        return plans;
+      } catch { return {}; }
+    }
+    function writeLocalPlanHotels(bookingKey, hotels) {
+      try {
+        const store = JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || '{}') || {};
+        store.plans = store.plans || {};
+        const plan = store.plans[bookingKey];
+        if (!plan || typeof plan !== 'object') return;
+        const baseline = hotelBaselines[bookingKey];
+        if (!window.BookingExtras || !baseline) return;
+        const patched = BookingExtras.applyEditedPatch(
+          { hotels: Array.isArray(plan.hotels) ? plan.hotels : [] },
+          { hotels: baseline },
+          { hotels: hotels }
+        );
+        if (!patched.changed) return;
+        plan.hotels = patched.value.hotels;
+        store.plans[bookingKey] = plan;
+        localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(store));
+      } catch {}
+    }
+    function normalizeHotelRow(h) {
+      if (!h || typeof h !== 'object') return null;
+      const hotelName = String(h.hotelName || h.name || '').trim();
+      if (isPlaceholderHotelName(hotelName)) return null;
+      const role = h.role === 'prague' || h.role === 'extra' ? h.role : 'tour';
+      const paid = h.paid === 'advance' || h.paid === 'on_day' ? h.paid : '';
+      return { hotelName, role, booked: !!h.booked, paid, notes: String(h.notes || '') };
+    }
+
+    function addStay(list, stay) {
+      const hotelName = String(stay.hotelName || '').trim();
+      if (isPlaceholderHotelName(hotelName)) return;
+      const key = stayKey(stay.bookingKey, stay.role, hotelName);
+      if (list.some(s => s.key === key)) return;
+      list.push({
+        key,
+        bookingKey: String(stay.bookingKey || ''),
+        bookingId: stayBookingId(stay),
+        groupName: stay.groupName || 'Untitled group',
+        hotelName,
+        role: stay.role === 'prague' || stay.role === 'extra' ? stay.role : 'tour',
+        arrivalDate: stay.arrivalDate || '',
+        departureDate: stay.departureDate || '',
+        booked: !!stay.booked,
+        paid: stay.paid === 'advance' || stay.paid === 'on_day' ? stay.paid : '',
+        notes: String(stay.notes || ''),
+        hasCloudPlan: !!stay.hasCloudPlan,
+        bookingStatus: stay.bookingStatus === 'cancelled' ? 'cancelled' : '',
+        dayTrip: !!stay.dayTrip,
+        roomsNeededLabel: stay.dayTrip ? '' : String(stay.roomsNeededLabel || ''),
+        peopleLabel: String(stay.peopleLabel || ''),
+        hotelsUsedHref: stay.hotelsUsedHref || '',
+      });
+    }
+
+    function applyOverlay(stay, planHotels, meta) {
+      const rows = planHotels || [];
+      let fromPlan = rows.find(h => h && h.role === stay.role && normName(h.hotelName) === normName(stay.hotelName));
+      if (!fromPlan && stay.bookingStatus === 'cancelled') {
+        const loose = rows.filter(h => h && h.role === stay.role && looseHotelName(h.hotelName, stay.hotelName));
+        if (loose.length === 1) fromPlan = loose[0];
+      }
+      const fromMeta = meta[stay.key] || {};
+      if (fromPlan) {
+        stay.booked = !!fromPlan.booked;
+        stay.paid = fromPlan.paid === 'advance' || fromPlan.paid === 'on_day' ? fromPlan.paid : '';
+        stay.notes = String(fromPlan.notes || '');
+      }
+      // Device overlay only fills fields the plan has not set — never invents a hotel.
+      if (!fromPlan) {
+        if (typeof fromMeta.booked === 'boolean') stay.booked = fromMeta.booked;
+        if (fromMeta.paid === 'advance' || fromMeta.paid === 'on_day' || fromMeta.paid === '') stay.paid = fromMeta.paid || '';
+        if (fromMeta.notes != null) stay.notes = String(fromMeta.notes || '');
+      }
+    }
+
+    async function loadData() {
+      setStatus('Loading…', '');
+      const meta = loadMeta();
+      const localPlans = loadLocalPlans();
+      const list = [];
+      let bookings = [];
+      let live = false;
+
+      try {
+        const bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, keith_own_room, hotels(name)';
+        let bookingQuery = await sb.from('bookings')
+          .select(bookingCols)
+          .order('tour_arrival_date', { ascending: false })
+          .limit(200);
+        if (bookingQuery.error && /keith_own_room/i.test(bookingQuery.error.message || '')) {
+          bookingQuery = await sb.from('bookings')
+            .select('id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)')
+            .order('tour_arrival_date', { ascending: false })
+            .limit(200);
+        }
+        if (bookingQuery.error && /status/i.test(bookingQuery.error.message || '')) {
+          bookingQuery = await sb.from('bookings')
+            .select('id, group_name, tour_arrival_date, departure_date, hotel_id, extra_notes, keith_own_room, hotels(name)')
+            .order('tour_arrival_date', { ascending: false })
+            .limit(200);
+          if (bookingQuery.error && /keith_own_room/i.test(bookingQuery.error.message || '')) {
+            bookingQuery = await sb.from('bookings')
+              .select('id, group_name, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)')
+              .order('tour_arrival_date', { ascending: false })
+              .limit(200);
+          }
+        }
+        const { data, error } = bookingQuery;
+        if (error) throw error;
+        bookings = data || [];
+        live = true;
+      } catch (err) {
+        console.warn(err);
+        live = false;
+      }
+
+      if (bookings.length) {
+        try {
+          const { data, error } = await sb.from('members').select('booking_id, first_name, last_name').limit(2000);
+          if (!error) {
+            const byId = {};
+            (data || []).forEach(m => {
+              if (!m || m.booking_id == null) return;
+              const id = String(m.booking_id);
+              if (!byId[id]) byId[id] = [];
+              byId[id].push(m);
+            });
+            bookings.forEach(b => { b._members = byId[String(b.id)] || []; });
+          }
+        } catch (err) { console.warn(err); }
+      }
+
+      const extraByBooking = new Map();
+      if (bookings.length) {
+        try {
+          const ids = bookings.map(b => b.id);
+          const { data, error } = await sb.from('booking_hotels').select('*, hotels(name)').in('booking_id', ids);
+          if (!error) {
+            (data || []).forEach(s => {
+              const arr = extraByBooking.get(s.booking_id) || [];
+              arr.push(s);
+              extraByBooking.set(s.booking_id, arr);
+            });
+          }
+        } catch (err) { console.warn(err); }
+      }
+
+      planHotelsByKey = {};
+      const cloudPlans = new Map();
+      try {
+        const { data, error } = await sb.from('planner_plans').select('booking_id, client_key, payload').limit(250);
+        if (!error) {
+          (data || []).forEach(row => {
+            const payload = row.payload || {};
+            if (window.isLegacyDemoPlan && window.isLegacyDemoPlan(row.client_key, payload)) return;
+            if (row.booking_id != null) cloudPlans.set(String(row.booking_id), payload);
+            if (row.client_key) cloudPlans.set(String(row.client_key), payload);
+          });
+        }
+      } catch (err) { console.warn(err); }
+
+      bookings.forEach(b => {
+        const key = String(b.id);
+        const plan = cloudPlans.get(key) || localPlans[key] || {};
+        const planHotels = (plan.hotels || []).map(normalizeHotelRow).filter(Boolean);
+        planHotelsByKey[key] = planHotels;
+        const arrival = b.tour_arrival_date || plan.arrivalDate || '';
+        const departure = b.departure_date || plan.departureDate || '';
+        const groupName = b.group_name || plan.groupName || ('Booking #' + b.id);
+        const bookingStatus = bookingStatusOf(b);
+        const dayTrip = bookingIsDayTrip(b, plan);
+        const tourName = (b.hotels && b.hotels.name) || plan.tourHotelName || '';
+        const link = stayLink(b, plan);
+        const roomBits = dayTrip ? '' : (link.roomsLabel || roomsNeededFor(b, plan, dayTrip));
+        const year = link.year || yearFromIso(arrival);
+        const base = {
+          bookingKey: key, bookingId: b.id, groupName,
+          arrivalDate: arrival, departureDate: departure, hasCloudPlan: cloudPlans.has(key),
+          bookingStatus, dayTrip, roomsNeededLabel: roomBits,
+          peopleLabel: (link.people || []).join(', '),
+          hotelsUsedHref: '/tour-planner?booking=' + encodeURIComponent(String(b.id)) + '&tab=hotels' + (year ? '&year=' + encodeURIComponent(year) : ''),
+        };
+        addStay(list, Object.assign({}, base, { hotelName: tourName, role: 'tour' }));
+        const extras = extraByBooking.get(b.id) || [];
+        extras.forEach(s => {
+          const name = (s.hotels && s.hotels.name) || s.custom_hotel_name || '';
+          const role = isPragueName(name) ? 'prague' : 'extra';
+          addStay(list, Object.assign({}, base, { hotelName: name, role }));
+        });
+        const pragueName = (plan.pragueHotel && plan.pragueHotel.name) || '';
+        addStay(list, Object.assign({}, base, { hotelName: pragueName, role: 'prague' }));
+        if (plan.tourHotelName && normName(plan.tourHotelName) !== normName(tourName)) {
+          addStay(list, Object.assign({}, base, { hotelName: plan.tourHotelName, role: 'tour' }));
+        }
+        planHotels.forEach(h => {
+          addStay(list, Object.assign({}, base, {
+            hotelName: h.hotelName, role: h.role, booked: h.booked, paid: h.paid, notes: h.notes,
+          }));
+        });
+        list.filter(s => s.bookingKey === key).forEach(s => applyOverlay(s, planHotels, meta));
+      });
+
+      Object.keys(localPlans).forEach(key => {
+        if (bookings.some(b => String(b.id) === String(key))) return;
+        const plan = localPlans[key] || {};
+        if (window.isLegacyDemoPlan && window.isLegacyDemoPlan(key, plan)) return;
+        const planHotels = (plan.hotels || []).map(normalizeHotelRow).filter(Boolean);
+        planHotelsByKey[key] = planHotels;
+        const groupName = plan.groupName || 'Local plan';
+        const dayTrip = bookingIsDayTrip(null, plan);
+        const link = stayLink(null, plan);
+        const year = link.year || yearFromIso(plan.arrivalDate || '');
+        const base = {
+          bookingKey: key, bookingId: /^\d+$/.test(key) ? key : '', groupName,
+          arrivalDate: plan.arrivalDate || '', departureDate: plan.departureDate || '',
+          dayTrip, roomsNeededLabel: dayTrip ? '' : (link.roomsLabel || roomsNeededFor(null, plan, dayTrip)),
+          peopleLabel: (link.people || []).join(', '),
+          hotelsUsedHref: year ? ('/tour-planner?tab=hotels&year=' + encodeURIComponent(year)) : '/tour-planner?tab=hotels',
+        };
+        addStay(list, Object.assign({}, base, { hotelName: plan.tourHotelName || '', role: 'tour' }));
+        addStay(list, Object.assign({}, base, {
+          hotelName: (plan.pragueHotel && plan.pragueHotel.name) || '', role: 'prague',
+        }));
+        planHotels.forEach(h => {
+          addStay(list, Object.assign({}, base, {
+            hotelName: h.hotelName, role: h.role, booked: h.booked, paid: h.paid, notes: h.notes,
+          }));
+        });
+        list.filter(s => s.bookingKey === key).forEach(s => applyOverlay(s, planHotels, meta));
+      });
+
+      const listed = list.filter(s => !omitHotelStay(s, planHotelsByKey[String(s.bookingKey)]));
+      stays = listed.sort(compareHotelStaysNewest);
+      hotelBaselines = {};
+      new Set(stays.map(s => s.bookingKey)).forEach(key => {
+        hotelBaselines[key] = overlayForBooking(key);
+      });
+      fillYearOptions();
+      render();
+      setStatus(live ? (stays.length + ' hotel stay' + (stays.length === 1 ? '' : 's')) : 'Using plans saved on this device', live ? 'ok' : '');
+    }
+
+    function fillYearOptions() {
+      const years = new Set(stays.map(s => yearFromIso(s.arrivalDate)).filter(Boolean));
+      if (!years.has(yearFilter) && yearFilter !== 'all') years.add(yearFilter);
+      const sel = document.getElementById('yearFilter');
+      const current = yearFilter;
+      sel.innerHTML = '<option value="all">All years</option>' +
+        Array.from(years).sort().reverse().map(y => '<option value="' + esc(y) + '">' + esc(y) + '</option>').join('');
+      sel.value = current;
+    }
+
+    function compareHotelStaysNewest(a, b) {
+      const da = String(a.arrivalDate || '');
+      const db = String(b.arrivalDate || '');
+      if (da && db && da !== db) return da < db ? 1 : -1;
+      if (da && !db) return -1;
+      if (!da && db) return 1;
+      const byName = String(a.groupName || '').localeCompare(String(b.groupName || ''));
+      if (byName) return byName;
+      return String(a.role || '').localeCompare(String(b.role || ''));
+    }
+    function visibleStays() {
+      const q = search.trim().toLowerCase();
+      return stays.filter(s => {
+        if (yearFilter !== 'all' && yearFromIso(s.arrivalDate) !== yearFilter) return false;
+        if (!q) return true;
+        return (s.groupName + ' ' + s.hotelName).toLowerCase().includes(q);
+      }).sort(compareHotelStaysNewest);
+    }
+
+    function bookingHref(s) {
+      const id = stayBookingId(s);
+      if (id) return '/booking-form?booking=' + encodeURIComponent(id) + '&layout=layout';
+      return '/booking-form';
+    }
+    function plannerHref(s) {
+      if (s.bookingId) return '/tour-planner?booking=' + encodeURIComponent(String(s.bookingId));
+      if (s.bookingKey && !(window.isLegacyDemoPlan && window.isLegacyDemoPlan(s.bookingKey, null))) return '/tour-planner?booking=' + encodeURIComponent(s.bookingKey);
+      return '/tour-planner';
+    }
+
+    function render() {
+      const rows = visibleStays();
+      const el = document.getElementById('stayList');
+      if (!rows.length) {
+        el.innerHTML = '<p class="empty">No hotel names found for this year on bookings or plans. Add a hotel on the booking form or Planner (Staying at / Prague hotel), then refresh. Booked and payment stay empty until you tick them.</p>';
+        return;
+      }
+      el.innerHTML = rows.map(s => {
+        const dates = (s.arrivalDate || s.departureDate)
+          ? (formatDateDMY(s.arrivalDate) || '—') + ' – ' + (formatDateDMY(s.departureDate) || '—')
+          : 'Dates not set';
+        const cancelled = s.bookingStatus === 'cancelled';
+        const tag = cancelled ? '<span class="cancelled-tag">Cancelled</span>' : '';
+        return `<article class="stay${cancelled ? ' cancelled' : ''}" data-stay-key="${esc(s.key)}" data-booking-status="${esc(s.bookingStatus || '')}">
+          <div>
+            <div class="tour-name"><a href="${esc(bookingHref(s))}">${esc(s.groupName)}</a>${tag}</div>
+            <div class="hotel-name">${esc(s.hotelName)}</div>
+            <div class="role">${esc(roleLabel(s.role))}</div>
+            <div class="dates">${esc(dates)}</div>
+            ${s.peopleLabel ? `<div class="stay-people">${esc(s.peopleLabel)}</div>` : ''}
+            ${s.roomsNeededLabel ? `<div class="rooms-needed">${esc(s.roomsNeededLabel)}</div>` : ''}
+            <div class="links">
+              <a href="${esc(bookingHref(s))}">Open booking</a>
+              <a href="${esc(plannerHref(s))}">Open planner</a>
+              ${s.hotelsUsedHref ? `<a href="${esc(s.hotelsUsedHref)}">Hotels used</a>` : ''}
+            </div>
+          </div>
+          <div class="stay-fields">
+            <label class="tick${s.booked ? ' on' : ''}">
+              <input type="checkbox" data-field="booked" ${s.booked ? 'checked' : ''}>
+              Booked
+            </label>
+            <div class="field">
+              <label>Payment</label>
+              <select data-field="paid">
+                <option value="" ${!s.paid ? 'selected' : ''}>Not set</option>
+                <option value="advance" ${s.paid === 'advance' ? 'selected' : ''}>Paid in advance</option>
+                <option value="on_day" ${s.paid === 'on_day' ? 'selected' : ''}>Paid on the day</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" style="min-width:0;">
+            <label>Notes</label>
+            <textarea data-field="notes" rows="2" placeholder="Optional — only what you know">${esc(s.notes)}</textarea>
+          </div>
+        </article>`;
+      }).join('');
+      el.querySelectorAll('[data-field]').forEach(inp => {
+        const ev = inp.matches('textarea') ? 'input' : 'change';
+        inp.addEventListener(ev, () => {
+          const card = inp.closest('[data-stay-key]');
+          const stay = stays.find(x => x.key === card.getAttribute('data-stay-key'));
+          if (!stay) return;
+          const field = inp.getAttribute('data-field');
+          if (field === 'booked') stay.booked = !!inp.checked;
+          if (field === 'paid') stay.paid = inp.value === 'advance' || inp.value === 'on_day' ? inp.value : '';
+          if (field === 'notes') stay.notes = inp.value;
+          if (field === 'booked') inp.closest('.tick').classList.toggle('on', stay.booked);
+          scheduleSave(stay);
+        });
+      });
+    }
+
+    function overlayForBooking(bookingKey) {
+      const planHotels = planHotelsByKey[String(bookingKey)] || [];
+      return stays.filter(s => s.bookingKey === bookingKey && !omitHotelStay(s, planHotels)).map(s => ({
+        hotelName: s.hotelName,
+        role: s.role,
+        booked: !!s.booked,
+        paid: s.paid === 'advance' || s.paid === 'on_day' ? s.paid : '',
+        notes: String(s.notes || ''),
+      }));
+    }
+
+    function scheduleSave(stay) {
+      const meta = loadMeta();
+      meta[stay.key] = { booked: !!stay.booked, paid: stay.paid || '', notes: String(stay.notes || '') };
+      saveMeta(meta);
+      writeLocalPlanHotels(stay.bookingKey, overlayForBooking(stay.bookingKey));
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => savePlanHotels(stay.bookingKey).catch(err => console.warn(err)), 600);
+    }
+
+    async function savePlanHotels(bookingKey) {
+      const hotels = overlayForBooking(bookingKey);
+      const baseline = hotelBaselines[bookingKey];
+      writeLocalPlanHotels(bookingKey, hotels);
+      if (!baseline || !window.BookingExtras) {
+        setStatus('Saved on this device', '');
+        return;
+      }
+      if (BookingExtras.sameJson(baseline, hotels)) return;
+      const numeric = /^\d+$/.test(String(bookingKey));
+      try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const q = numeric
+            ? sb.from('planner_plans').select('id, payload, updated_at').eq('booking_id', Number(bookingKey)).maybeSingle()
+            : sb.from('planner_plans').select('id, payload, updated_at').eq('client_key', String(bookingKey)).maybeSingle();
+          const { data, error } = await q;
+          if (error) throw error;
+          if (!data || !data.payload) {
+            setStatus('Saved on this device (no cloud plan for that tour yet)', '');
+            return;
+          }
+          const patched = BookingExtras.applyEditedPatch(
+            data.payload,
+            Object.assign({}, data.payload, { hotels: baseline }),
+            Object.assign({}, data.payload, { hotels })
+          );
+          if (!patched.changed) {
+            hotelBaselines[bookingKey] = hotels;
+            return;
+          }
+          let upd = sb.from('planner_plans').update({
+            payload: patched.value,
+            updated_at: new Date().toISOString(),
+          }).eq('id', data.id).select('id');
+          if (data.updated_at) {
+            upd = sb.from('planner_plans').update({
+              payload: patched.value,
+              updated_at: new Date().toISOString(),
+            }).eq('id', data.id).eq('updated_at', data.updated_at).select('id');
+          }
+          const { data: updated, error: upErr } = await upd;
+          if (upErr) throw upErr;
+          if (updated && updated.length) {
+            hotelBaselines[bookingKey] = hotels;
+            setStatus('Cloud plan updated', 'ok');
+            return;
+          }
+        }
+        setStatus('Saved on this device', '');
+      } catch (err) {
+        console.warn(err);
+        setStatus('Saved on this device', '');
+      }
+    }
+
+    document.getElementById('yearFilter').addEventListener('change', e => { yearFilter = e.target.value; render(); });
+    document.getElementById('searchBox').addEventListener('input', e => { search = e.target.value; render(); });
+    document.getElementById('refreshBtn').addEventListener('click', () => loadData());
+    document.getElementById('themeBtn').addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch {}
+    });
+
+    if (window.GlobalSearch) {
+      window.GlobalSearch.init({
+        supabase: sb,
+        requireAuth: false,
+        isSignedIn: () => true,
+        getBookings: () => null,
+        getPeople: () => null,
+        getPlaces: () => null,
+      });
+    }
+
+    async function probeSameOrigin(path) {
+      try {
+        const res = await fetch(path, { method: 'GET', cache: 'no-store', headers: { Range: 'bytes=0-0' } });
+        return res.ok || res.status === 206;
+      } catch { return false; }
+    }
+    async function fixExternalNavLinks() {
+      if (!location.hostname.includes('github.io')) return;
+      const bookings = document.getElementById('navBookings');
+      const analytics = document.getElementById('navAnalytics');
+      const [hasBooking, hasAnalytics] = await Promise.all([
+        probeSameOrigin('booking-form.html'),
+        probeSameOrigin('analytics.html'),
+      ]);
+      if (bookings) bookings.href = hasBooking ? 'booking-form.html' : (LIVE_BOOKINGS_ORIGIN + '/booking-form.html');
+      if (analytics) analytics.href = hasAnalytics ? 'analytics.html' : (LIVE_BOOKINGS_ORIGIN + '/analytics.html');
+    }
+
+    fixExternalNavLinks();
+    loadData().catch(err => {
+      console.error(err);
+      setStatus(err.message || 'Failed to load', 'err');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+-- Shared iCloud / iPhoto albums on a tour plan
+--
+-- No new table or required column. Albums live on planner_plans.payload JSON
+-- so Tour Archivist can upsert them on archive plans without a migration.
+-- Safe to re-run (comment only).
+--
+-- Optional payload.hotels (used by hotels.html) — overlay only, not a hotel directory:
+--   [{ "hotelName": "string", "role": "prague"|"tour"|"extra", "booked": bool,
+--      "paid": "advance"|"on_day"|"" , "notes": "string" }]
+-- Names still come from the booking / plan hotel fields. Do not invent stays here.
+--
+-- Shape (payload.sharedAlbums):
+--   [
+--     {
+--       "name": "string",          -- required for display (may be empty while typing in the UI)
+--       "url": "string",           -- optional https iCloud shared-album link
+--       "albumId": "string"        -- optional iCloud album id (e.g. the #fragment of the url)
+--     }
+--   ]
+--
+-- Example (illustrative keys only — do not invent real album URLs):
+--   payload.sharedAlbums = [
+--     { "name": "Group photos", "url": "https://www.icloud.com/sharedalbum/#…", "albumId": "…" }
+--   ]
+--
+-- Tour Archivist: merge/upsert this array on the plan payload for that booking_id.
+-- The planner UI also stores an optional client-only "id" on each row for editing;
+-- Archivist may omit it.
+--
+-- Guests on the same payload may include personId = planner_people.client_id
+-- so a name click in the Ladies / guests (debt) list opens People.
+--
+-- Bookings table has no albums column. booking-form.html reads/writes the same
+-- payload.sharedAlbums on the linked planner_plans row (does not add a bookings field).
+
+COMMENT ON COLUMN planner_plans.payload IS
+  'JSON plan document. Optional payload.sharedAlbums = [{ "name": string, "url": string (optional), "albumId": string (optional) }]. Guests may include personId linking to planner_people.client_id.';

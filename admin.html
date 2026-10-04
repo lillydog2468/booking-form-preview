@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <script>
+    // Apply theme before first paint (prevents "flash" when navigating between pages).
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Booking Form</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7; --surface: #ffffff; --surface-alt: #f9fafb;
+      --border: #e2e4e9; --text: #1a1d26; --text-secondary: #6b7280;
+      --input-bg: #ffffff;
+      --accent: #4f46e5; --accent-hover: #4338ca;
+      --accent-soft: #eef2ff; --accent-glow: rgba(79,70,229,.1);
+      --danger: #dc2626; --danger-hover: #b91c1c;
+      --success: #16a34a; --warning: #f59e0b;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      --shadow-lg: 0 10px 25px rgba(0,0,0,.1), 0 4px 10px rgba(0,0,0,.06);
+    }
+    [data-theme="dark"] {
+      --bg: #111318; --surface: #1a1d24; --surface-alt: #21242c;
+      --border: #2e3240; --text: #e4e6eb; --text-secondary: #8b8f9a;
+      --input-bg: #21242c;
+      --accent: #6366f1; --accent-hover: #818cf8;
+      --accent-soft: rgba(99,102,241,.12); --accent-glow: rgba(99,102,241,.2);
+      --danger: #ef4444; --danger-hover: #f87171;
+      --success: #22c55e; --warning: #fbbf24;
+      --shadow: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
+      --shadow-lg: 0 10px 25px rgba(0,0,0,.4), 0 4px 10px rgba(0,0,0,.3);
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.5; min-height: 100vh;
+      transition: background .25s, color .25s;
+    }
+
+    .topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 14px 32px; display: flex; align-items: center;
+      justify-content: space-between; position: sticky; top: 0; z-index: 50;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 16px; }
+    .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+    .topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+    /* ── User menu ── */
+    .user-menu { position: relative; display: none; }
+    .user-menu-popover {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 10px);
+      width: min(320px, 86vw);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow-lg);
+      padding: 10px;
+      display: none;
+      z-index: 120;
+    }
+    .user-menu.open .user-menu-popover { display: block; }
+    .user-menu-header {
+      padding: 10px 10px 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .user-menu-email {
+      font-weight: 900;
+      font-size: 13px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .user-menu-role { font-size: 11px; color: var(--text-secondary); font-weight: 800; margin-top: 2px; text-transform: uppercase; letter-spacing: .35px; }
+    .user-menu-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .user-menu-item:hover { background: var(--bg); border-color: var(--border); }
+    .user-menu-item.danger { color: var(--danger); }
+
+    .admin-nav {
+      display: flex; gap: 4px; background: var(--bg);
+      border-radius: 8px; padding: 3px;
+    }
+    .admin-nav-btn {
+      padding: 6px 14px; border: none; border-radius: 6px;
+      font-family: inherit; font-size: 12px; font-weight: 600;
+      cursor: pointer; background: transparent; color: var(--text-secondary);
+      transition: background .15s, color .15s;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .admin-nav-btn.active {
+      background: var(--surface); color: var(--text);
+      box-shadow: var(--shadow);
+    }
+    .admin-nav-btn:hover:not(.active) { color: var(--text); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 18px; border: none; border-radius: var(--radius);
+      font-family: inherit; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background .15s, transform .1s;
+      text-decoration: none;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { background: var(--bg); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #15803d; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    /* Consistent "Menu" button across pages */
+    .btn.menu-btn {
+      padding: 10px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      gap: 10px;
+      font-weight: 800;
+      box-shadow: var(--shadow);
+    }
+    .btn.menu-btn:hover { background: var(--surface-alt); }
+
+    .theme-toggle {
+      display: flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: 8px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-secondary); cursor: pointer;
+      transition: background .15s, color .15s; flex-shrink: 0;
+    }
+    .theme-toggle:hover { background: var(--bg); color: var(--text); }
+    .theme-toggle .icon-sun, .theme-toggle .icon-moon { display: none; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: block; }
+    [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+
+    .page-content {
+      max-width: 900px; margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .page-header h2 { font-size: 22px; font-weight: 700; }
+    .page-header p { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 24px;
+    }
+    .card-header {
+      padding: 18px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header h3 { font-size: 15px; font-weight: 700; }
+    .card-body { padding: 24px; }
+
+    .user-table-wrap { overflow: auto; max-height: min(70vh, 640px); }
+    .user-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    .user-table thead th {
+      position: sticky; top: 0; z-index: 3;
+      background: var(--surface);
+      text-align: left; padding: 10px 16px; font-size: 11px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+      color: var(--text-secondary); border-bottom: 2px solid var(--border);
+      box-shadow: 0 2px 0 var(--border);
+    }
+    .user-table th {
+      text-align: left; padding: 10px 16px; font-size: 11px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+      color: var(--text-secondary); border-bottom: 2px solid var(--border);
+    }
+    .user-table td {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .user-table tr:last-child td { border-bottom: none; }
+    .user-table tr:hover td { background: var(--accent-soft); }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+    }
+    .badge-admin { background: rgba(99,102,241,.15); color: var(--accent); }
+    .badge-user { background: rgba(107,114,128,.12); color: var(--text-secondary); }
+    .badge-active { background: rgba(22,163,74,.12); color: var(--success); }
+    .badge-disabled { background: rgba(220,38,38,.1); color: var(--danger); }
+
+    .add-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .add-form .field { flex: 1; min-width: 180px; }
+    .add-form label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: var(--text-secondary); margin-bottom: 5px;
+      text-transform: uppercase; letter-spacing: .4px;
+    }
+    .add-form input, .add-form select {
+      width: 100%; padding: 9px 13px; border: 1px solid var(--border);
+      border-radius: var(--radius); font-family: inherit; font-size: 14px;
+      color: var(--text); background: var(--input-bg); outline: none;
+    }
+    .add-form input:focus, .add-form select:focus {
+      border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .toast-container {
+      position: fixed; bottom: 24px; right: 24px; z-index: 300;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+      padding: 12px 20px; border-radius: var(--radius);
+      font-size: 13px; font-weight: 500; color: #fff;
+      box-shadow: var(--shadow-lg); animation: slideIn .25s ease-out;
+    }
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--danger); }
+    .toast.info { background: var(--accent); }
+    @keyframes slideIn {
+      from { transform: translateX(40px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.4);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    .modal-overlay.visible { opacity: 1; pointer-events: auto; }
+    .modal {
+      background: var(--surface); border-radius: 14px; padding: 28px; width: 400px;
+      box-shadow: var(--shadow-lg); transform: scale(.95); transition: transform .2s;
+    }
+    .modal-overlay.visible .modal { transform: scale(1); }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+    .modal p { font-size: 14px; color: var(--text-secondary); margin-bottom: 22px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; box-shadow: var(--shadow);
+    }
+    .stat-card .stat-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .4px; }
+    .stat-card .stat-value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+
+    .admin-section { display: none; }
+    .admin-section.active { display: block; }
+
+    .inline-edit {
+      padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: var(--radius); font-family: inherit;
+      font-size: 13px; color: var(--text); background: var(--input-bg);
+      outline: none; width: 200px;
+    }
+    .inline-edit:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    /* Tablet */
+    @media (max-width: 700px) {
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .add-form { flex-direction: column; }
+      .add-form .field { min-width: 100%; }
+      .page-content { padding: 24px 16px; }
+      .card-header { padding: 14px 16px; }
+      .card-body { padding: 16px; }
+    }
+
+    /* Mobile */
+    @media (max-width: 500px) {
+      .topbar { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+      .topbar h1 { font-size: 15px; }
+      .topbar-left { gap: 10px; flex-wrap: wrap; }
+      .topbar-actions { gap: 6px; }
+
+      .admin-nav { gap: 2px; padding: 2px; }
+      .admin-nav-btn { padding: 6px 10px; font-size: 11px; gap: 3px; min-height: 34px; }
+
+      .btn { padding: 8px 14px; font-size: 13px; min-height: 36px; }
+      .btn-sm { padding: 6px 12px; font-size: 12px; min-height: 34px; }
+
+      .page-content { padding: 16px 12px; }
+      .page-header { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 20px; }
+      .page-header h2 { font-size: 18px; }
+      .page-header p { font-size: 13px; }
+
+      .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+      .stat-card { padding: 14px; border-radius: 10px; }
+      .stat-card .stat-label { font-size: 11px; }
+      .stat-card .stat-value { font-size: 22px; }
+
+      .card { border-radius: 10px; margin-bottom: 18px; }
+      .card-header { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+      .card-header h3 { font-size: 14px; }
+      .card-body { padding: 14px; }
+
+      .user-table { font-size: 12px; }
+      .user-table th { padding: 8px 10px; font-size: 10px; }
+      .user-table td { padding: 10px; }
+      .user-table .btn-sm { padding: 6px 10px; font-size: 11px; min-height: 32px; }
+
+      /* 16px prevents iOS auto-zoom on focus */
+      .add-form label { font-size: 11px; }
+      .add-form input, .add-form select { padding: 10px 12px; font-size: 16px; min-height: 44px; -webkit-appearance: none; border-radius: var(--radius); }
+      .add-form select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+
+      .inline-edit { width: 140px; font-size: 14px; min-height: 36px; }
+
+      .modal { width: 92vw; padding: 22px 18px; }
+      .modal-actions { flex-direction: column; }
+      .modal-actions .btn { justify-content: center; }
+      .toast-container { bottom: 12px; right: 12px; left: 12px; }
+      .toast { font-size: 13px; padding: 12px 16px; }
+
+      .topbar { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+      .toast-container { bottom: max(12px, env(safe-area-inset-bottom)); }
+    }
+
+    /* Make user/hotel tables horizontally scrollable on small screens */
+    @media (max-width: 600px) {
+      .card-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .user-table { min-width: 520px; }
+    }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-left">
+    <a href="/booking-form" class="btn btn-outline btn-sm">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to Bookings
+    </a>
+    <a href="/analytics" class="btn btn-outline btn-sm">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17v-6"/><path d="M12 17V7"/><path d="M16 17v-3"/></svg>
+      Analytics
+    </a>
+    <a href="/tax-summary" class="btn btn-outline btn-sm">Tax summary</a>
+    <h1>Admin Panel</h1>
+    <div class="admin-nav">
+      <button class="admin-nav-btn active" onclick="showSection('users')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Users
+      </button>
+      <button class="admin-nav-btn" onclick="showSection('hotels')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9h1"/><path d="M9 13h1"/><path d="M9 17h1"/></svg>
+        Hotels
+      </button>
+    </div>
+  </div>
+  <div class="topbar-actions">
+	    <div class="user-menu" id="userMenu">
+	      <button class="btn btn-outline menu-btn" type="button" onclick="toggleUserMenu(event)" title="Menu">
+	        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+	        Menu
+	      </button>
+      <div class="user-menu-popover" role="menu" aria-label="Account menu">
+        <div class="user-menu-header">
+          <div class="user-menu-email" id="userMenuEmail">—</div>
+          <div class="user-menu-role" id="userMenuRole">—</div>
+        </div>
+	        <button class="user-menu-item" type="button" onclick="toggleTheme(); closeUserMenu();">
+	          Theme
+	          <span id="themeModeLabel" style="color:var(--text-secondary);font-weight:900;font-size:12px;">Light</span>
+	        </button>
+        <button class="user-menu-item danger" type="button" onclick="closeUserMenu(); handleLogout();">
+          Log out
+          <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">⇦</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page-content">
+
+  <!-- ══════ USERS SECTION ══════ -->
+  <div class="admin-section active" id="sectionUsers">
+    <div class="page-header">
+      <div>
+        <h2>User Management</h2>
+        <p>Add, remove, and manage user access to the booking system.</p>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Users</div>
+        <div class="stat-value" id="statTotal">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Admins</div>
+        <div class="stat-value" id="statAdmins" style="color:var(--accent);">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active</div>
+        <div class="stat-value" id="statActive" style="color:var(--success);">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Hotels</div>
+        <div class="stat-value" id="statHotels" style="color:var(--warning);">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Add New User</h3>
+      </div>
+      <div class="card-body">
+        <form class="add-form" id="addUserForm" onsubmit="return false;">
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="newUserEmail" placeholder="user@example.com" required>
+          </div>
+          <div class="field">
+            <label>Temporary Password</label>
+            <input type="text" id="newUserPassword" placeholder="temp-password" required>
+          </div>
+          <div class="field" style="max-width:140px;">
+            <label>Role</label>
+            <select id="newUserRole">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="addUser()" style="align-self:flex-end;height:40px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add User
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Users</h3>
+        <button class="btn btn-outline btn-sm" onclick="loadUsers()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3.26-6.93"/><path d="M3 2v5h5"/></svg>
+          Refresh
+        </button>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="user-table-wrap"><table class="user-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary);">Loading users...</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ HOTELS SECTION ══════ -->
+  <div class="admin-section" id="sectionHotels">
+    <div class="page-header">
+      <div>
+        <h2>Hotel Management</h2>
+        <p>Manage the list of hotels available in booking forms and expenses.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Add New Hotel</h3>
+      </div>
+      <div class="card-body">
+        <form class="add-form" id="addHotelForm" onsubmit="return false;">
+          <div class="field" style="flex:2;">
+            <label>Hotel Name</label>
+            <input type="text" id="newHotelName" placeholder="e.g. Hotel Praha" required>
+          </div>
+          <button class="btn btn-primary" onclick="addHotel()" style="align-self:flex-end;height:40px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Hotel
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Hotels</h3>
+        <button class="btn btn-outline btn-sm" onclick="renderHotels()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3.26-6.93"/><path d="M3 2v5h5"/></svg>
+          Refresh
+        </button>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="user-table-wrap"><table class="user-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Hotel Name</th>
+              <th>Created</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="hotelsTableBody">
+            <tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-secondary);">Loading hotels...</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <h3 id="deleteModalTitle">Confirm Removal</h3>
+    <p id="deleteModalMsg">Are you sure?</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Remove</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+  // ═══════════════════════════════════════════════════════════════
+  //  SUPABASE CONNECTION
+  // ═══════════════════════════════════════════════════════════════
+
+  const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ═══════════════════════════════════════════════════════════════
+
+  let users = [];
+  let nextUserId = 1;
+
+  // Hotels — persisted to localStorage so the booking form can access them
+  let hotels = [];
+  let nextHotelId = 2;
+
+  let deleteTarget = null;
+  let deleteType = null;
+
+  function el(id) { return document.getElementById(id); }
+
+  function toast(msg, type = 'info') {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    el('toastContainer').appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  // ── Theme ──
+
+	  function toggleTheme() {
+	    const html = document.documentElement;
+	    const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+	    html.setAttribute('data-theme', next);
+	    localStorage.setItem('theme', next);
+	    updateThemeModeLabel();
+	  }
+
+	  function updateThemeModeLabel() {
+	    const label = el('themeModeLabel');
+	    if (!label) return;
+	    label.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Dark' : 'Light';
+	  }
+
+	  function applyStoredTheme() {
+	    const stored = localStorage.getItem('theme');
+	    if (stored) document.documentElement.setAttribute('data-theme', stored);
+	    else if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.setAttribute('data-theme', 'dark');
+	    updateThemeModeLabel();
+	  }
+
+  function toggleUserMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = el('userMenu');
+    if (!menu) return;
+    menu.classList.toggle('open');
+  }
+
+  function closeUserMenu() {
+    const menu = el('userMenu');
+    if (menu) menu.classList.remove('open');
+  }
+
+  async function handleLogout() {
+    try { await sb.auth.signOut(); } catch {}
+    window.location.href = 'booking-form.html';
+  }
+
+  async function applyUserMenuFromSession() {
+    const menu = el('userMenu');
+    if (!menu) return;
+    menu.classList.remove('open');
+    menu.style.display = 'none';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return;
+      menu.style.display = 'inline-flex';
+      const emailEl = el('userMenuEmail');
+      const roleEl = el('userMenuRole');
+      if (emailEl) emailEl.textContent = session.user.email || '—';
+      if (roleEl) roleEl.textContent = 'admin';
+    } catch {}
+  }
+
+  // ── Date formatting (DD/MM/YYYY) ──
+
+  function formatDateDMYFromTimestamp(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    if (!Number.isFinite(d.getTime())) return String(ts);
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = String(d.getUTCFullYear());
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  // ── Section navigation ──
+
+  let activeSection = 'users';
+
+  function showSection(section) {
+    activeSection = section;
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.admin-nav-btn').forEach(b => b.classList.remove('active'));
+    el('section' + section.charAt(0).toUpperCase() + section.slice(1)).classList.add('active');
+    event.target.closest('.admin-nav-btn').classList.add('active');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  HOTELS — Persisted to localStorage
+  // ═══════════════════════════════════════════════════════════════
+
+  async function loadHotels() {
+    try {
+      const { data, error } = await sb.from('hotels').select('*').order('name');
+      if (error) throw error;
+      hotels = data || [];
+      nextHotelId = hotels.length ? Math.max(...hotels.map(h => h.id)) + 1 : 1;
+    } catch (err) {
+      toast('Failed to load hotels: ' + err.message, 'error');
+    }
+  }
+
+  function renderHotels() {
+    const body = el('hotelsTableBody');
+    if (!hotels.length) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-secondary);">No hotels added yet</td></tr>';
+      updateStats();
+      return;
+    }
+
+    body.innerHTML = hotels.map(h => `
+      <tr>
+        <td style="color:var(--text-secondary);font-size:12px;">${h.id}</td>
+        <td>
+          <strong id="hotelName_${h.id}">${h.name}</strong>
+        </td>
+        <td>${formatDateDMYFromTimestamp(h.created_at)}</td>
+        <td style="text-align:right;">
+          <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button class="btn btn-outline btn-sm" onclick="startRenameHotel(${h.id})">Rename</button>
+            <button class="btn btn-danger btn-sm" onclick="promptDeleteHotel(${h.id})">Remove</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+
+    updateStats();
+  }
+
+  async function addHotel() {
+    const name = el('newHotelName').value.trim();
+    if (!name) {
+      toast('Hotel name is required', 'error');
+      return;
+    }
+
+    if (hotels.find(h => h.name.toLowerCase() === name.toLowerCase())) {
+      toast('Hotel already exists', 'error');
+      return;
+    }
+
+    try {
+      const { data, error } = await sb.from('hotels').insert({ name }).select();
+      if (error) throw error;
+      hotels.push(data[0]);
+      el('addHotelForm').reset();
+      renderHotels();
+      toast(`Hotel "${name}" added`, 'success');
+    } catch (err) {
+      toast('Failed: ' + err.message, 'error');
+    }
+  }
+
+  function startRenameHotel(id) {
+    const hotel = hotels.find(h => h.id === id);
+    if (!hotel) return;
+    const cell = el('hotelName_' + id);
+    if (!cell) return;
+
+    cell.innerHTML = `
+      <input class="inline-edit" type="text" value="${hotel.name}" id="hotelRename_${id}" onkeydown="if(event.key==='Enter')finishRenameHotel(${id})">
+      <button class="btn btn-success btn-sm" style="margin-left:6px;" onclick="finishRenameHotel(${id})">Save</button>
+    `;
+    el('hotelRename_' + id).focus();
+    el('hotelRename_' + id).select();
+  }
+
+  async function finishRenameHotel(id) {
+    const input = el('hotelRename_' + id);
+    if (!input) return;
+    const newName = input.value.trim();
+    if (!newName) { toast('Name cannot be empty', 'error'); return; }
+
+    const hotel = hotels.find(h => h.id === id);
+    if (!hotel) return;
+
+    if (hotels.find(h => h.id !== id && h.name.toLowerCase() === newName.toLowerCase())) {
+      toast('A hotel with that name already exists', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await sb.from('hotels').update({ name: newName }).eq('id', id);
+      if (error) throw error;
+      hotel.name = newName;
+      renderHotels();
+      toast('Hotel renamed', 'success');
+    } catch (err) {
+      toast('Rename failed: ' + err.message, 'error');
+    }
+  }
+
+  function promptDeleteHotel(id) {
+    const hotel = hotels.find(h => h.id === id);
+    if (!hotel) return;
+    deleteTarget = id;
+    deleteType = 'hotel';
+    el('deleteModalTitle').textContent = 'Remove Hotel';
+    el('deleteModalMsg').textContent = `Are you sure you want to remove "${hotel.name}"? Bookings using this hotel won't be affected.`;
+    el('deleteModal').classList.add('visible');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  USERS
+  // ═══════════════════════════════════════════════════════════════
+
+  function updateStats() {
+    el('statTotal').textContent = users.length;
+    el('statAdmins').textContent = users.filter(u => u.role === 'admin').length;
+    el('statActive').textContent = users.filter(u => u.status === 'active').length;
+    el('statHotels').textContent = hotels.length;
+  }
+
+  function renderUsers() {
+    const body = el('usersTableBody');
+    if (!users.length) {
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary);">No users found</td></tr>';
+      updateStats();
+      return;
+    }
+
+    body.innerHTML = users.map(u => `
+      <tr>
+        <td><strong>${u.email}</strong></td>
+        <td><span class="badge badge-${u.role}">${u.role}</span></td>
+        <td><span class="badge badge-${u.status}">${u.status}</span></td>
+        <td>${formatDateDMYFromTimestamp(u.created_at)}</td>
+        <td style="text-align:right;">
+          <div style="display:flex;gap:6px;justify-content:flex-end;">
+            ${u.status === 'active'
+              ? `<button class="btn btn-outline btn-sm" onclick="toggleUserStatus(${u.id}, 'disabled')">Disable</button>`
+              : `<button class="btn btn-success btn-sm" onclick="toggleUserStatus(${u.id}, 'active')">Enable</button>`
+            }
+            <button class="btn btn-outline btn-sm" onclick="toggleUserRole(${u.id})">${u.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
+            <button class="btn btn-danger btn-sm" onclick="promptDeleteUser(${u.id})">Remove</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+
+    updateStats();
+  }
+
+  async function loadUsers() {
+    try {
+      const { data, error } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      users = data || [];
+      renderUsers();
+    } catch (err) {
+      toast('Failed to load users: ' + err.message, 'error');
+    }
+  }
+
+  async function addUser() {
+    const email = el('newUserEmail').value.trim();
+    const password = el('newUserPassword').value;
+    const role = el('newUserRole').value;
+
+    if (!email || !password) {
+      toast('Email and password are required', 'error');
+      return;
+    }
+
+    if (password.length < 6) {
+      toast('Password must be at least 6 characters', 'error');
+      return;
+    }
+
+    try {
+      const tempSb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false }
+      });
+
+      const { data, error } = await tempSb.auth.signUp({
+        email,
+        password,
+        options: { data: { role } }
+      });
+      if (error) throw error;
+
+      if (data.user && !data.session) {
+        toast(`User ${email} created — they must confirm their email`, 'success');
+      } else {
+        toast(`User ${email} created`, 'success');
+      }
+
+      el('addUserForm').reset();
+      setTimeout(() => loadUsers(), 1000);
+    } catch (err) {
+      toast('Failed to create user: ' + err.message, 'error');
+    }
+  }
+
+  async function toggleUserStatus(id, newStatus) {
+    try {
+      const { error } = await sb.from('profiles').update({ status: newStatus }).eq('id', id);
+      if (error) throw error;
+      const user = users.find(u => u.id === id);
+      if (user) user.status = newStatus;
+      renderUsers();
+      toast(`User ${newStatus === 'active' ? 'enabled' : 'disabled'}`, 'success');
+    } catch (err) {
+      toast('Failed: ' + err.message, 'error');
+    }
+  }
+
+  async function toggleUserRole(id) {
+    try {
+      const user = users.find(u => u.id === id);
+      if (!user) return;
+      const newRole = user.role === 'admin' ? 'user' : 'admin';
+      const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', id);
+      if (error) throw error;
+      user.role = newRole;
+      renderUsers();
+      toast(`Role changed to ${newRole}`, 'success');
+    } catch (err) {
+      toast('Failed: ' + err.message, 'error');
+    }
+  }
+
+  function promptDeleteUser(id) {
+    const user = users.find(u => u.id === id);
+    if (!user) return;
+    deleteTarget = id;
+    deleteType = 'user';
+    el('deleteModalTitle').textContent = 'Remove User';
+    el('deleteModalMsg').textContent = `Are you sure you want to remove ${user.email}? This cannot be undone.`;
+    el('deleteModal').classList.add('visible');
+  }
+
+  // ── Shared delete modal ──
+
+  function closeModal() {
+    el('deleteModal').classList.remove('visible');
+    deleteTarget = null;
+    deleteType = null;
+  }
+
+  async function confirmDelete() {
+    closeModal();
+    if (!deleteTarget) return;
+
+    try {
+      if (deleteType === 'user') {
+        await sb.from('profiles').delete().eq('id', deleteTarget);
+        await loadUsers();
+        toast('User removed', 'success');
+      } else if (deleteType === 'hotel') {
+        const { error } = await sb.from('hotels').delete().eq('id', deleteTarget);
+        if (error) throw error;
+        hotels = hotels.filter(h => h.id !== deleteTarget);
+        renderHotels();
+        toast('Hotel removed', 'success');
+      }
+    } catch (err) {
+      toast('Delete failed: ' + err.message, 'error');
+    }
+
+    deleteTarget = null;
+    deleteType = null;
+  }
+
+  // ── Session check ──
+  async function checkAdminAccess() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      window.location.href = 'booking-form.html';
+      return false;
+    }
+
+    const { data: profile } = await sb.from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+
+    if (!profile || profile.role !== 'admin') {
+      window.location.href = 'booking-form.html';
+      return false;
+    }
+
+    return true;
+  }
+
+  // ── Init ──
+  document.addEventListener('DOMContentLoaded', async () => {
+    applyStoredTheme();
+    if (await checkAdminAccess()) {
+      await applyUserMenuFromSession();
+      await loadHotels();
+      await loadUsers();
+      renderHotels();
+    }
+
+    document.addEventListener('click', (e) => {
+      const menu = el('userMenu');
+      if (!menu) return;
+      if (!menu.classList.contains('open')) return;
+      if (!menu.contains(e.target)) closeUserMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeUserMenu();
+    });
+  });
+</script>
+
+</body>
+</html>
