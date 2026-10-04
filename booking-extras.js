@@ -608,14 +608,20 @@
   }
 
   function guestCountWarning(headcount, namedGuests) {
-    var people = num(headcount);
+    var raw = headcount == null ? '' : String(headcount).trim();
     var named = num(namedGuests);
-    if (!people || people === named) return '';
+    if (raw === '') {
+      if (!named) return '';
+      var listed = named === 1 ? '1 guest name is listed' : (named + ' guest names are listed');
+      return 'Headcount problem: ' + listed + ', and the headcount is blank.';
+    }
+    var people = num(raw);
+    if (people === named) return '';
     if (!named) {
-      return 'Headcount is ' + people + '. No guest names are listed yet — add a first name and surname for each person.';
+      return 'Headcount problem: headcount is ' + people + ', and no guest names are listed.';
     }
     var noun = named === 1 ? 'guest name is' : 'guest names are';
-    return 'Headcount is ' + people + ' and ' + named + ' ' + noun + ' listed. Add a first name and surname for each person.';
+    return 'Headcount problem: headcount is ' + people + ', and ' + named + ' ' + noun + ' listed.';
   }
 
   function suggestedDepositGbp(headcount) {
