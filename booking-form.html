@@ -2385,7 +2385,7 @@
         <details class="price-book" id="priceBook">
           <summary>Tour prices</summary>
           <div class="price-book-body">
-            <p class="hint">This list is only for day trips and the usual beading holiday. A percentage rise copies prices you have already entered into another year. Extra hotels, and a tour somewhere other than the usual beading area, are not on this list. Type those amounts on the booking.</p>
+            <p class="hint">This list is only for day trips and the usual beading holiday. A percentage rise copies prices you have already entered into another year. Each of those prices is rounded up to the next whole pound, with no pence. A price that is already a whole number of pounds stays as it is. Extra hotels, and a tour somewhere other than the usual beading area, are not on this list. Type those amounts on the booking.</p>
             <div id="priceBookYears"></div>
             <div class="price-book-actions">
               <label>Year <input type="text" id="priceBookNewYear" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
@@ -5975,7 +5975,13 @@
   }
 
   function risenPrice(amount, pct) {
-    return (Math.round(Number(amount) * (1 + pct / 100) * 100) / 100).toFixed(2);
+    const raised = Number(amount) * (1 + Number(pct) / 100);
+    if (!Number.isFinite(raised) || raised < 0) return '';
+    // Already a whole pound (within floating-point noise) stays that pound.
+    // Any pence round up to the next whole pound. No pence are stored.
+    const nearest = Math.round(raised);
+    if (Math.abs(raised - nearest) < 1e-6) return String(nearest);
+    return String(Math.ceil(raised));
   }
 
   function applyPriceRise() {
@@ -6011,7 +6017,7 @@
     writePriceBook(book);
     renderPriceBook();
     refreshPricesOnOpenTabs();
-    toast('Copied the prices that were already entered, with that rise', 'success');
+    toast('Copied the prices that were already entered, with that rise, rounded up to the next whole pound', 'success');
   }
 
   function onPriceBookInput(e) {
