@@ -1985,6 +1985,15 @@
       background: var(--surface-alt);
     }
     .hotel-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .hotel-head-main { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+    .hotel-date-strip {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--text-secondary);
+    }
+    .hotel-date-strip[hidden] { display: none !important; }
     .booked-tick { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
     .day-trip-panel {
       border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
@@ -3229,6 +3238,7 @@
     else applyMemberPayFold(tabId);
     applySuggestedPrice(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
+    updateHotelNightsHint(tabId);
   }
 
   function syncTabHeader(tabId) {
@@ -4165,7 +4175,10 @@
         </div>
         <div class="hotel-card" id="t${t}_primary_hotel_card" hidden>
           <div class="hotel-card-head">
-            <span class="hotel-stay-num" id="t${t}_primary_hotel_num">Hotel 1</span>
+            <div class="hotel-head-main">
+              <span class="hotel-stay-num" id="t${t}_primary_hotel_num">Hotel 1</span>
+              <p class="hotel-date-strip" id="t${t}_primary_hotel_dates" hidden></p>
+            </div>
           </div>
           <div class="grid grid-2">
             <div class="field"><label>Hotel name</label>
@@ -7026,7 +7039,10 @@
 
     row.innerHTML = `
       <div class="hotel-row-head">
-        <span class="hotel-stay-num">Hotel ${idx}</span>
+        <div class="hotel-head-main">
+          <span class="hotel-stay-num">Hotel ${idx}</span>
+          <p class="hotel-date-strip" hidden></p>
+        </div>
         <button type="button" class="member-remove" onclick="removeHotelStayRow(this, '${tabId}')" title="Remove hotel">&times;</button>
       </div>
       <div class="grid grid-2">
@@ -7667,6 +7683,91 @@
     return n === 1 ? '1 night' : (n + ' nights');
   }
 
+  // Each hotel covers check-in through check-out. N nights move the cursor
+  // forward by N days, and the next hotel starts on that check-out morning.
+  // A hotel with no nights takes arrival → departure only when it is the only
+  // hotel, or the remainder of the tour when it is the last. A gap earlier in
+  // the list hides every later strip until those nights are filled in.
+  function hotelStayRanges(arrival, departure, nightsList) {
+    const list = Array.isArray(nightsList) ? nightsList : [];
+    const arrivalMs = arrival && typeof arrival.getTime === 'function' ? arrival.getTime() : NaN;
+    if (!Number.isFinite(arrivalMs)) return list.map(() => null);
+    let cursor = arrivalMs;
+    let blocked = false;
+    const departMs = departure && typeof departure.getTime === 'function' ? departure.getTime() : NaN;
+    return list.map((nights, i) => {
+      if (blocked) return null;
+      const known = typeof nights === 'number' && Number.isFinite(nights) && nights >= 0;
+      if (known) {
+        const start = new Date(cursor);
+        const end = new Date(cursor + (nights * 86400000));
+        cursor = end.getTime();
+        return { start, end };
+      }
+      const last = i === list.length - 1;
+      if ((list.length === 1 || last) && Number.isFinite(departMs) && departMs >= cursor) {
+        const start = new Date(cursor);
+        const end = new Date(departMs);
+        cursor = departMs;
+        return { start, end };
+      }
+      blocked = true;
+      return null;
+    });
+  }
+
+  function formatHotelStayRange(range) {
+    if (!range || !range.start || !range.end) return '';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const a = range.start;
+    const b = range.end;
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return '';
+    const day = (d) => String(d.getUTCDate());
+    const mon = (d) => months[d.getUTCMonth()];
+    if (a.getTime() === b.getTime()) return day(a) + ' ' + mon(a);
+    if (a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth()) {
+      return day(a) + '\u2013' + day(b) + ' ' + mon(a);
+    }
+    if (a.getUTCFullYear() === b.getUTCFullYear()) {
+      return day(a) + ' ' + mon(a) + ' \u2013 ' + day(b) + ' ' + mon(b);
+    }
+    return day(a) + ' ' + mon(a) + ' ' + a.getUTCFullYear() + ' \u2013 ' + day(b) + ' ' + mon(b) + ' ' + b.getUTCFullYear();
+  }
+
+  function refreshHotelDateStrips(tabId) {
+    const strips = [];
+    const nightsList = [];
+    const pushStay = (strip, nightsEl) => {
+      if (!strip) return;
+      strips.push(strip);
+      nightsList.push(parseNightsCount(nightsText(nightsEl)));
+    };
+    if (typeof primaryHotelVisible === 'function' && primaryHotelVisible(tabId)) {
+      const nightsEl = typeof tEl === 'function' ? tEl(tabId, 'other_hotel_nights') : null;
+      pushStay(document.getElementById('t' + tabId + '_primary_hotel_dates'), nightsEl);
+    }
+    const list = document.getElementById('t' + tabId + '_hotel_stays_list');
+    if (list && list.querySelectorAll) {
+      list.querySelectorAll('.hotel-stay-row').forEach(row => {
+        if (!row || !row.querySelector) return;
+        pushStay(row.querySelector('.hotel-date-strip'), row.querySelector('.hotel-stay-nights'));
+      });
+    }
+    if (!strips.length) return;
+    const arrivalEl = typeof tEl === 'function' ? tEl(tabId, 'tour_arrival_date') : null;
+    const departureEl = typeof tEl === 'function' ? tEl(tabId, 'departure_date') : null;
+    const ranges = hotelStayRanges(
+      parseFlexibleDateUTC(arrivalEl && arrivalEl.value || ''),
+      parseFlexibleDateUTC(departureEl && departureEl.value || ''),
+      nightsList
+    );
+    strips.forEach((strip, i) => {
+      const label = formatHotelStayRange(ranges[i]);
+      strip.textContent = label;
+      strip.hidden = !label;
+    });
+  }
+
   function defaultNightsPlaceholder(input) {
     if (input && input.classList && input.classList.contains('hotel-stay-nights')) return 'Nights (e.g. 3)';
     return 'e.g. 3 nights';
@@ -7699,37 +7800,39 @@
     fields.forEach(input => {
       input.placeholder = (fields.length === 1 && suggestion) ? suggestion : defaultNightsPlaceholder(input);
     });
-    if (!hint) return;
-    if (nights < 1 || fields.length < 2) {
-      hint.hidden = true;
-      hint.textContent = '';
-      return;
+    if (hint) {
+      if (nights < 1 || fields.length < 2) {
+        hint.hidden = true;
+        hint.textContent = '';
+      } else {
+        let sum = 0;
+        let blank = 0;
+        let bad = 0;
+        fields.forEach(input => {
+          const text = nightsText(input);
+          if (!text) { blank += 1; return; }
+          const n = parseNightsCount(text);
+          if (n == null) bad += 1;
+          else sum += n;
+        });
+        const stay = nightsCountLabel(nights);
+        let text = '';
+        if (bad) {
+          text = 'Enter the nights for each hotel as a number. Together they should be ' + stay + '.';
+        } else if (blank === fields.length) {
+          text = 'More than one hotel. Their nights should add up to ' + stay + '.';
+        } else if (blank && sum === nights) {
+          const waiting = blank === 1 ? 'One hotel has no nights yet.' : (blank + ' hotels have no nights yet.');
+          text = 'These hotel nights add up to ' + nightsCountLabel(sum) + ', which matches the stay. ' + waiting;
+        } else if (sum !== nights) {
+          const soFar = blank ? ' so far' : '';
+          text = 'These hotel nights add up to ' + nightsCountLabel(sum) + soFar + '. The stay from arrival to departure is ' + stay + '.';
+        }
+        hint.hidden = !text;
+        hint.textContent = text;
+      }
     }
-    let sum = 0;
-    let blank = 0;
-    let bad = 0;
-    fields.forEach(input => {
-      const text = nightsText(input);
-      if (!text) { blank += 1; return; }
-      const n = parseNightsCount(text);
-      if (n == null) bad += 1;
-      else sum += n;
-    });
-    const stay = nightsCountLabel(nights);
-    let text = '';
-    if (bad) {
-      text = 'Enter the nights for each hotel as a number. Together they should be ' + stay + '.';
-    } else if (blank === fields.length) {
-      text = 'More than one hotel. Their nights should add up to ' + stay + '.';
-    } else if (blank && sum === nights) {
-      const waiting = blank === 1 ? 'One hotel has no nights yet.' : (blank + ' hotels have no nights yet.');
-      text = 'These hotel nights add up to ' + nightsCountLabel(sum) + ', which matches the stay. ' + waiting;
-    } else if (sum !== nights) {
-      const soFar = blank ? ' so far' : '';
-      text = 'These hotel nights add up to ' + nightsCountLabel(sum) + soFar + '. The stay from arrival to departure is ' + stay + '.';
-    }
-    hint.hidden = !text;
-    hint.textContent = text;
+    refreshHotelDateStrips(tabId);
   }
 
   function noteLoadedNights(tabId) {
@@ -8019,6 +8122,7 @@
       addPlanOnlyHotelRows(tabId, hotels);
       tabData.planHotelsLoaded = true;
       syncHotelPanel(tabId);
+      updateHotelNightsHint(tabId);
       recalculateTab(tabId);
     } catch (err) {
       console.warn('Hotel plan flags not loaded:', err);
