@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+  <script>
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Places visit stats — Keith Dudman beading tours</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="place-categories.js"></script>
+  <script src="global-search.js"></script>
+  <script src="auth-gate.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7;
+      --surface: #ffffff;
+      --surface-alt: #f9fafb;
+      --border: #e2e4e9;
+      --text: #1a1d26;
+      --text-secondary: #6b7280;
+      --accent: #4f46e5;
+      --accent-soft: #eef2ff;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0b1220;
+      --surface: rgba(255,255,255,.06);
+      --surface-alt: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.12);
+      --text: #f3f4f6;
+      --text-secondary: rgba(243,244,246,.72);
+      --accent: #a78bfa;
+      --accent-soft: rgba(167,139,250,.12);
+      --shadow: none;
+    }
+
+    body {
+      font-family: 'DM Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.4;
+      min-height: 100vh;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .topbar-inner {
+      width: 100%;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .topbar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -.2px; }
+    .sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .page-help { margin: 4px 0 0; }
+    .page-help > summary {
+      cursor: pointer; list-style: none; display: inline-flex; align-items: center;
+      min-height: 28px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface-alt, var(--surface)); color: var(--text-secondary);
+      font-size: 12px; font-weight: 800; width: fit-content;
+    }
+    .page-help > summary::-webkit-details-marker { display: none; }
+    .page-help-body { margin-top: 6px; max-width: 42em; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+    .page-help-body p { margin: 0 0 6px; }
+
+    .view-nav {
+      display: flex;
+      gap: 4px;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 3px;
+      flex-wrap: wrap;
+    }
+    .view-nav a {
+      border: 0;
+      background: transparent;
+      color: var(--text-secondary);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .view-nav a.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--shadow);
+    }
+    .view-nav a:hover:not(.active) { color: var(--text); }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px 24px 48px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #9ca3af;
+    }
+    .dot.ok { background: #16a34a; }
+    .dot.err { background: #dc2626; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin: 16px 0 20px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+    .card .label { font-size: 12px; color: var(--text-secondary); font-weight: 700; }
+    .card .value { font-size: 28px; font-weight: 800; letter-spacing: -.5px; margin-top: 4px; }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .panel-head h2 { font-size: 15px; font-weight: 800; }
+    .hint { font-size: 12px; color: var(--text-secondary); }
+
+    .filters {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filters input, .filters select {
+      font: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--text);
+      min-width: 160px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 14px 16px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .chip strong { font-weight: 800; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--text-secondary);
+      background: var(--surface-alt);
+      position: sticky;
+      top: 0;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .num { font-variant-numeric: tabular-nums; font-weight: 800; white-space: nowrap; }
+    .muted { color: var(--text-secondary); }
+    .place-name { font-weight: 800; }
+    .type-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+    .type-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .groups {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .group-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      font-size: 11px;
+      font-weight: 700;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .empty {
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+    .table-scroll { overflow: auto; max-height: 70vh; }
+
+    @media (max-width: 640px) {
+      .topbar-inner, .wrap { padding-left: 14px; padding-right: 14px; }
+      .card .value { font-size: 22px; }
+      th:nth-child(4), td:nth-child(4) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <div>
+          <h1>Places visit stats</h1>
+          <details class="page-help">
+            <summary>Help</summary>
+            <div class="page-help-body"><p>How often each place appears across saved tour plans. A place with two categories is counted under each one. Snack is a supermarket or a bakery, not a restaurant. Visits are matched by place ID when present, otherwise by title. Counts come from cloud plans only.</p></div>
+          </details>
+        </div>
+        <nav class="view-nav" aria-label="Main">
+          <a href="booking-form.html" id="navBookings">Bookings</a>
+          <a href="analytics.html" id="navAnalytics">Analytics</a>
+          <a href="tour-planner.html" id="navPlanner">Planner</a>
+          <a href="hotels.html" id="navHotels">Hotels</a>
+          <a href="places-stats.html" class="active" id="navPlacesStats">Places stats</a>
+        </nav>
+      </div>
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div id="globalSearchMount" class="global-search-mount" aria-live="polite"></div>
+        <span class="status" id="status">
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText">Loading…</span>
+        </span>
+        <button type="button" class="btn" id="refreshBtn">Refresh</button>
+        <button type="button" class="btn" id="themeBtn">Theme</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="cards" id="summaryCards">
+      <div class="card"><div class="label">Plans scanned</div><div class="value" id="statPlans">—</div></div>
+      <div class="card"><div class="label">Place visits</div><div class="value" id="statVisits">—</div></div>
+      <div class="card"><div class="label">Distinct places</div><div class="value" id="statPlaces">—</div></div>
+      <div class="card"><div class="label">Types seen</div><div class="value" id="statTypes">—</div></div>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Type breakdown</h2>
+        </div>
+      </div>
+      <div class="chips" id="typeChips"><div class="muted">Loading…</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Places ranked by visits</h2>
+        </div>
+        <div class="filters">
+          <input type="search" id="searchBox" placeholder="Search place or group…" aria-label="Search places">
+          <select id="typeFilter" aria-label="Filter by type">
+            <option value="">All types</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Place</th>
+              <th>Type</th>
+              <th>Visits</th>
+              <th>Plans</th>
+              <th>Groups / plans</th>
+            </tr>
+          </thead>
+          <tbody id="placesBody"></tbody>
+        </table>
+        <div class="empty" id="placesEmpty" style="display:none;">No place visits found in saved plans.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let globalSearchApi = null;
+    function initGlobalSearch() {
+      if (!window.GlobalSearch || globalSearchApi) return;
+      globalSearchApi = window.GlobalSearch.init({
+        supabase: sb,
+        requireAuth: true,
+        isSignedIn: async () => {
+          try {
+            const { data: { session } } = await sb.auth.getSession();
+            return !!session;
+          } catch { return false; }
+        },
+        getBookings: () => null,
+        getPeople: () => null,
+        getPlaces: () => null,
+      });
+    }
+
+
+    const LIVE_BOOKINGS_ORIGIN = 'https://keith-booking-form.netlify.app';
+    const SKIP_TYPES = new Set(['travel', 'pickup', 'meal']);
+
+    let catalogueById = new Map();
+    let rows = [];
+    let typeTotals = new Map();
+    let planCount = 0;
+    let visitCount = 0;
+
+    function setStatus(text, type) {
+      document.getElementById('statusText').textContent = text;
+      const dot = document.getElementById('statusDot');
+      dot.className = 'dot' + (type === 'ok' ? ' ok' : type === 'err' ? ' err' : '');
+    }
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function normTitle(t) {
+      return String(t || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function isPlaceVisit(block) {
+      if (!block || typeof block !== 'object') return false;
+      const placeId = String(block.placeId || '').trim();
+      if (placeId) return true;
+      const type = String(block.type || '').trim().toLowerCase();
+      if (SKIP_TYPES.has(type)) return false;
+      return !!String(block.title || '').trim();
+    }
+
+    function placeKey(block) {
+      const placeId = String(block.placeId || '').trim();
+      if (placeId) return 'id:' + placeId;
+      return 'title:' + normTitle(block.title);
+    }
+
+    function categoryIds(source, fallbackType) {
+      const PC = window.PlaceCategories;
+      if (PC && source) {
+        return PC.placeCategories({
+          type: source.place_type || source.type || '',
+          place_type: source.place_type || source.type || '',
+          types: source.place_types || source.types,
+          place_types: source.place_types || source.types,
+        });
+      }
+      if (PC) {
+        const id = PC.knownCatalogueId(fallbackType);
+        return [id || String(fallbackType || 'other').trim().toLowerCase() || 'other'];
+      }
+      const raw = String((source && (source.place_type || source.type)) || fallbackType || 'other').trim().toLowerCase();
+      return [raw || 'other'];
+    }
+
+    function categoryName(id) {
+      const PC = window.PlaceCategories;
+      return PC ? PC.singularLabel(id) : String(id || 'Other');
+    }
+
+    function collectVisits(plans) {
+      const map = new Map();
+      typeTotals = new Map();
+      visitCount = 0;
+
+      for (const plan of plans) {
+        const payload = plan.payload || {};
+        const groupName = String(payload.groupName || '').trim() ||
+          (plan.booking_id ? ('Booking #' + plan.booking_id) : (plan.client_key || ('Plan #' + plan.id)));
+        const planLabel = {
+          planId: plan.id,
+          bookingId: plan.booking_id,
+          clientKey: plan.client_key,
+          groupName
+        };
+
+        const days = Array.isArray(payload.days) ? payload.days : [];
+        for (const day of days) {
+          const blocks = Array.isArray(day && day.blocks) ? day.blocks : [];
+          for (const block of blocks) {
+            if (!isPlaceVisit(block)) continue;
+            const key = placeKey(block);
+            const placeId = String(block.placeId || '').trim() || null;
+            const title = String(block.title || '').trim() || (placeId ? (catalogueById.get(placeId)?.name || placeId) : 'Untitled stop');
+            const blockType = String(block.type || '').trim().toLowerCase() || 'other';
+            const cat = placeId ? catalogueById.get(placeId) : null;
+            const types = cat ? categoryIds(cat, blockType) : categoryIds(null, blockType);
+
+            let row = map.get(key);
+            if (!row) {
+              row = {
+                key,
+                placeId,
+                title: (cat && cat.name) || title,
+                type: types[0] || 'other',
+                types: types.slice(),
+                visits: 0,
+                planIds: new Set(),
+                groups: new Map()
+              };
+              map.set(key, row);
+            }
+            row.visits += 1;
+            row.planIds.add(plan.id);
+            row.groups.set(String(plan.id), planLabel);
+            if (!row.placeId && placeId) row.placeId = placeId;
+            if (cat && cat.name) row.title = cat.name;
+            if (cat) {
+              row.types = categoryIds(cat, blockType);
+              row.type = row.types[0] || 'other';
+            }
+
+            (row.types || types).forEach(type => {
+              typeTotals.set(type, (typeTotals.get(type) || 0) + 1);
+            });
+            visitCount += 1;
+          }
+        }
+      }
+
+      return [...map.values()].sort((a, b) => b.visits - a.visits || a.title.localeCompare(b.title, 'en-GB'));
+    }
+
+    function renderSummary() {
+      document.getElementById('statPlans').textContent = String(planCount);
+      document.getElementById('statVisits').textContent = String(visitCount);
+      document.getElementById('statPlaces').textContent = String(rows.length);
+      document.getElementById('statTypes').textContent = String(typeTotals.size);
+    }
+
+    function catalogueTypeIds() {
+      const PC = window.PlaceCategories;
+      const known = PC ? PC.CATALOGUE_TYPES.map(t => t.id) : [];
+      const extra = [];
+      typeTotals.forEach((_, id) => {
+        if (known.indexOf(id) === -1 && extra.indexOf(id) === -1) extra.push(id);
+      });
+      rows.forEach(r => {
+        (r.types || [r.type]).forEach(id => {
+          if (id && known.indexOf(id) === -1 && extra.indexOf(id) === -1) extra.push(id);
+        });
+      });
+      extra.sort((a, b) => a.localeCompare(b, 'en-GB'));
+      return known.concat(extra);
+    }
+
+    function renderTypeChips() {
+      const el = document.getElementById('typeChips');
+      const types = catalogueTypeIds().map(id => [id, typeTotals.get(id) || 0]);
+      if (!types.length) {
+        el.innerHTML = '<div class="muted">No typed visits yet.</div>';
+        return;
+      }
+      el.innerHTML = types.map(([type, n]) =>
+        `<span class="chip" title="${esc(categoryName(type))}"><span>${esc(categoryName(type))}</span><strong>${n}</strong></span>`
+      ).join('');
+    }
+
+    function fillTypeFilter() {
+      const sel = document.getElementById('typeFilter');
+      const current = sel.value;
+      const types = catalogueTypeIds();
+      sel.innerHTML = '<option value="">All types</option>' +
+        types.map(t => `<option value="${esc(t)}">${esc(categoryName(t))}</option>`).join('');
+      if (types.includes(current)) sel.value = current;
+    }
+
+    function filteredRows() {
+      const q = (document.getElementById('searchBox').value || '').trim().toLowerCase();
+      const type = document.getElementById('typeFilter').value;
+      return rows.filter(r => {
+        const types = r.types || [r.type];
+        if (type && types.indexOf(type) === -1) return false;
+        if (!q) return true;
+        const hay = [
+          r.title,
+          r.placeId || '',
+          types.map(categoryName).join(' '),
+          types.join(' '),
+          ...[...r.groups.values()].map(g => g.groupName)
+        ].join(' ').toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    function renderTable() {
+      const body = document.getElementById('placesBody');
+      const empty = document.getElementById('placesEmpty');
+      const list = filteredRows();
+      if (!list.length) {
+        body.innerHTML = '';
+        empty.style.display = 'block';
+        empty.textContent = rows.length
+          ? 'No places match your search or filter.'
+          : 'No place visits found in saved plans.';
+        return;
+      }
+      empty.style.display = 'none';
+      body.innerHTML = list.map(r => {
+        const groups = [...r.groups.values()]
+          .sort((a, b) => a.groupName.localeCompare(b.groupName, 'en-GB'))
+          .map(g => `<span class="group-pill" title="${esc(g.groupName)}">${esc(g.groupName)}</span>`)
+          .join('');
+        const idHint = r.placeId
+          ? `<div class="muted" style="font-size:11px;margin-top:2px;">ID: ${esc(r.placeId)}</div>`
+          : `<div class="muted" style="font-size:11px;margin-top:2px;">Matched by title</div>`;
+        return `<tr>
+          <td><div class="place-name">${esc(r.title)}</div>${idHint}</td>
+          <td><div class="type-pills">${(r.types || [r.type || 'other']).map(t => `<span class="type-pill">${esc(categoryName(t))}</span>`).join('')}</div></td>
+          <td class="num">${r.visits}</td>
+          <td class="num">${r.planIds.size}</td>
+          <td><div class="groups">${groups || '<span class="muted">—</span>'}</div></td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderAll() {
+      renderSummary();
+      renderTypeChips();
+      fillTypeFilter();
+      renderTable();
+    }
+
+    async function loadData() {
+      setStatus('Loading plans…', 'info');
+      const plansRes = await sb.from('planner_plans').select('id,booking_id,client_key,payload,updated_at');
+      let placesRes = await sb.from('planner_places').select('client_id,name,place_type,place_types').order('name');
+      if (placesRes.error) {
+        placesRes = await sb.from('planner_places').select('client_id,name,place_type').order('name');
+      }
+
+      if (placesRes.error) throw placesRes.error;
+      if (plansRes.error) throw plansRes.error;
+
+      catalogueById = new Map();
+      for (const p of (placesRes.data || [])) {
+        if (p.client_id) catalogueById.set(String(p.client_id), p);
+      }
+
+      const plans = (plansRes.data || []).filter(plan => {
+        return !(window.isLegacyDemoPlan && window.isLegacyDemoPlan(plan.client_key, plan.payload || {}));
+      });
+      planCount = plans.length;
+      rows = collectVisits(plans);
+      renderAll();
+      setStatus(
+        planCount
+          ? `Loaded ${planCount} plan${planCount === 1 ? '' : 's'} · ${visitCount} visit${visitCount === 1 ? '' : 's'}`
+          : 'No plans in the cloud yet',
+        'ok'
+      );
+    }
+
+    async function probeSameOrigin(path) {
+      try {
+        const res = await fetch(path, { method: 'GET', cache: 'no-store', headers: { Range: 'bytes=0-0' } });
+        return res.ok || res.status === 206;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    async function fixExternalNavLinks() {
+      const onGithubPages = location.hostname.includes('github.io');
+      if (!onGithubPages) return;
+      const bookings = document.getElementById('navBookings');
+      const analytics = document.getElementById('navAnalytics');
+      const [hasBooking, hasAnalytics] = await Promise.all([
+        probeSameOrigin('booking-form.html'),
+        probeSameOrigin('analytics.html')
+      ]);
+      if (bookings) {
+        bookings.href = hasBooking ? 'booking-form.html' : (LIVE_BOOKINGS_ORIGIN + '/booking-form.html');
+      }
+      if (analytics) {
+        analytics.href = hasAnalytics ? 'analytics.html' : (LIVE_BOOKINGS_ORIGIN + '/analytics.html');
+      }
+    }
+
+    document.getElementById('themeBtn').addEventListener('click', () => {
+      const html = document.documentElement;
+      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    });
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      loadData().catch(err => {
+        console.error(err);
+        setStatus(err.message || 'Failed to load', 'err');
+      });
+    });
+    document.getElementById('searchBox').addEventListener('input', renderTable);
+    document.getElementById('typeFilter').addEventListener('change', renderTable);
+
+    fixExternalNavLinks();
+    AuthGate.require(sb, { title: 'Place statistics' }).then(() => loadData()).catch(err => {
+      console.error(err);
+      setStatus(err.message || 'Failed to load', 'err');
+      document.getElementById('typeChips').innerHTML = '<div class="muted">Could not load type breakdown.</div>';
+      document.getElementById('placesEmpty').style.display = 'block';
+      document.getElementById('placesEmpty').textContent = 'Could not load place stats from Supabase.';
+    });
+  
+    initGlobalSearch();
+</script>
+</body>
+</html>
