@@ -1,9 +1,6 @@
-# Deploy the static preview site to GitHub Pages.
-# Publishing source must be GitHub Actions (Pages build_type=workflow).
-# No shared concurrency group: a queued ubuntu-latest run was holding the
-# group during the hosted-runner delay, so newer runs stayed pending with
-# zero jobs and never reached a runner.
-name: Deploy static content to Pages
+# One-shot companion to pages.yml. ubuntu-latest jobs were sitting in the
+# hosted-runner queue, so this uses the 22.04 image pool instead.
+name: Deploy Pages x64 fallback
 
 on:
   push:
@@ -20,9 +17,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    # ubuntu-latest assignment is delayed (Actions incident). ARM is a
-    # separate hosted pool and can pick up this static deploy.
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
