@@ -35,6 +35,9 @@ test('tour fare sits as price per person, then headcount, then beading tour pric
   const head = fare.indexOf('id="t${t}_no_people"');
   const beading = fare.indexOf('id="t${t}_beading_tour_price"');
   assert.ok(person > 0 && head > person && beading > head);
+  const fareCss = between('.tour-fare-block {', '.hotel-card {');
+  assert.match(fareCss, /max-width:\s*220px/);
+  assert.match(fareCss, /min-height:\s*30px/);
   const layout = between('function buildLayoutFormHTML(', 'function clampYear(');
   const standard = between('function buildFormHTML(', 'function buildLayoutFormHTML(');
   assert.ok(layout.indexOf('${tourFareHTML(t)}') < layout.indexOf('id="t${t}_org_first"'));
