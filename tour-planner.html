@@ -241,6 +241,8 @@
       font-size: 16px; font-weight: 800;
     }
     .icon-btn:hover { color: var(--danger); border-color: var(--danger); }
+    .people-delete { flex-shrink: 0; color: var(--danger); border-color: var(--danger); white-space: nowrap; }
+    .view-phone .people-delete { min-height: 44px; }
 
     .hotel-card {
       background: var(--accent-soft);
@@ -2640,6 +2642,7 @@
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const STORAGE_KEY = 'keith_tour_planner_v1';
+  const DELETED_PEOPLE_KEY = 'planner_people_deleted_v1';
   const TRAVEL_BETWEEN = 'About 15–25 minutes by van between most stops.';
   const TRAVEL_HOOK = 'Exact travel time later — Maps API not wired in this prototype.';
   const PRAGUE_DRIVE = 'About 85 min clear road, or about 105 min in weekday morning traffic, to the beading area (Jablonec nad Nisou).';
@@ -4837,6 +4840,7 @@
   // not that confirmation — local catalogue places are baselined on load too.
   const planSyncByKey = {};
   const personBaselines = {};
+  let peopleServerIds = null;
   const placeBaselines = {};
   const placeRowsOnServer = new Set();
   let placesCatalogLoaded = false;
@@ -5238,6 +5242,7 @@
   function upsertPersonFromOrganiserName(name) {
     const clean = String(name || '').trim();
     if (!clean) return null;
+    if (personNameIsDeleted(clean)) return findPersonByName(clean);
     if (!Array.isArray(state.people)) state.people = [];
     let person = findPersonByName(clean);
     if (person) {
@@ -5369,6 +5374,8 @@
       if (!person) person = findPersonByName(name);
       if (!person) {
         const reuseId = String(g.personId || '').trim();
+        if (personIdIsDeleted(reuseId) || personNameIsDeleted(name)) return;
+        if (peopleServerIds && reuseId && !peopleServerIds.has(reuseId)) return;
         person = ensurePerson({
           id: (reuseId && !findPersonById(reuseId)) ? reuseId : uid('person'),
           name,
@@ -5381,7 +5388,7 @@
         changed = true;
       } else {
         ensurePerson(person);
-        if (name && person.name !== name) { person.name = name; changed = true; }
+        if (name && person.name !== name && !personNameIsDeleted(name)) { person.name = name; changed = true; }
         if (email && normPersonEmail(person.email) !== ne) {
           if (!person.email || normPersonEmail(person.email) === ne) {
             person.email = email;
@@ -5597,6 +5604,66 @@
       travelledWith: JSON.parse(JSON.stringify(p.travelledWith || [])),
     };
   }
+  function readDeletedPeople() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(DELETED_PEOPLE_KEY) || '{}');
+      const ids = new Set(Array.isArray(raw.ids) ? raw.ids.map(id => String(id)) : []);
+      const names = new Set(Array.isArray(raw.names) ? raw.names.map(name => normPersonName(name)).filter(Boolean) : []);
+      return { ids, names };
+    } catch (_) {
+      return { ids: new Set(), names: new Set() };
+    }
+  }
+  function writeDeletedPeople(book) {
+    localStorage.setItem(DELETED_PEOPLE_KEY, JSON.stringify({
+      ids: [...book.ids].filter(Boolean).slice(-2000),
+      names: [...book.names].filter(Boolean).slice(-2000),
+    }));
+  }
+  function personIdIsDeleted(id) {
+    if (!id) return false;
+    return readDeletedPeople().ids.has(String(id));
+  }
+  function personNameIsDeleted(name) {
+    const key = normPersonName(name);
+    if (!key) return false;
+    return readDeletedPeople().names.has(key);
+  }
+  function personIsMergedAway(p) {
+    return /^\s*merged into\b/i.test(String((p && p.notes) || ''));
+  }
+  function rememberDeletedPerson(person) {
+    if (!person) return;
+    const book = readDeletedPeople();
+    if (person.id) book.ids.add(String(person.id));
+    const key = normPersonName(person.name);
+    const stillUsed = key && (state.people || []).some(other => other && String(other.id) !== String(person.id) && normPersonName(other.name) === key);
+    if (key && !stillUsed) book.names.add(key);
+    writeDeletedPeople(book);
+  }
+  function reconcilePeopleWithServer(cloudPeople, localPeople) {
+    const cloud = (cloudPeople || []).map(raw => ensurePerson({ ...raw }));
+    const serverIds = new Set(cloud.map(p => String(p.id)));
+    const serverNames = new Set(cloud.map(p => normPersonName(p.name)).filter(Boolean));
+    const book = readDeletedPeople();
+    const pending = [];
+    (localPeople || []).forEach(raw => {
+      const person = ensurePerson({ ...raw });
+      const id = String(person.id || '');
+      if (!id || serverIds.has(id)) return;
+      if (person.pendingCreate && !book.ids.has(id)) {
+        pending.push(person);
+        return;
+      }
+      book.ids.add(id);
+      const key = normPersonName(person.name);
+      if (key && !serverNames.has(key)) book.names.add(key);
+    });
+    writeDeletedPeople(book);
+    peopleServerIds = serverIds;
+    state.people = cloud.concat(pending);
+    dedupePeopleByEmail();
+  }
   function rememberPersonBaseline(p) {
     if (!p || !p.id) return;
     try { personBaselines[String(p.id)] = personColumnSnapshot(p); } catch (_) {}
@@ -5681,8 +5748,14 @@
         const { data, error } = await sb.from('planner_people').select('*').eq('client_id', String(id)).maybeSingle();
         if (error) throw error;
         if (!data) {
+          if (personIdIsDeleted(id) || (!person.pendingCreate && personNameIsDeleted(person.name))) {
+            console.warn('Not recreating a person removed from People:', id);
+            return true;
+          }
           const { error: insErr } = await sb.from('planner_people').insert(personToRow(person));
           if (insErr) throw insErr;
+          person.pendingCreate = false;
+          if (peopleServerIds) peopleServerIds.add(String(id));
           rememberPersonBaseline(person);
           return true;
         }
@@ -10731,7 +10804,7 @@ function renderDayTabs() {
         <label class="field-label">Organiser${orgPersonMissing ? missingBadgeHtml('People link missing') : ''}</label>
         <input type="text" id="organiserName" class="${missingFieldClass(orgPersonMissing).trim()}" list="organiserPeopleList" value="${escapeHtml(organiserDisplay)}" placeholder="Search People or type a name" autocomplete="off" aria-invalid="${orgPersonMissing ? 'true' : 'false'}">
         <datalist id="organiserPeopleList">
-          ${(state.people || []).map(p => '<option value="' + escapeHtml(p.name || '') + '"></option>').join('')}
+          ${(state.people || []).filter(p => !personIsMergedAway(p)).map(p => '<option value="' + escapeHtml(p.name || '') + '"></option>').join('')}
         </datalist>
         ${pageHelp('<p>Contact person in People, not the tour label. Typing a new name adds or links a person.</p>')}
         ${orgPersonMissing ? '<p class="muted" style="margin:0 0 8px;"><strong>No organiserPersonId linked yet.</strong></p>' : ''}
@@ -11444,7 +11517,7 @@ function renderDayTabs() {
   }
   function filteredPeopleList() {
     const q = String(state.personSearch || '').trim().toLowerCase();
-    let list = (state.people || []).map(p => ensurePerson(p));
+    let list = (state.people || []).map(p => ensurePerson(p)).filter(p => !personIsMergedAway(p));
     if (q) {
       list = list.filter(p => {
         const hay = [p.name, p.email, p.notes].join(' ').toLowerCase();
@@ -11457,18 +11530,28 @@ function renderDayTabs() {
   function applyPersonDeepLink() {
     const id = String(state.personDeepLink || '').trim();
     if (!id) return false;
-    if (findPersonById(id)) {
+    const person = findPersonById(id);
+    if (person && !personIsMergedAway(person)) {
       state.selectedPersonId = id;
       return true;
     }
     return false;
   }
   function ensureSelectedPersonId(list) {
+    if (state.selectedPersonId) {
+      const current = findPersonById(state.selectedPersonId);
+      if (current && personIsMergedAway(current)) state.selectedPersonId = null;
+    }
     if (applyPersonDeepLink()) return;
     if (state.personDeepLink) {
-      // Honour ?person= even if the row is still loading — never silently select someone else.
-      state.selectedPersonId = String(state.personDeepLink);
-      return;
+      const linked = findPersonById(state.personDeepLink);
+      if (linked && personIsMergedAway(linked)) {
+        state.selectedPersonId = null;
+      } else {
+        // Honour ?person= even if the row is still loading — never silently select someone else.
+        state.selectedPersonId = String(state.personDeepLink);
+        return;
+      }
     }
     if (state.selectedPersonId && !(state.people || []).some(p => String(p.id) === String(state.selectedPersonId))) {
       state.selectedPersonId = null;
@@ -11540,7 +11623,7 @@ function renderDayTabs() {
     ensurePerson(person);
     const byId = new Map();
     function addOther(other) {
-      if (!other || other.id === person.id) return;
+      if (!other || other.id === person.id || personIsMergedAway(other)) return;
       ensurePerson(other);
       byId.set(other.id, other);
     }
@@ -11765,7 +11848,7 @@ function renderDayTabs() {
             <input type="text" data-person-name="${p.id}" value="${escapeHtml(p.name)}" placeholder="Person name (not the tour/group label)" style="font-weight:800;margin-bottom:6px;">
             <div class="people-email-line">${mailto}</div>
           </div>
-          <button type="button" class="icon-btn" data-remove-person="${p.id}" aria-label="Remove person">×</button>
+          <button type="button" class="btn btn-outline btn-sm people-delete" data-remove-person="${p.id}">Delete person</button>
         </div>
         <div class="people-visit-banner" role="status">
           <div class="visit-big">Visited ${visitsN} ${visitWord}</div>
@@ -11869,6 +11952,7 @@ function renderDayTabs() {
       notes: '',
       visitCount: 0,
       visitRefs: [],
+      pendingCreate: true,
     });
     state.people.push(person);
     state.selectedPersonId = person.id;
@@ -11881,13 +11965,19 @@ function renderDayTabs() {
     render();
   }
   function removePerson(id) {
-    const wasSelected = state.selectedPersonId === id;
-    state.people = (state.people || []).filter(p => p.id !== id);
-    if (wasSelected) {
-      state.selectedPersonId = state.people.length ? state.people[0].id : null;
+    const person = findPersonById(id);
+    if (!person) return;
+    const label = String(person.name || '').trim() || 'this person';
+    if (!window.confirm('Delete ' + label + ' from People? This removes that person from the list. Bookings and everyone else are left as they are.')) return;
+    rememberDeletedPerson(person);
+    state.people = (state.people || []).filter(p => String(p.id) !== String(id));
+    if (String(state.selectedPersonId || '') === String(id)) {
+      const list = filteredPeopleList();
+      state.selectedPersonId = list.length ? list[0].id : null;
     }
     delete personBaselines[String(id)];
     cloudDirty.personIds.delete(String(id));
+    if (peopleServerIds) peopleServerIds.delete(String(id));
     if (state.supabasePeopleTable) {
       sb.from('planner_people').delete().eq('client_id', String(id)).then(({ error }) => {
         if (error) console.warn('Could not delete person in cloud:', error);
@@ -12466,7 +12556,7 @@ function renderDayTabs() {
       requireAuth: false,
       isSignedIn: () => true,
       getBookings: () => state.bookings || [],
-      getPeople: () => (state.people || []).map(p => ({
+      getPeople: () => (state.people || []).filter(p => !personIsMergedAway(p)).map(p => ({
         id: p.id,
         name: p.name,
         email: p.email,
@@ -12667,8 +12757,9 @@ function renderDayTabs() {
 
     let cloudPeople = await fetchCloudPeople();
     if (cloudPeople && cloudPeople.length) {
-      mergePeopleLists(cloudPeople, localPeople);
+      reconcilePeopleWithServer(cloudPeople, localPeople);
     } else {
+      peopleServerIds = null;
       state.people = localPeople;
     }
     // Link guests already stored on cloud plans into the in-memory directory.

@@ -3919,7 +3919,7 @@
   function memberPaymentsBarHTML(t) {
     return `
           <div class="member-pay-bar" id="t${t}_member_pay_bar">
-            <button type="button" class="member-pay-toggle" id="t${t}_member_pay_toggle" aria-expanded="true" aria-controls="t${t}_members_list" onclick="toggleMemberPay('${t}')">Payments</button>
+            <button type="button" class="member-pay-toggle" id="t${t}_member_pay_toggle" aria-expanded="false" aria-controls="t${t}_members_list" onclick="toggleMemberPay('${t}')">Payments</button>
             <label class="member-pay-group"><input type="checkbox" id="t${t}_pay_group"> Group payment</label>
             <label class="member-pay-payer" id="t${t}_pay_payer_wrap" hidden>Paid by <select id="t${t}_pay_payer" aria-label="Group paid by"></select></label>
             <span class="member-pay-sums" id="t${t}_pay_sums"></span>
@@ -3990,7 +3990,7 @@
           <label class="section-sub-label">Guests</label>
           ${pageHelp('<p>Every person who is coming, including the organiser if they are travelling. First name, surname and email for each.</p>')}
           ${memberPaymentsBarHTML(t)}
-          <div class="members-list" id="t${t}_members_list"></div>
+          <div class="members-list member-pay-closed" id="t${t}_members_list"></div>
           <button type="button" class="member-add" onclick="addMemberRow('${t}', '', '', '', '', true)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add guest
@@ -4152,7 +4152,7 @@
             <div class="layout-panel-title">Guests</div>
             ${pageHelp('<p>First name, surname and email for every person coming, including the organiser if they are travelling.</p>')}
             ${memberPaymentsBarHTML(t)}
-            <div class="members-list resizable-box" id="t${t}_members_list"></div>
+            <div class="members-list member-pay-closed resizable-box" id="t${t}_members_list"></div>
             <button type="button" class="member-add" onclick="addMemberRow('${t}', '', '', '', '', true)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add guest
@@ -4770,17 +4770,23 @@
   function storedMemberPayOpen(tabId) {
     const map = readMemberPayOpenMap();
     const bookingId = openBookingId(tabId);
-    if (bookingId && Object.prototype.hasOwnProperty.call(map, 'b:' + bookingId)) return !!map['b:' + bookingId];
-    const tabKey = 'tab:' + tabId;
-    if (Object.prototype.hasOwnProperty.call(map, tabKey)) return !!map[tabKey];
+    if (bookingId && map['b:' + bookingId] === true) return true;
+    if (map['tab:' + tabId] === true) return true;
     return null;
   }
 
   function writeMemberPayOpen(tabId, open) {
     const map = readMemberPayOpenMap();
-    map['tab:' + tabId] = !!open;
+    const tabKey = 'tab:' + tabId;
     const bookingId = openBookingId(tabId);
-    if (bookingId) map['b:' + bookingId] = !!open;
+    const bookingKey = bookingId ? ('b:' + bookingId) : '';
+    if (open) {
+      map[tabKey] = true;
+      if (bookingKey) map[bookingKey] = true;
+    } else {
+      delete map[tabKey];
+      if (bookingKey) delete map[bookingKey];
+    }
     localStorage.setItem(MEMBER_PAY_OPEN_KEY, JSON.stringify(map));
   }
 
@@ -4857,9 +4863,7 @@
   }
 
   function applyMemberPayFold(tabId) {
-    const stored = storedMemberPayOpen(tabId);
-    const open = stored == null ? !memberPayHasDetail(tabId) : stored;
-    setMemberPayOpen(tabId, open, false);
+    setMemberPayOpen(tabId, storedMemberPayOpen(tabId) === true, false);
   }
 
   function toggleMemberPay(tabId) {
@@ -4887,7 +4891,8 @@
 
     let deposits = 0;
     let paidTotal = 0;
-    let countedAny = false;
+    let countedRows = 0;
+    let rowsWithAmount = 0;
 
     entries.forEach(entry => {
       const row = entry.row;
@@ -4908,10 +4913,14 @@
       if (coveredEl) coveredEl.textContent = coveredBy ? ('Covered by ' + coveredBy.label) : '';
 
       if (!entry.saved || coveredBy) return;
-      const dep = parseMemberAmount(row.querySelector('.member-deposit')?.value);
-      const paid = parseMemberAmount(row.querySelector('.member-paid')?.value);
-      if (dep != null) { deposits += dep; countedAny = true; }
-      if (paid != null) { paidTotal += paid; countedAny = true; }
+      countedRows += 1;
+      const depRaw = row.querySelector('.member-deposit')?.value.trim() || '';
+      const paidRaw = row.querySelector('.member-paid')?.value.trim() || '';
+      const dep = parseMemberAmount(depRaw);
+      const paid = parseMemberAmount(paidRaw);
+      if (depRaw !== '' || paidRaw !== '') rowsWithAmount += 1;
+      if (dep != null) deposits += dep;
+      if (paid != null) paidTotal += paid;
     });
 
     const sum = Math.round((deposits + paidTotal) * 100) / 100;
@@ -4927,19 +4936,42 @@
     else if (perRaw !== '' && headRaw !== '' && Number.isFinite(Number(perRaw)) && Number.isFinite(Number(headRaw))) {
       tourPrice = Number(perRaw) * Number(headRaw);
     }
-    const bits = ['Deposits ' + formatMoney(deposits, 'GBP'), 'Paid ' + formatMoney(paidTotal, 'GBP')];
-    if (tourPrice != null && Number.isFinite(tourPrice)) {
-      bits.push('Outstanding ' + formatMoney(Math.round((tourPrice - sum) * 100) / 100, 'GBP'));
+    const amountsComplete = countedRows > 0 && rowsWithAmount === countedRows;
+    const bits = [];
+    if (rowsWithAmount > 0) {
+      bits.push('Deposits ' + formatMoney(deposits, 'GBP'), 'Paid ' + formatMoney(paidTotal, 'GBP'));
+      if (amountsComplete && tourPrice != null && Number.isFinite(tourPrice)) {
+        bits.push('Outstanding ' + formatMoney(Math.round((tourPrice - sum) * 100) / 100, 'GBP'));
+      }
     }
     if (sumsEl) sumsEl.textContent = bits.join(' · ');
 
     const flagEl = document.getElementById(`t${tabId}_pay_flag`);
+    if (!flagEl) return;
+    flagEl.className = 'member-pay-flag';
+    if (!amountsComplete) {
+      const depositMadeRaw = (tEl(tabId, 'depositmade')?.value || '').trim();
+      const finalRaw = (tEl(tabId, 'finalpayment')?.value || '').trim();
+      const depositMade = depositMadeRaw === '' ? 0 : Number(depositMadeRaw);
+      const finalPaid = finalRaw === '' ? 0 : Number(finalRaw);
+      const bookingPaid = (depositMadeRaw !== '' || finalRaw !== '')
+        && tourPrice != null
+        && Number.isFinite(tourPrice)
+        && Number.isFinite(depositMade)
+        && Number.isFinite(finalPaid)
+        && (depositMade + finalPaid) + 0.009 >= tourPrice;
+      if (rowsWithAmount > 0 && bookingPaid) {
+        flagEl.classList.add('is-ok');
+        flagEl.textContent = 'Guest amounts are not all filled in';
+      } else {
+        flagEl.textContent = '';
+      }
+      return;
+    }
     const finalRaw = (tEl(tabId, 'finalpayment')?.value || '').trim();
     const finalBlank = finalRaw === '';
     const finalNum = finalBlank ? null : Number(finalRaw);
-    if (!flagEl) return;
-    flagEl.className = 'member-pay-flag';
-    if (finalBlank && !(countedAny && sum > 0.009)) {
+    if (finalBlank && !(sum > 0.009)) {
       flagEl.textContent = '';
     } else if (finalBlank) {
       flagEl.classList.add('is-short');
@@ -8337,8 +8369,8 @@
       const payMap = readMemberPayOpenMap();
       const payTabKey = 'tab:' + tabId;
       const savedBookingId = openBookingId(tabId);
-      if (savedBookingId && Object.prototype.hasOwnProperty.call(payMap, payTabKey) && !Object.prototype.hasOwnProperty.call(payMap, 'b:' + savedBookingId)) {
-        payMap['b:' + savedBookingId] = !!payMap[payTabKey];
+      if (savedBookingId && payMap[payTabKey] === true) {
+        payMap['b:' + savedBookingId] = true;
         localStorage.setItem(MEMBER_PAY_OPEN_KEY, JSON.stringify(payMap));
       }
       await loadBookings();
