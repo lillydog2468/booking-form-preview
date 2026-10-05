@@ -1206,6 +1206,17 @@
     .places-master .place-search {
       width: 100%; min-height: 44px; font-size: 16px;
     }
+    .people-sort-row {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+    }
+    .people-sort-row .field-label {
+      margin: 0; flex: 0 0 auto;
+      font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .people-sort-row select {
+      flex: 1 1 auto; min-width: 0; width: auto;
+      min-height: 44px; font-size: 16px;
+    }
     .place-name-list {
       border: 1px solid var(--border); border-radius: 12px;
       background: var(--surface-alt);
@@ -2671,6 +2682,13 @@
     drawnCatalogue: [],
     people: [],
     personSearch: '',
+    personSort: (function () {
+      try {
+        const v = localStorage.getItem('planner_people_sort');
+        if (v === 'name-desc' || v === 'visits-desc' || v === 'visits-asc' || v === 'name-asc') return v;
+      } catch (_) {}
+      return 'name-asc';
+    })(),
     selectedPersonId: null,
     personDeepLink: '',
     mainTab: (function () {
@@ -11223,6 +11241,25 @@ function renderDayTabs() {
   }
 
 
+  function personVisitTotal(p) {
+    return Math.max(Number(p && p.visitCount) || 0, ((p && p.visitRefs) || []).length);
+  }
+  function comparePeople(a, b) {
+    const an = String(a.name || '').trim();
+    const bn = String(b.name || '').trim();
+    const nameCmp = an.localeCompare(bn, 'en', { sensitivity: 'base' }) || an.localeCompare(bn, 'en');
+    const idCmp = String(a.id || '').localeCompare(String(b.id || ''));
+    const mode = state.personSort || 'name-asc';
+    if (mode === 'name-desc') return -nameCmp || idCmp;
+    if (mode === 'visits-desc') return (personVisitTotal(b) - personVisitTotal(a)) || nameCmp || idCmp;
+    if (mode === 'visits-asc') return (personVisitTotal(a) - personVisitTotal(b)) || nameCmp || idCmp;
+    return nameCmp || idCmp;
+  }
+  function rememberPeopleSort(mode) {
+    const next = (mode === 'name-desc' || mode === 'visits-desc' || mode === 'visits-asc') ? mode : 'name-asc';
+    state.personSort = next;
+    try { localStorage.setItem('planner_people_sort', next); } catch (_) {}
+  }
   function filteredPeopleList() {
     const q = String(state.personSearch || '').trim().toLowerCase();
     let list = (state.people || []).map(p => ensurePerson(p));
@@ -11232,13 +11269,7 @@ function renderDayTabs() {
         return hay.includes(q);
       });
     }
-    list.sort((a, b) => {
-      const an = String(a.name || '').toLowerCase();
-      const bn = String(b.name || '').toLowerCase();
-      if (an < bn) return -1;
-      if (an > bn) return 1;
-      return 0;
-    });
+    list.sort(comparePeople);
     return list;
   }
   function applyPersonDeepLink() {
@@ -11520,8 +11551,8 @@ function renderDayTabs() {
       ? list.map(p => {
           ensurePerson(p);
           const sel = String(state.selectedPersonId || '') === String(p.id) ? ' selected' : '';
-          const visits = Math.max(Number(p.visitCount) || 0, (p.visitRefs || []).length);
-          const vtitle = visits === 1 ? 'Visited 1 time' : ('Visited ' + visits + ' times');
+          const visits = personVisitTotal(p);
+          const vtitle = visits === 1 ? '1 visit' : (visits + ' visits');
           const email = String(p.email || '').trim();
           const emailLine = email ? `<span class="pemail">${escapeHtml(email)}</span>` : '';
           return `
@@ -11530,7 +11561,7 @@ function renderDayTabs() {
             <span class="pname">${escapeHtml(p.name || 'Unnamed')}</span>
             ${emailLine}
           </span>
-          <span class="pvisits" title="${escapeHtml(vtitle)}">${visits}</span>
+          <span class="pvisits" title="${escapeHtml(vtitle)}" aria-label="${escapeHtml(vtitle)}">${visits}</span>
         </button>`;
         }).join('')
       : '<p class="place-name-empty">No people yet.</p>' + pageHelp('<p>Add someone on the left, or open a booking-linked plan. Guests from that plan are added here.</p>');
@@ -11543,7 +11574,7 @@ function renderDayTabs() {
       const mailto = p.email
         ? `<a class="people-mailto" href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a>`
         : '<span class="muted">No email yet</span>';
-      const visitsN = Math.max(Number(p.visitCount) || 0, (p.visitRefs || []).length);
+      const visitsN = personVisitTotal(p);
       const visitWord = visitsN === 1 ? 'time' : 'times';
       detailHtml = `
       <div class="place-dir-item" data-person-id="${p.id}">
@@ -11613,6 +11644,15 @@ function renderDayTabs() {
         <div class="places-master">
           <label class="field-label" for="personSearch">Search people</label>
           <input type="search" id="personSearch" class="place-search" value="${escapeHtml(state.personSearch || '')}" placeholder="Type to filter by name or email…" autocomplete="off" enterkeyhint="search">
+          <div class="people-sort-row">
+            <label class="field-label" for="personSort">Sort</label>
+            <select id="personSort" aria-label="Sort the people list">
+              <option value="name-asc"${state.personSort === 'name-asc' ? ' selected' : ''}>Name, A–Z</option>
+              <option value="name-desc"${state.personSort === 'name-desc' ? ' selected' : ''}>Name, Z–A</option>
+              <option value="visits-desc"${state.personSort === 'visits-desc' ? ' selected' : ''}>Most visits</option>
+              <option value="visits-asc"${state.personSort === 'visits-asc' ? ' selected' : ''}>Fewest visits</option>
+            </select>
+          </div>
           <div class="place-name-list" role="listbox" aria-label="People">${nameList}</div>
           ${addBox}
         </div>
@@ -11681,6 +11721,13 @@ function renderDayTabs() {
     if (searchEl) {
       searchEl.addEventListener('input', () => {
         state.personSearch = searchEl.value;
+        render();
+      });
+    }
+    const sortEl = root.querySelector('#personSort');
+    if (sortEl) {
+      sortEl.addEventListener('change', () => {
+        rememberPeopleSort(sortEl.value);
         render();
       });
     }
@@ -11756,8 +11803,7 @@ function renderDayTabs() {
         if (p) {
           p.visitCount = Math.max(0, Number(inp.value) || 0);
           scheduleAutoSave();
-          const badge = root.querySelector(`[data-select-person="${CSS.escape(p.id)}"] .pvisits`);
-          if (badge) badge.textContent = String(p.visitCount);
+          render();
         }
       });
     });
