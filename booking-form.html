@@ -1994,6 +1994,35 @@
       color: var(--text-secondary);
     }
     .hotel-date-strip[hidden] { display: none !important; }
+    .hotel-date-strip.hotel-nights-mismatch { color: var(--danger); }
+    .hint.hotel-nights-mismatch {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(220, 38, 38, .12);
+      border: 2px solid var(--danger);
+      color: #991b1b;
+      font-weight: 700;
+    }
+    [data-theme="dark"] .hint.hotel-nights-mismatch {
+      background: rgba(239, 68, 68, .18);
+      color: #fecaca;
+    }
+    .hint.hotel-nights-mismatch[hidden] { display: none !important; }
+    .field input.hotel-nights-mismatch,
+    .tab-panel.layout-mode .field input.hotel-nights-mismatch {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, .28);
+    }
+    .field:has(input.hotel-nights-mismatch) > label,
+    .tab-panel.layout-mode .field:has(input.hotel-nights-mismatch) > label { color: var(--danger); }
+    .field input.hotel-nights-mismatch:focus,
+    .tab-panel.layout-mode .field input.hotel-nights-mismatch:focus {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, .35);
+    }
+    .hotel-card:has(.hotel-nights-mismatch),
+    .hotel-stay-row:has(.hotel-nights-mismatch) { border-color: var(--danger); }
     .booked-tick { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
     .day-trip-panel {
       border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
@@ -7800,39 +7829,57 @@
     fields.forEach(input => {
       input.placeholder = (fields.length === 1 && suggestion) ? suggestion : defaultNightsPlaceholder(input);
     });
-    if (hint) {
-      if (nights < 1 || fields.length < 2) {
-        hint.hidden = true;
-        hint.textContent = '';
-      } else {
-        let sum = 0;
-        let blank = 0;
-        let bad = 0;
-        fields.forEach(input => {
-          const text = nightsText(input);
-          if (!text) { blank += 1; return; }
-          const n = parseNightsCount(text);
-          if (n == null) bad += 1;
-          else sum += n;
-        });
-        const stay = nightsCountLabel(nights);
-        let text = '';
-        if (bad) {
-          text = 'Enter the nights for each hotel as a number. Together they should be ' + stay + '.';
-        } else if (blank === fields.length) {
-          text = 'More than one hotel. Their nights should add up to ' + stay + '.';
-        } else if (blank && sum === nights) {
-          const waiting = blank === 1 ? 'One hotel has no nights yet.' : (blank + ' hotels have no nights yet.');
-          text = 'These hotel nights add up to ' + nightsCountLabel(sum) + ', which matches the stay. ' + waiting;
-        } else if (sum !== nights) {
-          const soFar = blank ? ' so far' : '';
-          text = 'These hotel nights add up to ' + nightsCountLabel(sum) + soFar + '. The stay from arrival to departure is ' + stay + '.';
-        }
-        hint.hidden = !text;
-        hint.textContent = text;
+    let sum = 0;
+    let blank = 0;
+    let bad = 0;
+    fields.forEach(input => {
+      const text = nightsText(input);
+      if (!text) { blank += 1; return; }
+      const n = parseNightsCount(text);
+      if (n == null) bad += 1;
+      else sum += n;
+    });
+    const comparable = nights >= 1 && fields.length >= 1;
+    const mismatch = comparable && (bad > 0 || sum !== nights);
+    let text = '';
+    if (comparable && fields.length >= 2) {
+      const stay = nightsCountLabel(nights);
+      if (bad) {
+        text = 'Enter the nights for each hotel as a number. Together they should be ' + stay + '.';
+      } else if (blank === fields.length) {
+        text = 'More than one hotel. Their nights should add up to ' + stay + '.';
+      } else if (blank && sum === nights) {
+        const waiting = blank === 1 ? 'One hotel has no nights yet.' : (blank + ' hotels have no nights yet.');
+        text = 'These hotel nights add up to ' + nightsCountLabel(sum) + ', which matches the stay. ' + waiting;
+      } else if (sum !== nights) {
+        const soFar = blank ? ' so far' : '';
+        text = 'These hotel nights add up to ' + nightsCountLabel(sum) + soFar + '. The stay from arrival to departure is ' + stay + '.';
+      }
+    } else if (comparable && fields.length === 1 && mismatch) {
+      const stay = nightsCountLabel(nights);
+      if (bad) text = 'Enter the nights for each hotel as a number. Together they should be ' + stay + '.';
+      else {
+        const soFar = blank ? ' so far' : '';
+        text = 'These hotel nights add up to ' + nightsCountLabel(sum) + soFar + '. The stay from arrival to departure is ' + stay + '.';
       }
     }
+    if (hint) {
+      hint.hidden = !text;
+      hint.textContent = text;
+    }
+    paintHotelNightsMismatch(tabId, mismatch);
     refreshHotelDateStrips(tabId);
+  }
+
+  function paintHotelNightsMismatch(tabId, mismatch) {
+    const mark = (node) => {
+      if (node && node.classList) node.classList.toggle('hotel-nights-mismatch', !!mismatch);
+    };
+    mark(document.getElementById('t' + tabId + '_hotel_nights_hint'));
+    hotelNightFields(tabId).forEach(mark);
+    mark(document.getElementById('t' + tabId + '_primary_hotel_dates'));
+    const list = document.getElementById('t' + tabId + '_hotel_stays_list');
+    if (list && list.querySelectorAll) list.querySelectorAll('.hotel-date-strip').forEach(mark);
   }
 
   function noteLoadedNights(tabId) {
