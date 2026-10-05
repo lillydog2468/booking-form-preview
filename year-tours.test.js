@@ -85,4 +85,14 @@ test('arrival and flight dates start closed, and the fare row stays in order', (
   assert.match(html, /Show the year/);
   assert.match(html, /Close the year/);
   assert.match(extractFunction('showView'), /view === 'year'/);
+  assert.match(html, /id="navForm"/);
+
+  const grid = extractFunction('yearTourMonthGridHTML');
+  assert.match(grid, /class="yc-grid"/);
+  assert.match(grid, /yc-cell/);
+  assert.match(grid, /openYearTourDay/);
+  const opener = extractFunction('openYearTourBooking');
+  assert.match(opener, /setFormLayout\('layout'\)/);
+  assert.match(opener, /openBookingInTab/);
+  assert.equal(opener.includes("setFormLayout('standard')"), false);
 });
