@@ -1787,9 +1787,40 @@
       grid-column: 1 / -1;
       display: grid;
       grid-template-columns: 1fr;
-      gap: 10px;
+      gap: 4px;
       align-items: end;
+      justify-items: start;
     }
+    .tour-fare-block > .field,
+    .tour-fare-block > .field-with-currency {
+      width: 100%;
+      max-width: 220px;
+    }
+    .tour-fare-block .field label,
+    .tab-panel.layout-mode .tour-fare-block .field label {
+      font-size: 10px;
+      margin-bottom: 2px;
+      letter-spacing: .2px;
+    }
+    .tour-fare-block .field input,
+    .tab-panel.layout-mode .tour-fare-block .field input {
+      padding: 3px 8px;
+      font-size: 14px;
+      min-height: 30px;
+      height: 30px;
+      line-height: 1.2;
+    }
+    .tour-fare-block .currency-fixed,
+    .tour-fare-block .field-with-currency .currency-fixed {
+      min-width: 28px;
+      width: 28px;
+      height: 30px;
+      min-height: 30px;
+      margin-bottom: 0;
+      padding: 0 4px;
+      font-size: 13px;
+    }
+    .tour-fare-block .price-hint { margin: 2px 0 0; font-size: 12px; }
     .hotel-card {
       border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
       background: var(--surface-alt);
@@ -2116,6 +2147,24 @@
 
       .field-with-currency { flex-wrap: nowrap; }
       .field-with-currency .currency-fixed { min-width: 40px; min-height: 44px; height: 44px; font-size: 16px; }
+      /* Keep 16px so iOS does not zoom, but the three tour-fare boxes stay short and narrow. */
+      .tour-fare-block { gap: 4px; }
+      .tour-fare-block > .field,
+      .tour-fare-block > .field-with-currency { max-width: 200px; }
+      .tour-fare-block .field input,
+      .tab-panel.layout-mode .tour-fare-block .field input {
+        padding: 2px 8px;
+        font-size: 16px;
+        min-height: 32px;
+        height: 32px;
+      }
+      .tour-fare-block .field-with-currency .currency-fixed {
+        min-width: 30px;
+        width: 30px;
+        min-height: 32px;
+        height: 32px;
+        font-size: 15px;
+      }
 
       .computed-value { font-size: 17px; }
 
