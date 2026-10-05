@@ -5390,10 +5390,184 @@
         }
       }
       if (g.personId !== person.id) { g.personId = person.id; changed = true; }
-      // Guests stay as ladies in the directory; visit_refs stay on the organiser for this booking
-      // (Archivist may attach visits to guests separately — used for Travelled with).
+      // A guest named on this booking has visited, same as the organiser. One row per booking.
+      if (isBooking && bookingId != null && attachBookingVisitToPerson(person, bookingId, date, label)) changed = true;
     });
     if (dedupePeopleByEmail()) changed = true;
+    return changed;
+  }
+
+  function uniquePersonByEmail(email) {
+    const ne = normPersonEmail(email);
+    if (!ne) return null;
+    const matches = (state.people || []).filter(p => normPersonEmail(p.email) === ne);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  function uniquePersonByName(name) {
+    const nk = normPersonName(name);
+    if (!nk) return null;
+    const matches = (state.people || []).filter(p => normPersonName(p.name) === nk);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  /**
+   * An existing person only. personId wins, then a single email, then a single exact name.
+   * Two people with the same name are left alone — that would be guessing which row.
+   */
+  function resolveLinkedPerson(link) {
+    if (!link) return null;
+    const byId = findPersonById(link.personId);
+    if (byId) return byId;
+    const byEmail = uniquePersonByEmail(link.email);
+    if (byEmail) return byEmail;
+    const name = String(link.name || '').trim();
+    if (!name || isGroupLabelGuestName(name, link.groupName)) return null;
+    return uniquePersonByName(name);
+  }
+  function considerBookingLink(link, seen) {
+    if (!link || link.bookingId == null || link.bookingId === '') return false;
+    const bookingId = Number(link.bookingId);
+    if (!Number.isFinite(bookingId)) return false;
+    const person = resolveLinkedPerson(link);
+    if (!person) return false;
+    const key = String(person.id) + '|' + bookingId;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return attachBookingVisitToPerson(person, bookingId, link.date || '', link.label || '');
+  }
+  function fullPersonName(parts) {
+    return (parts || []).map(p => String(p || '').trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+  /**
+   * Count every booking this person is already linked to or named on.
+   * Reads members, organiser columns, extras guests, and the saved plan. Does not create people.
+   */
+  async function linkPeopleToKnownBookings() {
+    if (!Array.isArray(state.people) || !state.people.length) return false;
+    const sources = { members: [], bookings: [] };
+    try {
+      const { data, error } = await withTimeout(
+        sb.from('members').select('booking_id, first_name, last_name, email').limit(5000),
+        8000,
+        'Member visit links timed out'
+      );
+      if (!error) sources.members = data || [];
+    } catch (err) { console.warn(err); }
+    try {
+      const { data, error } = await withTimeout(
+        sb.from('bookings')
+          .select('id, group_name, tour_arrival_date, organiser_first_name, organiser_last_name, organiser_email, extra_notes')
+          .limit(1000),
+        8000,
+        'Booking visit links timed out'
+      );
+      if (!error) sources.bookings = data || [];
+    } catch (err) { console.warn(err); }
+
+    const bookingById = new Map();
+    (sources.bookings || []).forEach(b => {
+      if (b && b.id != null) bookingById.set(Number(b.id), b);
+    });
+    const seen = new Set();
+    let changed = false;
+    function add(link) {
+      if (considerBookingLink(link, seen)) changed = true;
+    }
+
+    Object.keys(state.plans || {}).forEach(key => {
+      const plan = state.plans[key];
+      if (!plan || legacyRow(key, plan)) return;
+      const bookingKey = String(plan.bookingKey || key);
+      if (!/^[0-9]+$/.test(bookingKey)) return;
+      const bookingId = Number(bookingKey);
+      const groupName = plan.groupName || '';
+      const date = plan.arrivalDate || '';
+      const label = groupName;
+      if (plan.organiserPersonId || plan.organiserName) {
+        add({ bookingId, personId: plan.organiserPersonId, name: plan.organiserName, groupName, date, label });
+      }
+      const details = plan.bookingDetails || {};
+      const org = details.organiser || {};
+      add({
+        bookingId,
+        personId: org.personId,
+        email: org.email,
+        name: fullPersonName([org.firstName, org.lastName]),
+        groupName,
+        date,
+        label,
+      });
+      (plan.guests || []).forEach(g => {
+        if (!g) return;
+        add({ bookingId, personId: g.personId, email: g.email, name: g.name, groupName, date, label });
+      });
+      (details.guests || []).forEach(g => {
+        if (!g) return;
+        add({
+          bookingId,
+          personId: g.personId,
+          email: g.email,
+          name: fullPersonName([g.firstName, g.lastName]),
+          groupName,
+          date,
+          label,
+        });
+      });
+    });
+
+    (sources.members || []).forEach(m => {
+      if (!m || m.booking_id == null) return;
+      const booking = bookingById.get(Number(m.booking_id));
+      const plan = state.plans && state.plans[String(m.booking_id)];
+      const groupName = (booking && booking.group_name) || (plan && plan.groupName) || '';
+      const date = (booking && booking.tour_arrival_date) || (plan && plan.arrivalDate) || '';
+      add({
+        bookingId: m.booking_id,
+        email: m.email,
+        name: fullPersonName([m.first_name, m.last_name]),
+        groupName,
+        date,
+        label: groupName,
+      });
+    });
+
+    (sources.bookings || []).forEach(b => {
+      if (!b || b.id == null) return;
+      const groupName = b.group_name || '';
+      const date = b.tour_arrival_date || '';
+      add({
+        bookingId: b.id,
+        email: b.organiser_email,
+        name: fullPersonName([b.organiser_first_name, b.organiser_last_name]),
+        groupName,
+        date,
+        label: groupName,
+      });
+      if (!window.BookingExtras || !b.extra_notes) return;
+      const extras = BookingExtras.splitNotesAndExtras(b.extra_notes).extras;
+      if (!extras) return;
+      const org = extras.organiser || {};
+      add({
+        bookingId: b.id,
+        personId: org.personId,
+        email: org.email,
+        name: fullPersonName([org.firstName, org.lastName]),
+        groupName,
+        date,
+        label: groupName,
+      });
+      (extras.guests || []).forEach(g => {
+        if (!g) return;
+        add({
+          bookingId: b.id,
+          personId: g.personId,
+          email: g.email,
+          name: fullPersonName([g.firstName, g.lastName]),
+          groupName,
+          date,
+          label: groupName,
+        });
+      });
+    });
     return changed;
   }
 
@@ -11242,7 +11416,15 @@ function renderDayTabs() {
 
 
   function personVisitTotal(p) {
-    return Math.max(Number(p && p.visitCount) || 0, ((p && p.visitRefs) || []).length);
+    const ids = new Set();
+    let loose = 0;
+    ((p && p.visitRefs) || []).forEach(r => {
+      if (!r) return;
+      const id = r.booking_id != null ? String(r.booking_id).trim() : '';
+      if (id) ids.add(id);
+      else loose += 1;
+    });
+    return Math.max(Number(p && p.visitCount) || 0, ids.size + loose);
   }
   function comparePeople(a, b) {
     const an = String(a.name || '').trim();
@@ -12496,6 +12678,8 @@ function renderDayTabs() {
       if (!/^[0-9]+$/.test(String(k)) || legacyRow(k, state.plans[k])) return;
       absorbGuestsFromPlan(state.plans[k]);
     });
+    // Fill visit counts from members and booking names. This does not write people back.
+    try { await linkPeopleToKnownBookings(); } catch (err) { console.warn(err); }
     rememberPeopleBaselines();
     persist({ localOnly: true });
 
