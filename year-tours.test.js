@@ -30,6 +30,7 @@ function loadPlan() {
     extractFunction('toISODateUTC'),
     extractFunction('extractBookingRangeUTC'),
     extractFunction('bookingIsCancelled'),
+    extractFunction('yearTourIsDayTrip'),
     extractFunction('buildYearTourPlan'),
   ].join('\n'), ctx);
   return ctx.buildYearTourPlan;
@@ -95,4 +96,48 @@ test('arrival and flight dates start closed, and the fare row stays in order', (
   assert.match(opener, /setFormLayout\('layout'\)/);
   assert.match(opener, /openBookingInTab/);
   assert.equal(opener.includes("setFormLayout('standard')"), false);
+});
+
+function loadHeat() {
+  const ctx = { window: {} };
+  vm.createContext(ctx);
+  vm.runInContext([
+    extractFunction('yearTourHeadcount'),
+    extractFunction('yearTourHeatAmount'),
+    extractFunction('yearTourShade'),
+    extractFunction('yearTourDayHeat'),
+    extractFunction('yearTourIsDayTrip'),
+  ].join('\n'), ctx);
+  return ctx;
+}
+
+function channelSum(hex) {
+  const n = parseInt(String(hex).slice(1), 16);
+  return ((n >> 16) & 255) + ((n >> 8) & 255) + (n & 255);
+}
+
+test('larger groups are darker, and a day trip uses blue', () => {
+  const heat = loadHeat();
+  const scale = { min: 2, max: 12 };
+  const small = heat.yearTourShade(false, heat.yearTourHeatAmount(2, scale));
+  const large = heat.yearTourShade(false, heat.yearTourHeatAmount(12, scale));
+  const day = heat.yearTourShade(true, heat.yearTourHeatAmount(12, scale));
+  assert.ok(channelSum(large.bg) < channelSum(small.bg));
+  const overnight = parseInt(large.bg.slice(1), 16);
+  const dayRgb = parseInt(day.bg.slice(1), 16);
+  const og = (overnight >> 8) & 255;
+  const or = (overnight >> 16) & 255;
+  const ob = overnight & 255;
+  const db = dayRgb & 255;
+  const dg = (dayRgb >> 8) & 255;
+  assert.ok(og > or && og > ob, 'overnight stays green');
+  assert.ok(db > dg, 'day trip is blue');
+  const shared = heat.yearTourDayHeat([
+    { people: 3, dayTrip: false, title: 'Small' },
+    { people: 9, dayTrip: true, title: 'Big day' },
+  ], scale);
+  assert.equal(shared.head, 9);
+  assert.equal(shared.dayTrip, true);
+  assert.equal(heat.yearTourIsDayTrip({ group_name: 'Prague day trip', hotel_name: '' }), true);
+  assert.equal(heat.yearTourIsDayTrip({ group_name: 'May stay', hotel_name: 'Hotel Karolina' }), false);
 });
