@@ -1266,6 +1266,14 @@
       color: #111;
       box-shadow: none;
     }
+    .yc-cell.tour.end.hotel-depart,
+    button.yc-cell.tour.end.hotel-depart {
+      background-color: rgba(79,70,229,.20);
+      background-image: linear-gradient(90deg, var(--hotel-night-bg) 50%, rgba(79,70,229,.20) 50%);
+      border-color: rgba(79,70,229,.32);
+      color: #111;
+      box-shadow: 0 0 0 2px rgba(79,70,229,.12);
+    }
     .year-cal-hotel-key { margin: 0 0 8px; }
     .yc-cell.today {
       outline: 2px solid var(--accent);
@@ -4281,7 +4289,7 @@
     <div class="year-tours-calendar">
     <div class="layout-panel lp-year-calendar">
       <div class="layout-panel-title">Year Tours</div>
-      <details class="page-help" id="t${t}_yearPickHint"${pickHintHidden}><summary>Help</summary><div class="page-help-body"><p>Select a month. On a day, choose Start tour or Finish tour. The arrival and departure dates below fill in. Hotel nights use the same colour as that hotel.</p></div></details>
+      <details class="page-help" id="t${t}_yearPickHint"${pickHintHidden}><summary>Help</summary><div class="page-help-body"><p>Select a month. On a day, choose Start tour or Finish tour. The arrival and departure dates below fill in. Hotel nights use the same colour as that hotel. The departure morning is half the last hotel’s colour.</p></div></details>
       <div class="year-cal-controls">
         <button type="button" class="btn btn-outline btn-sm" onclick="changeTabCalendarYear('${t}', -1)" title="Previous year">‹</button>
         <div class="year-label" id="t${t}_yearLabel">—</div>
@@ -4291,7 +4299,7 @@
         <span class="chip" id="t${t}_openTourChip"><span class="swatch"></span><span class="label" id="t${t}_openTourLabel">Open tour</span></span>
         <span class="chip"><span class="swatch today"></span>Today</span>
       </div>
-      <p class="hint year-cal-hotel-key">Hotel nights use the same colour as each hotel.</p>
+      <p class="hint year-cal-hotel-key">Hotel nights use the same colour as each hotel. The departure morning is half the last hotel’s colour.</p>
       <div class="year-cal-filters" id="t${t}_monthFilters">
         <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'all')" title="Show all months">All</button>
         <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'none')" title="Hide all months">None</button>
@@ -5189,21 +5197,25 @@
 
         const titleParts = [];
         const nightOwner = hotelNights.get(iso) || null;
+        const departOwner = (!nightOwner && isEnd) ? hotelDepartureSpillIndex(hotelNights, iso) : null;
         if (inOpenTour) titleParts.push(openTourName ? `Open tour: ${openTourName}` : 'Open tour');
         if (nightOwner) titleParts.push(nightOwner.label);
+        else if (departOwner && departOwner.label) titleParts.push(departOwner.label + ' · leaving in the morning');
         if (otherCount) {
           const names = otherTours.slice(0, 6).map(t => t.title);
           titleParts.push(names.join(', ') + (otherCount > 6 ? ` (+${otherCount - 6} more)` : ''));
         }
         const titleAttr = titleParts.length ? ` title="${escapeHtml(titleParts.join(' • '))}"` : '';
-        const hotelStyle = nightOwner
-          ? ` style="--hotel-night-bg:${nightOwner.tone.bg};--hotel-night-border:${nightOwner.tone.border}" data-hotel="${nightOwner.index}"`
+        const toneOwner = nightOwner || (departOwner && departOwner.tone ? departOwner : null);
+        const hotelStyle = toneOwner
+          ? ` style="--hotel-night-bg:${toneOwner.tone.bg};--hotel-night-border:${toneOwner.tone.border}" data-hotel="${toneOwner.index}"${nightOwner ? '' : ' data-hotel-spill="1"'}`
           : '';
 
         const classes = [
           'yc-cell',
           inOpenTour ? 'tour' : '',
           nightOwner ? 'hotel-night' : '',
+          (departOwner && !nightOwner) ? 'hotel-depart' : '',
           isStart ? 'start' : '',
           isEnd ? 'end' : '',
           isToday ? 'today' : '',
@@ -7809,14 +7821,14 @@
 
   function hotelToneAt(index) {
     const tones = [
-      { bg: '#2dd4bf', border: '#0f766e', ink: '#134e4a' },
-      { bg: '#fb923c', border: '#c2410c', ink: '#9a3412' },
-      { bg: '#a78bfa', border: '#6d28d9', ink: '#4c1d95' },
-      { bg: '#60a5fa', border: '#1d4ed8', ink: '#1e3a8a' },
-      { bg: '#a3e635', border: '#4d7c0f', ink: '#365314' },
-      { bg: '#22d3ee', border: '#0e7490', ink: '#155e75' },
-      { bg: '#f472b6', border: '#be185d', ink: '#9d174d' },
-      { bg: '#facc15', border: '#a16207', ink: '#92400e' },
+      { bg: '#8fd0c4', border: '#5a9e94', ink: '#1f4f48' },
+      { bg: '#f3c49a', border: '#c48a52', ink: '#6a4218' },
+      { bg: '#d0c0f0', border: '#8a74b8', ink: '#4a3470' },
+      { bg: '#a8c8f0', border: '#5a88c0', ink: '#1e3a68' },
+      { bg: '#f0b4cc', border: '#c07090', ink: '#6a2848' },
+      { bg: '#f3d48e', border: '#c4a050', ink: '#6a5010' },
+      { bg: '#f0b4b0', border: '#c07068', ink: '#6a2824' },
+      { bg: '#8ec8d8', border: '#4a90a4', ink: '#1a4a58' },
     ];
     const n = tones.length;
     const i = ((Number(index) || 0) % n + n) % n;
@@ -7866,6 +7878,31 @@
       }
     });
     return owned;
+  }
+
+  function isoPrevDay(iso) {
+    const parts = String(iso || '').split('-').map(Number);
+    if (parts.length !== 3 || parts.some(function (n) { return !Number.isFinite(n); })) return '';
+    const prev = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] - 1));
+    return prev.getUTCFullYear() + '-' + String(prev.getUTCMonth() + 1).padStart(2, '0') + '-' + String(prev.getUTCDate()).padStart(2, '0');
+  }
+
+  // The departure morning is not another hotel night. If the night before it
+  // belongs to a hotel, that colour can paint the left half of the departure cell.
+  function hotelDepartureSpillIndex(owned, departureIso) {
+    if (!departureIso || owned == null) return null;
+    const mapLike = typeof owned.has === 'function' && typeof owned.get === 'function';
+    const has = function (key) {
+      return mapLike ? owned.has(key) : Object.prototype.hasOwnProperty.call(owned, key);
+    };
+    const get = function (key) {
+      return mapLike ? owned.get(key) : owned[key];
+    };
+    if (has(departureIso)) return null;
+    const prev = isoPrevDay(departureIso);
+    if (!prev || !has(prev)) return null;
+    const owner = get(prev);
+    return owner == null ? null : owner;
   }
 
   function tabHotelNights(tabId) {
