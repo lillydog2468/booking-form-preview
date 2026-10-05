@@ -1924,11 +1924,20 @@
     [data-theme="dark"] .year-tour-cal { background: rgba(255,255,255,.05); }
     .year-tour-cal .yc-cell.tour,
     .year-tour-cal button.yc-cell.tour {
-      background: var(--yt-green, #7dae4a);
-      border-color: #4f7d2e;
-      color: #14210c;
+      height: auto;
+      min-height: 36px;
+      flex-direction: column;
+      gap: 1px;
+      line-height: 1;
+      padding: 2px 0;
+      background: var(--yt-bg, #7dae4a);
+      border-color: transparent;
+      color: var(--yt-ink, #14210c);
       cursor: pointer;
     }
+    .year-tour-daynum { font-size: 9px; font-weight: 700; opacity: .8; }
+    .year-tour-head { font-size: 11px; font-weight: 900; }
+    .year-tour-key { margin: 0; color: var(--text); }
     .year-tour-cal .yc-cell.tour.start,
     .year-tour-cal .yc-cell.tour.end {
       box-shadow: 0 0 0 2px rgba(79, 125, 46, .35);
@@ -1939,14 +1948,14 @@
       display: block;
       width: 100%;
       text-align: left;
-      border: 1px solid #4f7d2e;
+      border: 1px solid rgba(0,0,0,.18);
       border-radius: 8px;
       padding: 4px 8px;
       font: inherit;
       font-size: 12px;
       font-weight: 700;
-      color: #14210c;
-      background: var(--yt-green, #7dae4a);
+      background: var(--yt-bg, #7dae4a);
+      color: var(--yt-ink, #14210c);
       cursor: pointer;
     }
     .year-tour-chip.cancelled { opacity: .7; }
@@ -4688,6 +4697,7 @@
         cancelled: bookingIsCancelled(b),
         hotel: b.hotel_name || '',
         people: b.no_people,
+        dayTrip: yearTourIsDayTrip(b),
         arrival: range ? toISODateUTC(range.start) : '',
         departure: range ? toISODateUTC(range.end) : '',
       };
@@ -4745,10 +4755,71 @@
     </button>`;
   }
 
-  function yearTourGreen(id) {
-    const palette = ['#7dae4a', '#5f8f32', '#9bc46a', '#3f7a3a', '#b5d48a', '#6a9a48'];
-    const n = Math.abs(Number(id) || 0);
-    return palette[n % palette.length];
+  function yearTourIsDayTrip(booking) {
+    const extras = (typeof window !== 'undefined' && window.BookingExtras) ? window.BookingExtras : null;
+    if (extras && extras.bookingIsDayTrip) return !!extras.bookingIsDayTrip(booking);
+    if (booking && (booking.dayTrip === true || (booking._extras && booking._extras.dayTrip === true))) return true;
+    const hotel = String((booking && (booking.hotel_name || (booking.hotels && booking.hotels.name))) || '').trim();
+    const group = String((booking && booking.group_name) || '');
+    return /\bday trip\b/i.test(group) && !hotel;
+  }
+
+  function yearTourHeadcount(tour) {
+    const n = Number(tour && tour.people);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function yearTourPeopleLabel(count) {
+    const n = Number(count) || 0;
+    if (n <= 0) return 'Headcount not set';
+    return n === 1 ? '1 person' : n + ' people';
+  }
+
+  function yearTourHeatScale(plan) {
+    const seen = new Set();
+    const counts = [];
+    (plan && plan.years || []).forEach(year => {
+      (year.months || []).forEach(month => {
+        (month.tours || []).forEach(tour => {
+          const key = String(tour.id);
+          if (seen.has(key)) return;
+          seen.add(key);
+          const n = yearTourHeadcount(tour);
+          if (n > 0) counts.push(n);
+        });
+      });
+    });
+    if (!counts.length) return { min: 1, max: 1 };
+    return { min: Math.min.apply(null, counts), max: Math.max.apply(null, counts) };
+  }
+
+  function yearTourHeatAmount(count, scale) {
+    const n = Number(count) || 0;
+    if (!scale || !(scale.max > scale.min)) return n > 0 ? 0.62 : 0.18;
+    if (n <= 0) return 0.12;
+    return (n - scale.min) / (scale.max - scale.min);
+  }
+
+  function yearTourShade(dayTrip, amount) {
+    const t = Math.max(0, Math.min(1, Number(amount) || 0));
+    const light = dayTrip ? [214, 235, 248] : [228, 240, 200];
+    const dark = dayTrip ? [26, 79, 134] : [44, 90, 22];
+    const ch = i => Math.round(light[i] + (dark[i] - light[i]) * t);
+    const bg = '#' + ch(0).toString(16).padStart(2, '0') + ch(1).toString(16).padStart(2, '0') + ch(2).toString(16).padStart(2, '0');
+    const ink = t >= 0.55 ? (dayTrip ? '#f4f8fc' : '#f4f8ea') : (dayTrip ? '#102033' : '#14210c');
+    return { bg, ink };
+  }
+
+  function yearTourDayHeat(tours, scale) {
+    let best = null;
+    (tours || []).forEach(tour => {
+      const n = yearTourHeadcount(tour);
+      if (!best || n > best.n) best = { tour, n };
+    });
+    const tour = best ? best.tour : null;
+    const n = best ? best.n : 0;
+    const shade = yearTourShade(!!(tour && tour.dayTrip), yearTourHeatAmount(n, scale));
+    return { bg: shade.bg, ink: shade.ink, head: n, dayTrip: !!(tour && tour.dayTrip) };
   }
 
   function yearTourById(id) {
@@ -4758,13 +4829,15 @@
         return {
           id: booking.id,
           title: String(booking.group_name || ('Booking #' + booking.id)).trim() || ('Booking #' + booking.id),
+          people: yearTourHeadcount({ people: booking.no_people }),
+          dayTrip: yearTourIsDayTrip(booking),
         };
       }
     }
     return null;
   }
 
-  function yearTourMonthGridHTML(year, month) {
+  function yearTourMonthGridHTML(year, month, scale) {
     const monthIndex = month.month;
     const first = new Date(Date.UTC(year, monthIndex, 1));
     const leading = mondayBasedDayIndexUTC(first);
@@ -4791,23 +4864,26 @@
         cells.push(`<div class="yc-cell">${dayNum}</div>`);
         continue;
       }
+      const heat = yearTourDayHeat(tours, scale);
       const ids = tours.map(tour => Number(tour.id)).filter(id => Number.isFinite(id) && id > 0);
-      const names = tours.map(tour => tour.title).join(', ');
+      const names = tours.map(tour => tour.title + ' · ' + yearTourPeopleLabel(yearTourHeadcount(tour))).join('; ');
       const isStart = tours.some(tour => tour.arrival === iso);
       const isEnd = tours.some(tour => (tour.departure || tour.arrival) === iso);
-      const classes = ['yc-cell', 'tour', 'year-tour-day', isStart ? 'start' : '', isEnd ? 'end' : '', tours.every(tour => tour.cancelled) ? 'cancelled' : ''].filter(Boolean).join(' ');
+      const classes = ['yc-cell', 'tour', 'year-tour-day', heat.dayTrip ? 'day-trip' : 'overnight', isStart ? 'start' : '', isEnd ? 'end' : '', tours.every(tour => tour.cancelled) ? 'cancelled' : ''].filter(Boolean).join(' ');
       const extra = tours.length > 1 ? `<span class="yc-dot">${tours.length}</span>` : '';
-      cells.push(`<button type="button" class="${classes}" style="--yt-green:${yearTourGreen(tours[0].id)}" data-tour-ids="${ids.join(',')}" title="${escapeAttr(names)}" onclick="openYearTourDay(this, event)">${dayNum}${extra}</button>`);
+      const headText = heat.head > 0 ? String(heat.head) : '–';
+      cells.push(`<button type="button" class="${classes}" style="--yt-bg:${heat.bg};--yt-ink:${heat.ink}" data-tour-ids="${ids.join(',')}" data-headcount="${heat.head}" title="${escapeAttr(names)}" onclick="openYearTourDay(this, event)"><span class="year-tour-daynum">${dayNum}</span><span class="year-tour-head">${headText}</span>${extra}</button>`);
     }
     const chips = (month.tours || []).map(tour => {
       const id = Number(tour.id);
       const click = Number.isFinite(id) && id > 0 ? ` onclick="openYearTourBooking(${id}, event)"` : '';
-      return `<button type="button" class="year-tour-chip${tour.cancelled ? ' cancelled' : ''}" style="--yt-green:${yearTourGreen(tour.id)}"${click}>${escapeHtml(yearTourDateLabel(tour))} · ${escapeHtml(tour.title)}</button>`;
+      const shade = yearTourShade(!!tour.dayTrip, yearTourHeatAmount(yearTourHeadcount(tour), scale));
+      return `<button type="button" class="year-tour-chip${tour.cancelled ? ' cancelled' : ''}${tour.dayTrip ? ' day-trip' : ''}" style="--yt-bg:${shade.bg};--yt-ink:${shade.ink}"${click}>${escapeHtml(yearTourDateLabel(tour))} · ${escapeHtml(tour.title)} · ${escapeHtml(yearTourPeopleLabel(yearTourHeadcount(tour)))}</button>`;
     }).join('');
     return `<div class="yc-month year-tour-cal"><div class="yc-weekdays">${weekdayRow}</div><div class="yc-grid">${cells.join('')}</div>${chips ? `<div class="year-tour-chips">${chips}</div>` : ''}</div>`;
   }
 
-  function yearTourMonthHTML(year, month, full) {
+  function yearTourMonthHTML(year, month, full, scale) {
     const key = year + '-' + month.month;
     const open = full || yearTourOpenMonths.has(key);
     return `<details class="fold year-tour-month" data-month-key="${key}"${open ? ' open' : ''}>
@@ -4815,7 +4891,7 @@
         <span>${month.name}</span>
         <span class="year-tour-count">${month.tours.length ? yearTourCountLabel(month.tours.length, 'tour') : 'No tours'}</span>
       </summary>
-      <div class="fold-body">${yearTourMonthGridHTML(year, month)}</div>
+      <div class="fold-body">${yearTourMonthGridHTML(year, month, scale)}</div>
     </details>`;
   }
 
@@ -4849,7 +4925,7 @@
     }
     panel.innerHTML = '<div class="yc-day-choice-actions">' + ids.map(id => {
       const tour = yearTourById(id);
-      const title = tour ? tour.title : ('Booking #' + id);
+      const title = tour ? (tour.title + ' · ' + yearTourPeopleLabel(tour.people)) : ('Booking #' + id);
       return `<button type="button" class="btn btn-outline btn-sm" onclick="openYearTourBooking(${Number(id)}, event)">${escapeHtml(title)}</button>`;
     }).join('') + '</div>';
     panel.hidden = false;
@@ -4873,11 +4949,12 @@
       root.innerHTML = '<p class="hint">No tours yet.</p>';
       return;
     }
+    const heatScale = yearTourHeatScale(plan);
     const years = plan.years.map(entry => {
       const open = yearTourOpenYears.has(entry.year);
       const full = yearTourFullYears.has(entry.year);
       const months = (full ? entry.months : entry.months.filter(month => month.tours.length))
-        .map(month => yearTourMonthHTML(entry.year, month, full))
+        .map(month => yearTourMonthHTML(entry.year, month, full, heatScale))
         .join('');
       return `<details class="fold year-tour-year${full ? ' full-year' : ''}" data-year="${entry.year}"${open ? ' open' : ''}>
         <summary>
@@ -4897,7 +4974,8 @@
           <div class="year-tour-months"><div class="year-tour-list">${plan.undated.map(yearTourItemHTML).join('')}</div></div>
         </details>`
       : '';
-    root.innerHTML = years + undated;
+    const key = '<p class="hint year-tour-key">Darker is a larger group. Usual tours are green. Day trips are blue. A day with more than one tour uses the larger group’s colour.</p>';
+    root.innerHTML = key + years + undated;
     root.querySelectorAll('details.year-tour-year[data-year]').forEach(node => {
       node.addEventListener('toggle', () => {
         const year = Number(node.getAttribute('data-year'));
