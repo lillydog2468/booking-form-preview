@@ -358,7 +358,7 @@ test('sixteen hotel nights against a nineteen-night stay are red, and a matching
   assert.equal(primary.classList.contains('hotel-nights-mismatch'), true);
   assert.equal(stay.classList.contains('hotel-nights-mismatch'), true);
   assert.equal(strip.classList.contains('hotel-nights-mismatch'), true);
-  assert.match(html, /\.hint\.hotel-nights-mismatch[\s\S]*?var\(--danger\)/);
+  assert.match(html, /\.hint\.hotel-nights-mismatch[\s\S]*?color:\s*#991b1b\s*!important/);
 
   stay.value = '9';
   vm.runInContext('updateHotelNightsHint("tab")', ctx);
@@ -368,4 +368,37 @@ test('sixteen hotel nights against a nineteen-night stay are red, and a matching
   assert.equal(primary.classList.contains('hotel-nights-mismatch'), false);
   assert.equal(stay.classList.contains('hotel-nights-mismatch'), false);
   assert.equal(strip.classList.contains('hotel-nights-mismatch'), false);
+});
+
+test('three hotels totalling ten nights against a nineteen-night stay show the red warning', () => {
+  const ctx = loadForm();
+  ctx.nodes.get('ttab_tour_arrival_date').value = '01/10/2026';
+  ctx.nodes.get('ttab_departure_date').value = '20/10/2026';
+  const primary = ctx.nodes.get('ttab_other_hotel_nights');
+  primary.value = '4';
+  primary.dataset.nightsSource = 'typed';
+  const second = {
+    value: '3',
+    dataset: { nightsSource: 'typed' },
+    className: 'hotel-stay-nights',
+    classList: classList(),
+    placeholder: '',
+  };
+  const third = {
+    value: '3',
+    dataset: { nightsSource: 'typed' },
+    className: 'hotel-stay-nights',
+    classList: classList(),
+    placeholder: '',
+  };
+  ctx.stays.children.push(second, third);
+  vm.runInContext('updateHotelNightsHint("tab")', ctx);
+  const hint = ctx.nodes.get('ttab_hotel_nights_hint');
+  assert.equal(hint.hidden, false);
+  assert.match(hint.textContent, /10 nights/);
+  assert.match(hint.textContent, /19 nights/);
+  assert.equal(hint.classList.contains('hotel-nights-mismatch'), true);
+  assert.equal(primary.classList.contains('hotel-nights-mismatch'), true);
+  assert.equal(second.classList.contains('hotel-nights-mismatch'), true);
+  assert.equal(third.classList.contains('hotel-nights-mismatch'), true);
 });
