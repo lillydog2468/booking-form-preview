@@ -1821,6 +1821,18 @@
     .day-trip-toggle input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
     .price-fields, .price-fields-home { display: contents; }
     .price-hint { grid-column: 1 / -1; margin: 4px 0 0; }
+    .price-hint.price-year-warn,
+    #priceBookYearNote.price-year-warn {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(245, 158, 11, .16);
+      border: 1px solid rgba(245, 158, 11, .45);
+      color: var(--text);
+      font-weight: 650;
+    }
+    .price-year.is-active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .price-year.is-idle { opacity: 0.72; }
     .price-book-slot:empty { display: none; }
     .price-book {
       margin: 14px 0 0;
@@ -2616,6 +2628,7 @@
     <summary>Tour prices</summary>
     <div class="price-book-body">
       <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>This list is only for day trips and the usual beading holiday. A percentage rise copies prices you have already entered into another year. Each of those prices is rounded up to the next whole pound, with no pence. A price that is already a whole number of pounds stays as it is. Extra hotels, and a tour somewhere other than the usual beading area, are not on this list. Type those amounts on the booking.</p></div></details>
+      <p class="hint" id="priceBookYearNote" role="status"></p>
       <div id="priceBookYears"></div>
       <div class="price-book-actions">
         <label>Year <input type="text" id="priceBookNewYear" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
@@ -2807,6 +2820,7 @@
           hotelVal: row.querySelector('.hotel-stay-select')?.value ?? '',
           otherName: row.querySelector('.hotel-stay-other')?.value ?? '',
           nights: row.querySelector('.hotel-stay-nights')?.value ?? '',
+          nightsSource: row.querySelector('.hotel-stay-nights')?.dataset.nightsSource || '',
           price: row.querySelector('.hotel-stay-price')?.value ?? '',
           comments: row.dataset.comment || '',
           booked: !!row.querySelector('.hotel-stay-booked')?.checked,
@@ -2869,6 +2883,10 @@
     const payList = document.getElementById(`t${tabId}_members_list`);
     state.memberPayOpen = payList ? !payList.classList.contains('member-pay-closed') : true;
     state.priceSource = tEl(tabId, 'price_per_person')?.dataset.priceSource || '';
+    state.nightsSource = {
+      hotel: tEl(tabId, 'other_hotel_nights')?.dataset.nightsSource || '',
+      tour: tEl(tabId, 'hotel_nights')?.dataset.nightsSource || '',
+    };
     state.openFolds = [...panelFolds(tabId)].filter(d => d.open).map(d => d.getAttribute('data-fold'));
 
     return state;
@@ -2938,6 +2956,11 @@
         row.querySelector('.hotel-stay-select').value = hotelVal;
         onHotelStayChange(row.querySelector('.hotel-stay-select'), tabId);
       }
+      const nightsEl = row && row.querySelector('.hotel-stay-nights');
+      if (nightsEl) {
+        if (s.nightsSource === 'dates' || s.nightsSource === 'typed') nightsEl.dataset.nightsSource = s.nightsSource;
+        else if (String(nightsEl.value || '').trim()) nightsEl.dataset.nightsSource = 'typed';
+      }
     });
     syncHotelPanel(tabId);
 
@@ -2963,6 +2986,8 @@
     setSharedAlbumsRows(tabId, state.sharedAlbums || []);
     fillCompanionSelect(tabId);
     if (state.extras) applyBookingExtras(tabId, state.extras);
+    restoreNightsSource(tEl(tabId, 'other_hotel_nights'), state.nightsSource && state.nightsSource.hotel);
+    restoreNightsSource(tEl(tabId, 'hotel_nights'), state.nightsSource && state.nightsSource.tour);
     (state.openFolds || []).forEach(name => {
       const fold = document.querySelector(`#tabPanel_${tabId} details.fold[data-fold="${name}"]`);
       if (fold) fold.open = true;
@@ -3897,6 +3922,7 @@
           </div>
         </div>
         <div class="hotel-stays-list" id="t${t}_hotel_stays_list"></div>
+        <p class="hint" id="t${t}_hotel_nights_hint" hidden></p>
         <button type="button" class="member-add" id="t${t}_add_hotel_btn" onclick="addAnotherHotel('${t}')">Add a hotel</button>
       </div>
       <div class="price-book-slot" id="t${t}_price_book_slot"></div>`;
@@ -6394,8 +6420,16 @@
     `;
     row.dataset.comment = data.comments || data.notes || '';
 
+    const nightsEl = row.querySelector('.hotel-stay-nights');
+    if (nightsEl && String(nightsEl.value || '').trim()) nightsEl.dataset.nightsSource = 'typed';
+
     row.querySelectorAll('input, select').forEach(inp => {
-      inp.addEventListener('input', () => onTabInput(tabId));
+      inp.addEventListener('input', () => {
+        if (inp.classList.contains('hotel-stay-nights')) {
+          inp.dataset.nightsSource = String(inp.value || '').trim() ? 'typed' : '';
+        }
+        onTabInput(tabId);
+      });
       inp.addEventListener('change', () => {
         onTabInput(tabId);
         schedulePlanHotelSave(tabId);
@@ -6410,6 +6444,7 @@
   function removeHotelStayRow(btn, tabId) {
     btn.closest('.hotel-stay-row').remove();
     renumberHotelStayRows(tabId);
+    suggestBlankHotelNights(tabId);
     onTabInput(tabId);
   }
 
@@ -6557,6 +6592,7 @@
     const years = Object.keys(book.years).sort();
     if (!years.length) {
       host.innerHTML = '<p class="hint">No years yet.</p>' + pageHelp('<p>Add a year, then type the day-trip price and the usual beading prices. Nothing is filled in for you.</p>');
+      if (typeof updatePriceBookYearNote === 'function' && typeof activeTabId !== 'undefined') updatePriceBookYearNote(activeTabId);
       return;
     }
     host.innerHTML = years.map(year => {
@@ -6569,7 +6605,7 @@
           <button type="button" class="btn btn-outline btn-sm" data-price-action="remove-length" data-year="${escapeAttr(year)}" data-nights="${escapeAttr(n)}">Remove</button>
         </div>`).join('');
       return `
-        <div class="price-year">
+        <div class="price-year" data-year="${escapeAttr(year)}">
           <div class="price-year-head">
             <strong>${escapeHtml(year)}</strong>
             <button type="button" class="btn btn-outline btn-sm" data-price-action="remove-year" data-year="${escapeAttr(year)}">Remove year</button>
@@ -6585,6 +6621,7 @@
           </div>
         </div>`;
     }).join('');
+    if (typeof updatePriceBookYearNote === 'function' && typeof activeTabId !== 'undefined') updatePriceBookYearNote(activeTabId);
   }
 
   function savePriceBookField(input) {
@@ -6734,9 +6771,11 @@
     const slot = tabId ? tEl(tabId, 'price_book_slot') : null;
     if (slot) {
       if (book.parentElement !== slot) slot.appendChild(book);
+      if (typeof updatePriceBookYearNote === 'function') updatePriceBookYearNote(tabId);
       return;
     }
     parkPriceBook();
+    if (typeof updatePriceBookYearNote === 'function') updatePriceBookYearNote(null);
   }
 
   function tourLengthFromDates(tabId) {
@@ -6753,39 +6792,128 @@
     return start ? String(start.getUTCFullYear()) : '';
   }
 
-  function updatePriceHint(tabId) {
+  function sidebarFilterYear() {
+    const year = String(el('sidebarYear')?.value || '').trim();
+    return /^\d{4}$/.test(year) ? year : '';
+  }
+
+  // Arrival year is the tour year. The sidebar year is used only when arrival
+  // is still blank. The current calendar year is never a price-list year.
+  function priceYearChoice(tabId) {
+    const arrivalYear = tourArrivalYear(tabId);
+    const filterYear = sidebarFilterYear();
+    const listYear = arrivalYear || filterYear;
+    const mismatch = !!(arrivalYear && filterYear && arrivalYear !== filterYear);
+    return { arrivalYear, filterYear, listYear, mismatch };
+  }
+
+  function mismatchWarning(choice) {
+    if (!choice || !choice.mismatch) return '';
+    return 'The year filter is ' + choice.filterYear + ', but this tour arrives in ' + choice.arrivalYear + '. The ' + choice.filterYear + ' price list was not applied.';
+  }
+
+  function updatePriceBookYearNote(tabId) {
+    const note = el('priceBookYearNote');
+    const years = (typeof document !== 'undefined' && document.querySelectorAll)
+      ? document.querySelectorAll('#priceBookYears .price-year')
+      : [];
+    if (!tabId) {
+      if (note) {
+        note.textContent = '';
+        note.className = 'hint';
+      }
+      years.forEach(node => node.classList.remove('is-active', 'is-idle'));
+      return;
+    }
+    const choice = priceYearChoice(tabId);
+    if (note) {
+      if (choice.mismatch) {
+        note.textContent = mismatchWarning(choice);
+        note.className = 'hint price-year-warn';
+      } else if (choice.listYear) {
+        note.textContent = 'This booking uses the ' + choice.listYear + ' tour price list. Other years are not applied to it.';
+        note.className = 'hint';
+      } else {
+        note.textContent = 'No arrival year yet. A suggested price is not taken from the current calendar year.';
+        note.className = 'hint';
+      }
+    }
+    years.forEach(node => {
+      const year = node.getAttribute('data-year');
+      const active = !!choice.listYear && year === choice.listYear;
+      node.classList.toggle('is-active', active);
+      node.classList.toggle('is-idle', !!choice.listYear && !active);
+    });
+  }
+
+  function updatePriceHint(tabId, choice) {
     const hint = document.getElementById(`t${tabId}_price_hint`);
     if (!hint) return;
+    const picked = choice || priceYearChoice(tabId);
+    const warn = mismatchWarning(picked);
     const source = tEl(tabId, 'price_per_person')?.dataset.priceSource || '';
+    const yearName = picked.listYear || '';
+    if (warn && source === 'typed') {
+      hint.textContent = warn + ' A price already typed on this booking is left as it is.';
+      hint.classList.add('price-year-warn');
+      hint.setAttribute('role', 'alert');
+      return;
+    }
+    let text = '';
     if (source === 'typed') {
-      hint.textContent = 'This price was typed on this booking. Clear the box to use the list again.';
-      return;
+      text = yearName
+        ? 'This price was typed on this booking. It has been left as it is. Clear the box to use the ' + yearName + ' list again.'
+        : 'This price was typed on this booking. It has been left as it is. Clear the box to use the list again.';
+    } else if (tabIsDayTrip(tabId)) {
+      text = yearName
+        ? 'Day trip. The price per person is filled from the ' + yearName + ' tour price list, when a day-trip price has been entered there.'
+        : 'Day trip. Set the arrival date to choose a year\'s price list. The current calendar year is not used.';
+    } else if ((tEl(tabId, 'tour_place')?.value || 'beading') === 'other') {
+      text = yearName
+        ? 'This tour is somewhere other than the usual beading area, so it is not on the ' + yearName + ' price list. Type the price here. Extra hotels stay as amounts you type yourself.'
+        : 'This tour is somewhere other than the usual beading area, so it is not on the price list. Type the price here. Extra hotels stay as amounts you type yourself.';
+    } else if (!yearName) {
+      text = 'Set the arrival date to choose the price list. A suggested price is not taken from the current calendar year. The year filter is used only when there is no arrival date.';
+    } else {
+      const len = tourLengthFromDates(tabId);
+      const fromFilter = !picked.arrivalYear && picked.filterYear;
+      const listLabel = fromFilter
+        ? (yearName + ' list, from the year filter, until an arrival date is set')
+        : (yearName + ' list');
+      if (!len) {
+        text = 'Usual beading area. The ' + listLabel + ' is in use. Enter the arrival and departure dates to match a length. Extra hotels are not filled from that list.';
+      } else {
+        text = listLabel.charAt(0).toUpperCase() + listLabel.slice(1) + '. ' + lengthLabel(len.nights) + '. The price per person comes from the ' + yearName + ' beading list when that length has a price. Extra hotels are typed separately.';
+      }
     }
-    if (tabIsDayTrip(tabId)) {
-      hint.textContent = 'Day trip. The price per person is filled from the tour price list for this year, when a day-trip price has been entered there.';
-      return;
-    }
-    if ((tEl(tabId, 'tour_place')?.value || 'beading') === 'other') {
-      hint.textContent = 'This tour is somewhere other than the usual beading area, so it is not on the price list. Type the price here. Extra hotels stay as amounts you type yourself.';
-      return;
-    }
-    const len = tourLengthFromDates(tabId);
-    if (!len) {
-      hint.textContent = 'Usual beading area. Enter the arrival and departure dates to match a length on the tour price list. Extra hotels are not filled from that list.';
-      return;
-    }
-    hint.textContent = lengthLabel(len.nights) + '. The price per person comes from the usual beading list for this year when that length has a price. Extra hotels are typed separately.';
+    if (warn) text = warn + ' ' + text;
+    hint.textContent = text;
+    hint.classList.toggle('price-year-warn', !!warn);
+    hint.setAttribute('role', warn ? 'alert' : 'status');
   }
 
   function applySuggestedPrice(tabId) {
     const input = tEl(tabId, 'price_per_person');
     if (!input) return;
+    const choice = priceYearChoice(tabId);
+    updatePriceBookYearNote(tabId);
     if (input.dataset.priceSource === 'typed') {
-      updatePriceHint(tabId);
+      updatePriceHint(tabId, choice);
       return;
     }
-    const year = tourArrivalYear(tabId);
+    // The list year must be the arrival year whenever arrival is known.
+    // Never substitute another year from the book, the year filter, or today.
+    if (choice.arrivalYear && choice.listYear !== choice.arrivalYear) {
+      if (input.dataset.priceSource === 'table') {
+        input.value = '';
+        input.dataset.priceSource = '';
+      }
+      updatePriceHint(tabId, choice);
+      recalculateTab(tabId);
+      return;
+    }
     const book = readPriceBook();
+    const year = choice.listYear;
     const row = year && book.years[year] ? book.years[year] : null;
     let next = '';
     if (tabIsDayTrip(tabId)) {
@@ -6803,7 +6931,7 @@
       input.value = '';
       input.dataset.priceSource = '';
     }
-    updatePriceHint(tabId);
+    updatePriceHint(tabId, choice);
     recalculateTab(tabId);
   }
 
@@ -6817,6 +6945,123 @@
     if (String(input.value || '').trim()) input.dataset.priceSource = 'typed';
     else if (input.dataset.priceSource === 'typed') input.dataset.priceSource = '';
     applySuggestedPrice(tabId);
+  }
+
+  function nightsText(input) {
+    return String(input && input.value != null ? input.value : '').trim();
+  }
+
+  function nightsLocked(input) {
+    if (!input || !nightsText(input)) return false;
+    return input.dataset.nightsSource !== 'dates';
+  }
+
+  function restoreNightsSource(input, source) {
+    if (!input) return;
+    if (source === 'dates' || source === 'typed') input.dataset.nightsSource = source;
+    else input.dataset.nightsSource = nightsText(input) ? 'typed' : '';
+  }
+
+  function stayNightInputs(tabId) {
+    const list = document.getElementById(`t${tabId}_hotel_stays_list`);
+    if (!list || !list.querySelectorAll) return [];
+    return [...list.querySelectorAll('.hotel-stay-nights')];
+  }
+
+  function hotelNightFields(tabId) {
+    const fields = [];
+    if (primaryHotelVisible(tabId)) {
+      const primary = tEl(tabId, 'other_hotel_nights');
+      if (primary) fields.push(primary);
+    }
+    stayNightInputs(tabId).forEach(input => fields.push(input));
+    return fields;
+  }
+
+  function parseNightsCount(value) {
+    const match = /^(\d+)(?:\s*nights?)?$/i.exec(String(value || '').trim());
+    if (!match) return null;
+    const n = Number(match[1]);
+    if (!Number.isFinite(n)) return null;
+    return n;
+  }
+
+  function nightsCountLabel(n) {
+    return n === 1 ? '1 night' : (n + ' nights');
+  }
+
+  function defaultNightsPlaceholder(input) {
+    if (input && input.classList && input.classList.contains('hotel-stay-nights')) return 'Nights (e.g. 3)';
+    return 'e.g. 3 nights';
+  }
+
+  function writeSuggestedNights(input, nights) {
+    if (!input || nightsLocked(input)) return;
+    input.value = nights;
+    input.dataset.nightsSource = 'dates';
+  }
+
+  // One hotel: suggest the whole stay in that nights box, filling it only when
+  // it is blank. Several hotels: leave what was typed, and hint if the nights
+  // do not add up to arrival → departure. Extras such as Prague, the airport,
+  // and side trips are not part of that sum.
+  function suggestBlankHotelNights(tabId) {
+    const len = !tabIsDayTrip(tabId) ? tourLengthFromDates(tabId) : null;
+    const nights = len && len.nights >= 1 ? len.nights : 0;
+    const fields = hotelNightFields(tabId);
+    if (nights >= 1 && fields.length === 1) writeSuggestedNights(fields[0], String(nights));
+    updateHotelNightsHint(tabId);
+  }
+
+  function updateHotelNightsHint(tabId) {
+    const hint = document.getElementById(`t${tabId}_hotel_nights_hint`);
+    const len = !tabIsDayTrip(tabId) ? tourLengthFromDates(tabId) : null;
+    const nights = len && len.nights >= 1 ? len.nights : 0;
+    const fields = hotelNightFields(tabId);
+    const suggestion = nights >= 1 ? ('Suggested: ' + nightsCountLabel(nights)) : '';
+    fields.forEach(input => {
+      input.placeholder = (fields.length === 1 && suggestion) ? suggestion : defaultNightsPlaceholder(input);
+    });
+    if (!hint) return;
+    if (nights < 1 || fields.length < 2) {
+      hint.hidden = true;
+      hint.textContent = '';
+      return;
+    }
+    let sum = 0;
+    let blank = 0;
+    let bad = 0;
+    fields.forEach(input => {
+      const text = nightsText(input);
+      if (!text) { blank += 1; return; }
+      const n = parseNightsCount(text);
+      if (n == null) bad += 1;
+      else sum += n;
+    });
+    const stay = nightsCountLabel(nights);
+    let text = '';
+    if (bad) {
+      text = 'Enter the nights for each hotel as a number. Together they should be ' + stay + '.';
+    } else if (blank === fields.length) {
+      text = 'More than one hotel. Their nights should add up to ' + stay + '.';
+    } else if (blank && sum === nights) {
+      const waiting = blank === 1 ? 'One hotel has no nights yet.' : (blank + ' hotels have no nights yet.');
+      text = 'These hotel nights add up to ' + nightsCountLabel(sum) + ', which matches the stay. ' + waiting;
+    } else if (sum !== nights) {
+      const soFar = blank ? ' so far' : '';
+      text = 'These hotel nights add up to ' + nightsCountLabel(sum) + soFar + '. The stay from arrival to departure is ' + stay + '.';
+    }
+    hint.hidden = !text;
+    hint.textContent = text;
+  }
+
+  function noteLoadedNights(tabId) {
+    hotelNightFields(tabId).forEach(input => {
+      if (!input) return;
+      if (nightsText(input)) input.dataset.nightsSource = 'typed';
+      else if (input.dataset.nightsSource === 'typed') input.dataset.nightsSource = '';
+    });
+    suggestBlankHotelNights(tabId);
   }
 
   function tabIsDayTrip(tabId) {
@@ -6881,6 +7126,7 @@
       const card = document.getElementById(`t${tabId}_primary_hotel_card`);
       if (card) card.hidden = false;
       syncHotelPanel(tabId);
+      suggestBlankHotelNights(tabId);
       onTabInput(tabId);
       return;
     }
@@ -7347,6 +7593,10 @@
       const priceInput = tEl(tabId, 'price_per_person');
       if (priceInput) priceInput.dataset.priceSource = String(priceInput.value || '').trim() ? 'typed' : '';
     }
+    if ((changedId.endsWith('_other_hotel_nights') || changedId.endsWith('_hotel_nights')) && eventType === 'input') {
+      const nightsInput = changedId ? document.getElementById(changedId) : null;
+      if (nightsInput) nightsInput.dataset.nightsSource = String(nightsInput.value || '').trim() ? 'typed' : '';
+    }
     if (
       changedId.endsWith('_tour_arrival_date') ||
       changedId.endsWith('_departure_date') ||
@@ -7355,6 +7605,13 @@
       (priceEdited && eventType === 'input')
     ) {
       applySuggestedPrice(tabId);
+    }
+    if (
+      changedId.endsWith('_tour_arrival_date') ||
+      changedId.endsWith('_departure_date') ||
+      changedId.endsWith('_day_trip')
+    ) {
+      suggestBlankHotelNights(tabId);
     }
     if (changedId.endsWith('_hotel_booked') && !changedId.endsWith('_main_hotel_booked')) {
       const tick = document.getElementById(`t${tabId}_main_hotel_booked`);
@@ -7381,6 +7638,7 @@
       schedulePlanHotelSave(tabId);
     }
     if (changedId.endsWith('_day_pickup')) schedulePlanHotelSave(tabId);
+    updateHotelNightsHint(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
     refreshBookingLink(tabId);
     if (autoSaveEnabled) scheduleTabAutoSave(tabId);
@@ -7664,6 +7922,7 @@
       applyBookingExtras(tabId, roomRaw, record.keith_own_room);
     }
     noteLoadedPrice(tabId);
+    noteLoadedNights(tabId);
     recalculateTab(tabId);
     applyMemberPayFold(tabId);
     applyTabYearTint(tabId);
@@ -7784,6 +8043,10 @@
     if (dayPickup) dayPickup.value = '';
     const priceInput = tEl(tabId, 'price_per_person');
     if (priceInput) priceInput.dataset.priceSource = '';
+    ['other_hotel_nights', 'hotel_nights'].forEach(name => {
+      const nightsInput = tEl(tabId, name);
+      if (nightsInput) nightsInput.dataset.nightsSource = '';
+    });
     const tabAfterReset = tabs.get(tabId);
     if (tabAfterReset) {
       tabAfterReset.planHotelsBaseline = [];
@@ -7938,6 +8201,7 @@
 
 	  function onSidebarControlsChange() {
 	    applySidebarList();
+	    refreshPricesOnOpenTabs();
 	  }
 
 	  function clearSidebarFilters() {
