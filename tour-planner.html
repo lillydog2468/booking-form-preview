@@ -4891,6 +4891,8 @@
       mergedPlans[k] = preferRicherPlan(memPlans[k], store.plans[k]) || memPlans[k] || store.plans[k];
     });
     if (state.plan && state.plan.bookingKey != null && !legacyRow(state.plan.bookingKey, state.plan)) {
+      // A {booked:true} row with no hotelName is not a stay. Do not write it back.
+      state.plan.hotels = normalizePlanHotels(state.plan.hotels);
       mergedPlans[state.plan.bookingKey] = state.plan;
     }
     store.plans = omitLegacyPlans(mergedPlans);
@@ -6046,6 +6048,7 @@
 
   async function savePlanMerged(plan, opts) {
     const force = !!(opts && opts.force);
+    if (plan && Array.isArray(plan.hotels)) plan.hotels = normalizePlanHotels(plan.hotels);
     if (!state.supabasePlanTable || !plan) return { ok: false, wrote: false };
     const key = String(plan.bookingKey || '');
     if (!key || legacyRow(key, plan)) return { ok: true, wrote: false };
@@ -6090,6 +6093,9 @@
           return { ok: true, wrote: false };
         }
         const patched = patchEdited(row.payload || {}, baseline, current);
+        if (patched.value && Array.isArray(patched.value.hotels)) {
+          patched.value.hotels = normalizePlanHotels(patched.value.hotels);
+        }
         if (!patched.changed) {
           rememberPlanBaseline(plan);
           return { ok: true, wrote: false };
@@ -9833,13 +9839,21 @@ function renderDayTabs() {
 
   function hotelsUsedNameKey(name) {
     const trimmed = String(name || '').trim();
+    if (window.HotelDirectory && HotelDirectory.foldName) return HotelDirectory.foldName(trimmed);
     if (window.BookingExtras && BookingExtras.hotelUsedKey) return BookingExtras.hotelUsedKey(trimmed);
-    return trimmed.toLowerCase().replace(/\s+/g, ' ');
+    return trimmed.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+  }
+
+  function hotelsUsedSameName(a, b) {
+    if (window.HotelDirectory && HotelDirectory.sameHotelName) return HotelDirectory.sameHotelName(a, b);
+    const key = hotelsUsedNameKey(a);
+    return !!key && key === hotelsUsedNameKey(b);
   }
 
   function isSkippedHotelName(name) {
     const trimmed = String(name || '').trim();
     if (!trimmed) return true;
+    if (window.HotelDirectory && HotelDirectory.isPlaceholderHotel && HotelDirectory.isPlaceholderHotel(trimmed)) return true;
     if (window.BookingExtras && BookingExtras.isDayTripHotelName && BookingExtras.isDayTripHotelName(trimmed)) return true;
     return /^day\s*trips?$/i.test(trimmed);
   }
@@ -9872,16 +9886,21 @@ function renderDayTabs() {
     const trimmed = String(name || '').trim();
     if (isSkippedHotelName(trimmed)) return;
     const key = hotelsUsedNameKey(trimmed);
-    if (!key || list.some(n => hotelsUsedNameKey(n) === key)) return;
+    if (!key || list.some(n => hotelsUsedSameName(n, trimmed))) return;
     list.push(trimmed);
   }
 
   function hotelNamesForStay(booking, plan, extraNames) {
     const names = [];
+    // Linked booking_hotels names first, so the same hotel on plan.hotels is not a second line.
+    (extraNames || []).forEach(n => collectHotelNames(names, n));
     if (booking) collectHotelNames(names, booking.hotel_name || (booking.hotels && booking.hotels.name));
     if (plan) collectHotelNames(names, plan.tourHotelName);
-    (plan && plan.hotels || []).forEach(h => collectHotelNames(names, h && (h.hotelName || h.name)));
-    (extraNames || []).forEach(n => collectHotelNames(names, n));
+    (plan && plan.hotels || []).forEach(h => {
+      const hotelName = h && typeof h === 'object' ? (h.hotelName || h.name || '') : h;
+      if (isSkippedHotelName(hotelName)) return;
+      collectHotelNames(names, hotelName);
+    });
     const noteSources = [];
     if (booking && window.BookingExtras && booking.extra_notes) {
       noteSources.push(BookingExtras.splitNotesAndExtras(booking.extra_notes).extras);
@@ -9898,6 +9917,11 @@ function renderDayTabs() {
     const key = hotelsUsedNameKey(trimmed);
     if (!key || isSkippedHotelName(trimmed)) return;
     let row = map.get(key);
+    if (!row) {
+      for (const existing of map.values()) {
+        if (hotelsUsedSameName(existing.name, trimmed)) { row = existing; break; }
+      }
+    }
     if (!row) {
       row = { name: trimmed, byYear: new Map(), undatedPeople: [], hadStay: false };
       map.set(key, row);
@@ -10037,10 +10061,10 @@ function renderDayTabs() {
   }
 
   function thisBookingHotelKey() {
-    if (!state.plan || !window.BookingExtras || !BookingExtras.bookingLink) return { key: '', year: '' };
+    if (!state.plan || !window.BookingExtras || !BookingExtras.bookingLink) return { key: '', year: '', hotel: '' };
     const booking = (state.bookings || []).find(b => String(b.id) === String(state.plan.bookingKey));
     const link = BookingExtras.bookingLink(booking || null, state.plan);
-    return { key: hotelsUsedNameKey(link.hotel), year: link.year || '' };
+    return { key: hotelsUsedNameKey(link.hotel), year: link.year || '', hotel: link.hotel || '' };
   }
 
   function hotelsUsedYearBlock(title, cards) {
@@ -10086,7 +10110,7 @@ function renderDayTabs() {
         const cards = rows
           .filter(row => row.byYear.has(year))
           .sort((a, b) => a.name.localeCompare(b.name, 'en'))
-          .map(row => hotelsUsedCard(row.name, row.byYear.get(year), true, current.year === String(year) && hotelsUsedNameKey(row.name) === current.key))
+          .map(row => hotelsUsedCard(row.name, row.byYear.get(year), true, current.year === String(year) && hotelsUsedSameName(row.name, current.hotel)))
           .join('');
         if (cards) blocks.push(hotelsUsedYearBlock(year, cards));
       };
