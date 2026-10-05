@@ -110,6 +110,7 @@
       interests: { buttons: false, antique: false, lampwork: false, heritage: false, other: '' },
       needs: { dietary: '', mobility: '' },
       consent: { futureOffers: '', contactMethod: '' },
+      payments: { group: false, payer: '' },
       delayUntilYear: '',
       rescheduledFromId: '',
       dayTrip: null,
@@ -141,6 +142,22 @@
     return v == null ? '' : String(v);
   }
 
+  /** '' means this guest paid. Any other value is the saved-guest index of who paid. */
+  function normalisePayRef(value) {
+    var s = str(value).trim();
+    if (!s || s === 'self') return '';
+    if (!/^\d+$/.test(s)) return '';
+    return String(Number(s));
+  }
+
+  function normalisePayments(raw) {
+    var src = isObj(raw) ? raw : {};
+    return {
+      group: src.group === true || src.group === 'true' || src.group === 1 || src.group === '1',
+      payer: normalisePayRef(src.payer)
+    };
+  }
+
   function merge(raw) {
     var base = empty();
     var src = isObj(raw) ? raw : {};
@@ -158,7 +175,8 @@
         firstName: str(row.firstName).trim(),
         lastName: str(row.lastName).trim(),
         email: str(row.email).trim(),
-        personId: str(row.personId).trim()
+        personId: str(row.personId).trim(),
+        paidBy: normalisePayRef(row.paidBy)
       };
     }).filter(function (g) {
       return g.firstName || g.lastName || g.email || g.personId;
@@ -213,6 +231,7 @@
       var method = str(src.consent.contactMethod).trim();
       base.consent.contactMethod = ['email', 'phone', 'whatsapp', 'post'].indexOf(method) >= 0 ? method : '';
     }
+    base.payments = normalisePayments(src.payments);
     base.delayUntilYear = normaliseDelayYear(src.delayUntilYear);
     base.rescheduledFromId = normaliseLinkedBookingId(src.rescheduledFromId);
     base.dayTrip = src.dayTrip === true ? true : (src.dayTrip === false ? false : null);
@@ -238,6 +257,8 @@
     if (x.interests.buttons || x.interests.antique || x.interests.lampwork || x.interests.heritage || x.interests.other) return true;
     if (x.needs.dietary || x.needs.mobility) return true;
     if (x.consent.futureOffers || x.consent.contactMethod) return true;
+    if (x.payments.group || x.payments.payer) return true;
+    if (x.guests.some(function (g) { return !!g.paidBy; })) return true;
     if (x.delayUntilYear) return true;
     if (x.rescheduledFromId) return true;
     if (x.dayTrip === true || x.dayTrip === false) return true;

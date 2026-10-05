@@ -16,6 +16,27 @@ function loadExtras() {
   return context.window.BookingExtras;
 }
 
+test('guest payment choices survive a merge', () => {
+  const BE = loadExtras();
+  const merged = BE.merge({
+    payments: { group: true, payer: '1' },
+    guests: [
+      { firstName: 'Tina', lastName: 'Stone', paidBy: 'self' },
+      { firstName: 'Ann', lastName: 'Smith', email: 'a@b.c', paidBy: '0' },
+    ],
+  });
+  assert.equal(merged.payments.group, true);
+  assert.equal(merged.payments.payer, '1');
+  assert.equal(merged.guests[0].paidBy, '');
+  assert.equal(merged.guests[1].paidBy, '0');
+  assert.equal(merged.guests[0].personId, '');
+  assert.equal(BE.hasContent({ payments: { group: true } }), true);
+  assert.equal(BE.hasContent(BE.empty()), false);
+  const round = BE.merge(BE.merge({ guests: [{ firstName: 'Ida', lastName: 'Brown', personId: 'p1', paidBy: '2' }] }));
+  assert.equal(round.guests[0].personId, 'p1');
+  assert.equal(round.guests[0].paidBy, '2');
+});
+
 test('guest names that do not match the headcount produce a warning', () => {
   const BE = loadExtras();
   assert.equal(BE.guestCountWarning('', 0), '');

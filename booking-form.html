@@ -1433,7 +1433,7 @@
     .member-albums-label { font-weight: 700; margin-right: 4px; }
     .member-albums a { color: var(--accent); font-weight: 700; text-decoration: none; }
     .member-albums a:hover { text-decoration: underline; }
-    .member-row input {
+    .member-row > input {
       flex: 1;
       padding: 9px 13px;
       border: 1px solid var(--border);
@@ -1445,11 +1445,56 @@
       outline: none;
       transition: border-color .15s;
     }
-    .member-row input:focus {
+    .member-row > input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-glow);
     }
     .member-row .member-email { flex: 1.35; min-width: 160px; }
+    .member-pay-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+      margin: 0 0 8px; min-width: 0;
+    }
+    .member-pay-toggle {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 800;
+      cursor: pointer; min-height: 28px;
+    }
+    .member-pay-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+    .member-pay-group, .member-pay-payer, .member-paid-by-wrap {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; color: var(--text-secondary);
+    }
+    .member-pay-sums, .member-pay-flag { font-size: 12px; line-height: 1.3; }
+    .member-pay-sums { color: var(--text-secondary); }
+    .member-pay-flag.is-ok { color: var(--text-secondary); }
+    .member-pay-flag.is-short, .member-pay-flag.is-over {
+      font-weight: 800; border-radius: 999px; padding: 2px 8px;
+    }
+    .member-pay-flag.is-short { color: #92400e; background: #fef3c7; }
+    .member-pay-flag.is-over { color: #fff; background: var(--danger); }
+    .members-list.member-pay-closed .member-pay { display: none; }
+    .member-pay {
+      flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0;
+    }
+    .member-pay-fields { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+    .member-pay.is-covered .member-pay-fields { display: none; }
+    .members-list.is-group-pay .member-paid-by-wrap { display: none; }
+    .member-covered { display: none; font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+    .member-pay.is-covered .member-covered { display: inline; }
+    .member-pay-amt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+    .member-pay-label, .member-pay-pound { font-size: 11px; font-weight: 800; color: var(--text-secondary); }
+    .member-pay-amt input[type="number"] {
+      width: 92px; flex: 0 0 92px; min-width: 0;
+      padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+      font-family: inherit; font-size: 14px; color: var(--text); background: var(--input-bg); outline: none;
+    }
+    .member-pay .date-field-row { width: 158px; flex: 0 1 158px; min-width: 0; }
+    .member-pay .date-field-row input { padding: 8px; font-size: 13px; }
+    .member-paid-by-wrap select, .member-pay-payer select {
+      font: inherit; font-size: 13px; padding: 6px 8px; max-width: 180px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--input-bg); color: var(--text);
+    }
     .field label.req::after { content: " *"; color: var(--danger); }
     .hint { font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px; line-height: 1.4; }
     .page-help { margin: 0 0 8px; }
@@ -2084,10 +2129,20 @@
         width: auto; font-size: 10px; color: var(--accent); font-weight: 700;
         letter-spacing: .5px;
       }
-      .member-row input {
+      .member-row > input {
         flex: 1 1 calc(50% - 4px); padding: 10px 12px; font-size: 16px;
         min-height: 44px; -webkit-appearance: none; min-width: 0;
       }
+      .member-pay-bar { width: 100%; }
+      .member-pay-toggle, .member-pay-group, .member-pay-payer { min-height: 44px; }
+      .member-pay-amt input[type="number"],
+      .member-pay .date-field-row input,
+      .member-paid-by-wrap select,
+      .member-pay-payer select {
+        font-size: 16px; min-height: 44px;
+      }
+      .member-pay-amt input[type="number"] { flex-basis: 110px; width: 110px; }
+      .member-pay .date-popup-btn { width: 44px; height: 44px; }
       .member-row .member-email { flex: 1 1 100%; }
       .member-row .member-albums { padding-left: 0; }
       .member-row .member-remove {
@@ -2195,7 +2250,7 @@
       .tab-panel { padding: 12px 10px 80px; }
       .section { padding: 14px 12px; }
       .sidebar { max-height: 150px; }
-      .member-row input { flex: 1 1 100%; }
+      .member-row > input { flex: 1 1 100%; }
       .flight-row .grid-5 { grid-template-columns: 1fr; }
     }
   
@@ -2762,12 +2817,18 @@
     const membersList = document.getElementById(`t${tabId}_members_list`);
     if (membersList) {
       membersList.querySelectorAll('.member-row').forEach(row => {
+        const paidBySel = row.querySelector('.member-paid-by');
         state.members.push({
           id: row.dataset.memberId || '',
           first: row.querySelector('.member-first')?.value ?? '',
           last: row.querySelector('.member-last')?.value ?? '',
           email: row.querySelector('.member-email')?.value ?? '',
-          name: row.querySelector('.member-name')?.value ?? ''
+          name: row.querySelector('.member-name')?.value ?? '',
+          deposit: row.querySelector('.member-deposit')?.value ?? '',
+          final_payment: row.querySelector('.member-paid')?.value ?? '',
+          deposit_date: row.querySelector('.member-deposit-date')?.value ?? '',
+          final_payment_date: row.querySelector('.member-paid-date')?.value ?? '',
+          paidBy: paidBySel?.value || paidBySel?.dataset.value || ''
         });
       });
     }
@@ -2802,6 +2863,8 @@
 
     state.sharedAlbums = getSharedAlbumsData(tabId);
     state.extras = collectBookingExtras(tabId);
+    const payList = document.getElementById(`t${tabId}_members_list`);
+    state.memberPayOpen = payList ? !payList.classList.contains('member-pay-closed') : true;
     state.priceSource = tEl(tabId, 'price_per_person')?.dataset.priceSource || '';
     state.openFolds = [...panelFolds(tabId)].filter(d => d.open).map(d => d.getAttribute('data-fold'));
 
@@ -2877,7 +2940,13 @@
 
     const membersList = document.getElementById(`t${tabId}_members_list`);
     if (membersList) membersList.innerHTML = '';
-    (state.members || []).forEach(m => addMemberRow(tabId, m.first || m.name || '', m.id || '', m.last || '', m.email || ''));
+    (state.members || []).forEach(m => addMemberRow(tabId, m.first || m.name || '', m.id || '', m.last || '', m.email || '', false, {
+      deposit: m.deposit,
+      final_payment: m.final_payment,
+      deposit_date: m.deposit_date,
+      final_payment_date: m.final_payment_date,
+      paidBy: m.paidBy,
+    }));
     if ((state.members || []).length === 0) addMemberRow(tabId);
 
     const flightsList = document.getElementById(`t${tabId}_flights_list`);
@@ -2897,6 +2966,8 @@
     });
 
     recalculateTab(tabId);
+    if (typeof state.memberPayOpen === 'boolean') setMemberPayOpen(tabId, state.memberPayOpen, false);
+    else applyMemberPayFold(tabId);
     applySuggestedPrice(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
   }
@@ -3845,6 +3916,17 @@
     </div>`;
   }
 
+  function memberPaymentsBarHTML(t) {
+    return `
+          <div class="member-pay-bar" id="t${t}_member_pay_bar">
+            <button type="button" class="member-pay-toggle" id="t${t}_member_pay_toggle" aria-expanded="true" aria-controls="t${t}_members_list" onclick="toggleMemberPay('${t}')">Payments</button>
+            <label class="member-pay-group"><input type="checkbox" id="t${t}_pay_group"> Group payment</label>
+            <label class="member-pay-payer" id="t${t}_pay_payer_wrap" hidden>Paid by <select id="t${t}_pay_payer" aria-label="Group paid by"></select></label>
+            <span class="member-pay-sums" id="t${t}_pay_sums"></span>
+            <span class="member-pay-flag" id="t${t}_pay_flag" role="status"></span>
+          </div>`;
+  }
+
   function buildFormHTML(tabId) {
     const t = tabId;
     const newTourCalendar = yearCalendarCanPickDates(t) ? yearToursCalendarHTML(t) : '';
@@ -3907,6 +3989,7 @@
         <div class="section-sub">
           <label class="section-sub-label">Guests</label>
           ${pageHelp('<p>Every person who is coming, including the organiser if they are travelling. First name, surname and email for each.</p>')}
+          ${memberPaymentsBarHTML(t)}
           <div class="members-list" id="t${t}_members_list"></div>
           <button type="button" class="member-add" onclick="addMemberRow('${t}', '', '', '', '', true)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -4068,6 +4151,7 @@
           <div class="layout-panel lp-members">
             <div class="layout-panel-title">Guests</div>
             ${pageHelp('<p>First name, surname and email for every person coming, including the organiser if they are travelling.</p>')}
+            ${memberPaymentsBarHTML(t)}
             <div class="members-list resizable-box" id="t${t}_members_list"></div>
             <button type="button" class="member-add" onclick="addMemberRow('${t}', '', '', '', '', true)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -4636,7 +4720,248 @@
     }
   }
 
-  function addMemberRow(tabId, firstName = '', memberId = '', lastName = '', email = '', reveal) {
+  const MEMBER_PAY_OPEN_KEY = 'booking_member_pay_open_v1';
+
+  function memberAmountValue(value) {
+    if (value == null || String(value).trim() === '') return '';
+    const n = Number(value);
+    return Number.isFinite(n) ? String(value).trim() : '';
+  }
+
+  function memberPayBlockHTML(pay) {
+    const src = pay || {};
+    const dep = memberAmountValue(src.deposit);
+    const paid = memberAmountValue(src.final_payment != null ? src.final_payment : src.paid);
+    const depDate = toDisplayDMY(src.deposit_date || '');
+    const paidDate = toDisplayDMY(src.final_payment_date || '');
+    const paidBy = src.paidBy && src.paidBy !== 'self' ? String(src.paidBy) : '';
+    return `
+      <div class="member-pay">
+        <div class="member-pay-fields">
+          <div class="member-pay-amt">
+            <span class="member-pay-label">Deposit</span>
+            <span class="member-pay-pound">£</span>
+            <input type="number" class="member-deposit" step="0.01" inputmode="decimal" placeholder="0.00" value="${escapeAttr(dep)}" aria-label="Deposit">
+            ${datePickerControl({ extraClass: 'member-deposit-date', value: depDate, ariaLabel: 'Open calendar for this deposit date' })}
+          </div>
+          <div class="member-pay-amt">
+            <span class="member-pay-label">Paid</span>
+            <span class="member-pay-pound">£</span>
+            <input type="number" class="member-paid" step="0.01" inputmode="decimal" placeholder="0.00" value="${escapeAttr(paid)}" aria-label="Paid">
+            ${datePickerControl({ extraClass: 'member-paid-date', value: paidDate, ariaLabel: 'Open calendar for this paid date' })}
+          </div>
+        </div>
+        <label class="member-paid-by-wrap">Paid by
+          <select class="member-paid-by" aria-label="Paid by" data-value="${escapeAttr(paidBy)}"></select>
+        </label>
+        <span class="member-covered"></span>
+      </div>`;
+  }
+
+  function readMemberPayOpenMap() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(MEMBER_PAY_OPEN_KEY) || '{}');
+      return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  function storedMemberPayOpen(tabId) {
+    const map = readMemberPayOpenMap();
+    const bookingId = openBookingId(tabId);
+    if (bookingId && Object.prototype.hasOwnProperty.call(map, 'b:' + bookingId)) return !!map['b:' + bookingId];
+    const tabKey = 'tab:' + tabId;
+    if (Object.prototype.hasOwnProperty.call(map, tabKey)) return !!map[tabKey];
+    return null;
+  }
+
+  function writeMemberPayOpen(tabId, open) {
+    const map = readMemberPayOpenMap();
+    map['tab:' + tabId] = !!open;
+    const bookingId = openBookingId(tabId);
+    if (bookingId) map['b:' + bookingId] = !!open;
+    localStorage.setItem(MEMBER_PAY_OPEN_KEY, JSON.stringify(map));
+  }
+
+  function memberRowSaved(row) {
+    const first = row.querySelector('.member-first')?.value.trim() || '';
+    const last = row.querySelector('.member-last')?.value.trim() || '';
+    const email = row.querySelector('.member-email')?.value.trim() || '';
+    const legacy = row.querySelector('.member-name')?.value.trim() || '';
+    const firstName = first || (last || email ? '' : legacy);
+    return !!(firstName || last || email);
+  }
+
+  function memberRowLabel(row, fallbackIndex) {
+    const first = row.querySelector('.member-first')?.value.trim() || '';
+    const last = row.querySelector('.member-last')?.value.trim() || '';
+    const name = [first, last].filter(Boolean).join(' ');
+    return name || ('Guest ' + (fallbackIndex + 1));
+  }
+
+  function memberPayEntries(tabId) {
+    const list = document.getElementById(`t${tabId}_members_list`);
+    if (!list) return [];
+    let savedIndex = -1;
+    return [...list.querySelectorAll('.member-row')].map((row, domIndex) => {
+      const saved = memberRowSaved(row);
+      if (saved) savedIndex += 1;
+      return {
+        row,
+        saved,
+        savedIndex: saved ? savedIndex : -1,
+        label: memberRowLabel(row, saved ? savedIndex : domIndex),
+      };
+    });
+  }
+
+  function parseMemberAmount(value) {
+    const s = String(value ?? '').trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function fillMemberPaySelect(select, options) {
+    if (!select) return;
+    const hasDataset = Object.prototype.hasOwnProperty.call(select.dataset, 'value');
+    const current = hasDataset ? String(select.dataset.value || '') : (select.value || '');
+    select.innerHTML = options.map(o => `<option value="${escapeAttr(o.value)}">${escapeHtml(o.label)}</option>`).join('');
+    select.value = options.some(o => o.value === current) ? current : (options[0] ? options[0].value : '');
+    if (hasDataset) delete select.dataset.value;
+  }
+
+  function memberPayHasDetail(tabId) {
+    const group = document.getElementById(`t${tabId}_pay_group`);
+    if (group && group.checked) return true;
+    const payer = document.getElementById(`t${tabId}_pay_payer`);
+    if (payer && payer.value) return true;
+    return memberPayEntries(tabId).some(entry => {
+      const row = entry.row;
+      const deposit = row.querySelector('.member-deposit')?.value.trim() || '';
+      const paid = row.querySelector('.member-paid')?.value.trim() || '';
+      const depositDate = row.querySelector('.member-deposit-date')?.value.trim() || '';
+      const paidDate = row.querySelector('.member-paid-date')?.value.trim() || '';
+      const paidBy = row.querySelector('.member-paid-by')?.value || '';
+      return !!(deposit || paid || depositDate || paidDate || paidBy);
+    });
+  }
+
+  function setMemberPayOpen(tabId, open, persist) {
+    const list = document.getElementById(`t${tabId}_members_list`);
+    const btn = document.getElementById(`t${tabId}_member_pay_toggle`);
+    if (list) list.classList.toggle('member-pay-closed', !open);
+    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (persist) writeMemberPayOpen(tabId, open);
+  }
+
+  function applyMemberPayFold(tabId) {
+    const stored = storedMemberPayOpen(tabId);
+    const open = stored == null ? !memberPayHasDetail(tabId) : stored;
+    setMemberPayOpen(tabId, open, false);
+  }
+
+  function toggleMemberPay(tabId) {
+    const list = document.getElementById(`t${tabId}_members_list`);
+    const open = !!(list && list.classList.contains('member-pay-closed'));
+    setMemberPayOpen(tabId, open, true);
+  }
+
+  function refreshMemberPayments(tabId) {
+    const entries = memberPayEntries(tabId);
+    const saved = entries.filter(entry => entry.saved);
+    const groupOn = !!document.getElementById(`t${tabId}_pay_group`)?.checked;
+    const payerWrap = document.getElementById(`t${tabId}_pay_payer_wrap`);
+    const payerSel = document.getElementById(`t${tabId}_pay_payer`);
+    const list = document.getElementById(`t${tabId}_members_list`);
+    if (payerWrap) payerWrap.hidden = !groupOn;
+    if (list) list.classList.toggle('is-group-pay', groupOn);
+
+    fillMemberPaySelect(payerSel, [{ value: '', label: 'Choose who paid' }].concat(
+      saved.map(entry => ({ value: String(entry.savedIndex), label: entry.label }))
+    ));
+    const payerValue = payerSel ? payerSel.value : '';
+    const payerIndex = payerValue === '' ? -1 : Number(payerValue);
+    const payerKnown = saved.some(entry => entry.savedIndex === payerIndex);
+
+    let deposits = 0;
+    let paidTotal = 0;
+    let countedAny = false;
+
+    entries.forEach(entry => {
+      const row = entry.row;
+      const bySel = row.querySelector('.member-paid-by');
+      fillMemberPaySelect(bySel, [{ value: '', label: 'This guest' }].concat(
+        saved.filter(other => other.savedIndex !== entry.savedIndex).map(other => ({ value: String(other.savedIndex), label: other.label }))
+      ));
+      let coveredIndex = -1;
+      if (entry.saved && groupOn && payerKnown && entry.savedIndex !== payerIndex) coveredIndex = payerIndex;
+      else if (entry.saved && !groupOn && bySel) {
+        const by = bySel.value === '' ? -1 : Number(bySel.value);
+        if (Number.isInteger(by) && by !== entry.savedIndex && saved.some(other => other.savedIndex === by)) coveredIndex = by;
+      }
+      const coveredBy = coveredIndex >= 0 ? saved.find(other => other.savedIndex === coveredIndex) : null;
+      const pay = row.querySelector('.member-pay');
+      if (pay) pay.classList.toggle('is-covered', !!coveredBy);
+      const coveredEl = row.querySelector('.member-covered');
+      if (coveredEl) coveredEl.textContent = coveredBy ? ('Covered by ' + coveredBy.label) : '';
+
+      if (!entry.saved || coveredBy) return;
+      const dep = parseMemberAmount(row.querySelector('.member-deposit')?.value);
+      const paid = parseMemberAmount(row.querySelector('.member-paid')?.value);
+      if (dep != null) { deposits += dep; countedAny = true; }
+      if (paid != null) { paidTotal += paid; countedAny = true; }
+    });
+
+    const sum = Math.round((deposits + paidTotal) * 100) / 100;
+    deposits = Math.round(deposits * 100) / 100;
+    paidTotal = Math.round(paidTotal * 100) / 100;
+
+    const sumsEl = document.getElementById(`t${tabId}_pay_sums`);
+    const tourRaw = (tEl(tabId, 'beading_tour_price')?.value || '').trim();
+    const perRaw = (tEl(tabId, 'price_per_person')?.value || '').trim();
+    const headRaw = (tEl(tabId, 'no_people')?.value || '').trim();
+    let tourPrice = null;
+    if (tourRaw !== '' && Number.isFinite(Number(tourRaw))) tourPrice = Number(tourRaw);
+    else if (perRaw !== '' && headRaw !== '' && Number.isFinite(Number(perRaw)) && Number.isFinite(Number(headRaw))) {
+      tourPrice = Number(perRaw) * Number(headRaw);
+    }
+    const bits = ['Deposits ' + formatMoney(deposits, 'GBP'), 'Paid ' + formatMoney(paidTotal, 'GBP')];
+    if (tourPrice != null && Number.isFinite(tourPrice)) {
+      bits.push('Outstanding ' + formatMoney(Math.round((tourPrice - sum) * 100) / 100, 'GBP'));
+    }
+    if (sumsEl) sumsEl.textContent = bits.join(' · ');
+
+    const flagEl = document.getElementById(`t${tabId}_pay_flag`);
+    const finalRaw = (tEl(tabId, 'finalpayment')?.value || '').trim();
+    const finalBlank = finalRaw === '';
+    const finalNum = finalBlank ? null : Number(finalRaw);
+    if (!flagEl) return;
+    flagEl.className = 'member-pay-flag';
+    if (finalBlank && !(countedAny && sum > 0.009)) {
+      flagEl.textContent = '';
+    } else if (finalBlank) {
+      flagEl.classList.add('is-short');
+      flagEl.textContent = 'Final payment is blank · ' + formatMoney(sum, 'GBP') + ' on guests';
+    } else if (!Number.isFinite(finalNum)) {
+      flagEl.textContent = '';
+    } else {
+      const diff = Math.round((sum - finalNum) * 100) / 100;
+      if (Math.abs(diff) <= 0.009) {
+        flagEl.classList.add('is-ok');
+        flagEl.textContent = '✓ Matches final payment';
+      } else if (diff < 0) {
+        flagEl.classList.add('is-short');
+        flagEl.textContent = formatMoney(Math.abs(diff), 'GBP') + ' short of the final payment';
+      } else {
+        flagEl.classList.add('is-over');
+        flagEl.textContent = formatMoney(diff, 'GBP') + ' over the final payment';
+      }
+    }
+  }
+
+  function addMemberRow(tabId, firstName = '', memberId = '', lastName = '', email = '', reveal, pay) {
     const list = document.getElementById(`t${tabId}_members_list`);
     if (!list) return;
     const idx = list.children.length + 1;
@@ -4650,15 +4975,25 @@
       <input type="text" placeholder="Surname" value="${escapeAttr(lastName)}" class="member-last" autocomplete="family-name">
       <input type="email" placeholder="Email" value="${escapeAttr(email)}" class="member-email" autocomplete="email">
       <button type="button" class="member-remove" onclick="removeMemberRow(this, '${tabId}')" title="Remove">&times;</button>
+      ${memberPayBlockHTML(pay)}
       <div class="member-albums" hidden></div>
     `;
 
-    row.querySelectorAll('input').forEach(inp => {
-      inp.addEventListener('input', () => onTabInput(tabId));
+    row.querySelectorAll('input, select').forEach(inp => {
+      const fire = () => {
+        if (inp.classList.contains('member-deposit-date') || inp.classList.contains('member-paid-date')) {
+          const parsed = parseFlexibleDateUTC(inp.value || '');
+          if (parsed) inp.value = formatDateDMY(toISODateUTC(parsed));
+        }
+        onTabInput(tabId);
+      };
+      inp.addEventListener('input', fire);
+      inp.addEventListener('change', fire);
     });
 
     list.appendChild(row);
     paintEmptyFields(row);
+    refreshMemberPayments(tabId);
     refreshMemberAlbumLines(tabId);
 
     const blank = firstName === '' && lastName === '' && email === '';
@@ -4702,11 +5037,17 @@
       const id = row.dataset.memberId || null;
       const firstName = first || (last || email ? '' : legacy);
       if (firstName || last || email) {
+        const paidBySel = row.querySelector('.member-paid-by');
         members.push({
           id: id ? parseInt(id) : null,
           first_name: firstName,
           last_name: last,
           email,
+          deposit: row.querySelector('.member-deposit')?.value.trim() ?? '',
+          final_payment: row.querySelector('.member-paid')?.value.trim() ?? '',
+          deposit_date: toStorageISO(row.querySelector('.member-deposit-date')?.value || '') || '',
+          final_payment_date: toStorageISO(row.querySelector('.member-paid-date')?.value || '') || '',
+          paidBy: (paidBySel?.value || paidBySel?.dataset.value || '').trim(),
         });
       }
     });
@@ -4955,7 +5296,12 @@
       lastName: m.last_name || '',
       email: m.email || '',
       personId: '',
+      paidBy: m.paidBy && m.paidBy !== 'self' ? String(m.paidBy) : '',
     }));
+    x.payments = {
+      group: !!document.getElementById(`t${tabId}_pay_group`)?.checked,
+      payer: document.getElementById(`t${tabId}_pay_payer`)?.value || '',
+    };
     x.rooms.singles = fieldVal(tabId, 'rooms_singles');
     x.rooms.twins = fieldVal(tabId, 'rooms_twins');
     x.rooms.doubles = fieldVal(tabId, 'rooms_doubles');
@@ -5069,6 +5415,19 @@
     if (!fieldVal(tabId, 'deposit_paid_date') && x.money.depositDate) setField(tabId, 'deposit_paid_date', toDisplayDMY(x.money.depositDate));
     updateRoomWarning(tabId);
     updateDepositHint(tabId);
+    const group = document.getElementById(`t${tabId}_pay_group`);
+    const payer = document.getElementById(`t${tabId}_pay_payer`);
+    if (group) group.checked = !!(x.payments && x.payments.group);
+    if (payer) payer.dataset.value = (x.payments && x.payments.payer) || '';
+    const savedRows = memberPayEntries(tabId).filter(entry => entry.saved);
+    (x.guests || []).forEach((g, i) => {
+      const entry = savedRows[i];
+      if (!entry) return;
+      const sel = entry.row.querySelector('.member-paid-by');
+      if (sel) sel.dataset.value = g.paidBy && g.paidBy !== 'self' ? String(g.paidBy) : '';
+    });
+    refreshMemberPayments(tabId);
+    applyMemberPayFold(tabId);
   }
 
   function fillCompanionSelect(tabId) {
@@ -6774,6 +7133,7 @@
       populateTab(tabId, bookingRecord);
     } else {
       addMemberRow(tabId);
+      applyMemberPayFold(tabId);
       applyTabYearTint(tabId);
       fillCompanionSelect(tabId);
       updateDepositHint(tabId);
@@ -7055,6 +7415,7 @@
     }
     updateDepositHint(tabId);
     updateRoomWarning(tabId);
+    refreshMemberPayments(tabId);
   }
 
   // ── Form data ──
@@ -7195,10 +7556,18 @@
         const g = guestExtras[i] || {};
         const first = m.first_name || g.firstName || '';
         const last = m.last_name || g.lastName || '';
-        addMemberRow(tabId, first, m.id || '', last, m.email || g.email || '');
+        addMemberRow(tabId, first, m.id || '', last, m.email || g.email || '', false, {
+          deposit: m.deposit,
+          final_payment: m.final_payment,
+          deposit_date: m.deposit_date,
+          final_payment_date: m.final_payment_date,
+          paidBy: g.paidBy || '',
+        });
       });
     } else if (guestExtras.length) {
-      guestExtras.forEach(g => addMemberRow(tabId, g.firstName || '', '', g.lastName || '', g.email || ''));
+      guestExtras.forEach(g => addMemberRow(tabId, g.firstName || '', '', g.lastName || '', g.email || '', false, {
+        paidBy: g.paidBy || '',
+      }));
     } else {
       addMemberRow(tabId);
     }
@@ -7241,6 +7610,7 @@
     }
     noteLoadedPrice(tabId);
     recalculateTab(tabId);
+    applyMemberPayFold(tabId);
     applyTabYearTint(tabId);
     loadSharedAlbumsForBooking(tabId, record.id);
     loadPlanForHotelForm(tabId, record.id);
@@ -7348,6 +7718,7 @@
     if (addlExpensesList) addlExpensesList.innerHTML = '';
     setSharedAlbumsRows(tabId, []);
     applyBookingExtras(tabId, window.BookingExtras ? BookingExtras.empty() : {});
+    applyMemberPayFold(tabId);
     updateDepositHint(tabId);
     updateRoomWarning(tabId);
     const otherWrap = document.getElementById(`t${tabId}_other_hotel_wrap`);
@@ -7841,13 +8212,51 @@
     if (isMissingColumnError(res.error)) res = await run(bookingData);
     return res;
   }
+  function memberMoneyOrNull(value) {
+    if (value == null || String(value).trim() === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  function memberDateOrNull(value) {
+    return toStorageISO(value || '') || null;
+  }
+  function missingColumnFromError(err) {
+    const msg = String((err && (err.message || err.details)) || '');
+    const quoted = msg.match(/'([^']+)' column/);
+    if (quoted) return quoted[1];
+    const pg = msg.match(/column "([^"]+)"/);
+    return pg ? pg[1] : '';
+  }
   async function insertMembers(members, bookingId) {
     if (!members.length) return;
-    const rows = members.map(m => ({ first_name: m.first_name, last_name: m.last_name, email: m.email || null, booking_id: bookingId }));
-    const { error } = await sb.from('members').insert(rows);
-    if (isMissingColumnError(error)) {
-      await sb.from('members').insert(rows.map(({ email, ...rest }) => rest));
+    let rows = members.map(m => ({
+      first_name: m.first_name,
+      last_name: m.last_name,
+      email: m.email || null,
+      booking_id: bookingId,
+      deposit: memberMoneyOrNull(m.deposit),
+      final_payment: memberMoneyOrNull(m.final_payment),
+      deposit_date: memberDateOrNull(m.deposit_date),
+      final_payment_date: memberDateOrNull(m.final_payment_date),
+    }));
+    const optional = ['deposit_date', 'final_payment_date', 'deposit', 'final_payment', 'email'];
+    const dropped = new Set();
+    let res = await sb.from('members').insert(rows);
+    while (res.error && isMissingColumnError(res.error) && dropped.size < optional.length) {
+      const named = missingColumnFromError(res.error);
+      const drop = (named && optional.includes(named) && !dropped.has(named))
+        ? named
+        : optional.find(col => !dropped.has(col) && rows[0] && Object.prototype.hasOwnProperty.call(rows[0], col));
+      if (!drop) break;
+      dropped.add(drop);
+      rows = rows.map(row => {
+        const copy = { ...row };
+        delete copy[drop];
+        return copy;
+      });
+      res = await sb.from('members').insert(rows);
     }
+    if (res.error) throw res.error;
   }
 
   async function saveBooking(tabId, silent = false) {
@@ -7925,6 +8334,13 @@
 
       applyBookingCancelledChrome(tabId);
       markTabDirty(tabId, false);
+      const payMap = readMemberPayOpenMap();
+      const payTabKey = 'tab:' + tabId;
+      const savedBookingId = openBookingId(tabId);
+      if (savedBookingId && Object.prototype.hasOwnProperty.call(payMap, payTabKey) && !Object.prototype.hasOwnProperty.call(payMap, 'b:' + savedBookingId)) {
+        payMap['b:' + savedBookingId] = !!payMap[payTabKey];
+        localStorage.setItem(MEMBER_PAY_OPEN_KEY, JSON.stringify(payMap));
+      }
       await loadBookings();
     } catch (err) { toast('Save failed: ' + err.message, 'error'); }
   }
