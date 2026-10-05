@@ -3525,8 +3525,26 @@
     openEditor(email, role);
   }
 
-  // Deep-link: ?booking=<id> or ?id=<id>, optionally &layout=layout
+  // Deep-link: ?booking=<id> or ?id=<id>, optionally &layout=layout.
+  // The planner opens this page with ?booking= for the tour already on screen.
+  // That id is applied once. Choosing another booking, or saving, must not
+  // switch back to it when the list loads again.
   let pendingDeepLinkBookingId = null;
+  let bookingLinkSettled = false;
+
+  function syncBookingAddress(bookingId) {
+    try {
+      const url = new URL(window.location.href);
+      const next = bookingId != null && String(bookingId).trim() !== '' ? String(bookingId).trim() : '';
+      if (next) url.searchParams.set('booking', next);
+      else url.searchParams.delete('booking');
+      url.searchParams.delete('id');
+      const nextSearch = url.searchParams.toString();
+      const current = window.location.search.replace(/^\?/, '');
+      if (nextSearch === current) return;
+      history.replaceState(null, '', url.pathname + (nextSearch ? '?' + nextSearch : '') + url.hash);
+    } catch (_) { /* leave the address as it is */ }
+  }
 
   function bookingIdFromLocation() {
     const params = new URLSearchParams(window.location.search || '');
@@ -3568,16 +3586,29 @@
   }
 
   function applyPendingDeepLinkBooking() {
+    if (bookingLinkSettled) return;
     if (pendingDeepLinkBookingId == null) pendingDeepLinkBookingId = bookingIdFromLocation();
-    if (pendingDeepLinkBookingId == null) return;
+    if (pendingDeepLinkBookingId == null) {
+      bookingLinkSettled = true;
+      return;
+    }
+    // The list paints before the slower per-booking lookups finish. If a
+    // booking is already open, that is the one to keep.
+    if (activeTabId) {
+      bookingLinkSettled = true;
+      pendingDeepLinkBookingId = null;
+      return;
+    }
     const id = pendingDeepLinkBookingId;
     const record = (allBookings || []).find(r => bookingIdsMatch(r.id, id));
     if (record) {
+      bookingLinkSettled = true;
       pendingDeepLinkBookingId = null;
       openBookingInTab(record.id);
       return;
     }
     if ((allBookings || []).length) {
+      bookingLinkSettled = true;
       pendingDeepLinkBookingId = null;
       toast('Booking #' + id + ' was not found', 'error');
     }
@@ -7130,6 +7161,10 @@
   // ═══════════════════════════════════════════════════════════════
 
   function openNewTab(bookingRecord) {
+    // Opening a form here retires the address-bar booking. A later list
+    // reload must not jump back to the tour the page was opened on.
+    bookingLinkSettled = true;
+    pendingDeepLinkBookingId = null;
     const tabId = 'tab' + (++tabCounter);
     const bookingId = bookingRecord ? bookingRecord.id : null;
 
@@ -7201,7 +7236,11 @@
       activeTabId = null;
       const remaining = [...tabs.keys()];
       if (remaining.length > 0) switchToTab(remaining[remaining.length - 1]);
-      else { updateWelcomeVisibility(); highlightSidebarRecords(); }
+      else {
+        updateWelcomeVisibility();
+        highlightSidebarRecords();
+        syncBookingAddress('');
+      }
     }
   }
 
@@ -7223,6 +7262,8 @@
     }
 
     activeTabId = tabId;
+    const shown = tabs.get(tabId);
+    syncBookingAddress(shown && shown.bookingId != null ? shown.bookingId : '');
     updateWelcomeVisibility();
     highlightSidebarRecords();
     renderYearCalendar(tabId);
@@ -8342,6 +8383,7 @@
         const newId = inserted[0].id;
 
         tabData.bookingId = newId;
+        if (activeTabId === tabId) syncBookingAddress(newId);
         tEl(tabId, 'id').value = newId;
         const savedLabel = bookingData.group_name || 'Booking';
         tEl(tabId, 'formTitle').textContent = `Edit: ${savedLabel}`;
