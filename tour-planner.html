@@ -554,8 +554,57 @@
     .handover-nudge { display: flex; flex-wrap: wrap; gap: 8px; }
     .handover-flight .muted { margin: 0; }
     .handover-nudge .is-on { background: var(--accent-soft); border-color: var(--accent); }
-    .handover-terminal { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
-    .handover-terminal .tick { font-weight: 700; }
+    .handover-terminal-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .handover-terminal-row .field-label { margin: 0; }
+    .terminal-switch {
+      display: inline-flex; align-items: center; gap: 8px;
+      min-height: 44px; padding: 4px 10px;
+      border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface); color: var(--text);
+      font-family: inherit; font-size: 13px; font-weight: 800;
+      cursor: pointer;
+    }
+    .terminal-switch .is-on { color: var(--text); }
+    .terminal-switch .is-off { color: var(--text-secondary); font-weight: 700; }
+    .terminal-switch-track {
+      position: relative; width: 44px; height: 26px; border-radius: 999px;
+      background: var(--border); flex: 0 0 auto;
+    }
+    .terminal-switch.is-t2 .terminal-switch-track { background: var(--accent); }
+    .terminal-switch-knob {
+      position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+      border-radius: 50%; background: #fff;
+      transition: transform .15s ease;
+    }
+    .terminal-switch.is-t2 .terminal-switch-knob { transform: translateX(18px); }
+    .handover-bar {
+      display: flex; align-items: flex-start; gap: 6px; min-width: 0;
+    }
+    .handover-toggle {
+      flex: 0 0 auto;
+      min-width: 44px; min-height: 44px;
+      padding: 0;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface); color: var(--text);
+      font-family: inherit; font-size: 18px; font-weight: 800;
+      cursor: pointer; line-height: 1;
+    }
+    .handover-oneline {
+      margin: 0; padding-top: 10px;
+      flex: 1 1 auto; min-width: 0;
+      font-size: 14px; font-weight: 800; line-height: 1.3;
+      overflow-wrap: anywhere;
+    }
+    .handover-names { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+    .handover-names-list { font-weight: 800; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+    .handover-change {
+      min-height: 44px; padding: 4px 12px;
+      border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface); color: var(--text);
+      font-family: inherit; font-size: 13px; font-weight: 800;
+      cursor: pointer;
+    }
+    .handover-card { min-width: 0; }
     .view-phone .handover-summary { font-size: 17px; }
     .view-phone .handover-nudge .btn { min-height: 44px; }
 
@@ -1768,8 +1817,11 @@
     .rough-handover select,
     .rough-handover input[type="text"] { width: 100%; max-width: 100%; box-sizing: border-box; }
     .rough-handover .field-label { margin: 2px 0 0; font-size: 11px; }
-    .rough-handover .handover-people label,
-    .rough-handover .handover-terminal .tick { font-size: 13px; }
+    .rough-handover .handover-people label { font-size: 13px; }
+    .handover-rough .handover-bar { flex-wrap: wrap; align-items: center; }
+    .handover-rough .handover-oneline { padding-top: 0; flex: 1 1 8em; }
+    .handover-rough .rough-stop-actions { margin-left: auto; }
+    .handover-rough .time-wheel-wrap { flex: 0 0 auto; }
     .rough-stop-note {
       font-weight: 500; font-size: 11px;
       line-height: 1.25;
@@ -2631,6 +2683,7 @@
     roughSelectedHandover: null,
     roughShowUsed: false,
     roughFocusDayIndex: null,
+    handoverPeopleEdit: {},
     liveBookings: false,
     supabasePlanTable: false,
     supabasePlacesTable: false,
@@ -6801,6 +6854,7 @@
       travelMinutes: null,
     });
     refreshHandoverTitle(stop);
+    setHandoverOpen(stop.id, true);
     day.blocks.push(stop);
     sortDayBlocks(day);
     const idx = day.blocks.findIndex(b => b && b.id === stop.id);
@@ -6900,26 +6954,73 @@
     render();
   }
 
+  function handoverOpenMap() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('planner_handover_open_v1') || '{}');
+      return raw && typeof raw === 'object' ? raw : {};
+    } catch (_) {
+      return {};
+    }
+  }
+  function handoverIsOpen(id) {
+    return !!handoverOpenMap()[String(id)];
+  }
+  function setHandoverOpen(id, open) {
+    const map = handoverOpenMap();
+    const key = String(id);
+    if (open) map[key] = 1;
+    else delete map[key];
+    try { localStorage.setItem('planner_handover_open_v1', JSON.stringify(map)); } catch (_) { /* ignore */ }
+  }
+  function handoverCompactLine(stop) {
+    const HS = window.HandoverStops;
+    const kind = HS ? HS.kindLabel(stop.handoverKind) : (stop.handoverKind === 'dropoff' ? 'Drop-off' : 'Pick-up');
+    const time = String(stop.time || '').trim() || 'No time';
+    const place = HS ? HS.placeLabel(stop) : '';
+    const names = HS ? HS.peopleNames(stop.guestIds, (state.plan && state.plan.guests) || []) : [];
+    return [kind, time, place].concat(names.length ? [names.join(', ')] : []).filter(Boolean).join(' · ');
+  }
+  function renderHandoverToggle(stop) {
+    const open = handoverIsOpen(stop.id);
+    const id = escapeHtml(stop.id);
+    return `<button type="button" class="handover-toggle" data-handover-toggle="${id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Hide details' : 'Show details'}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`;
+  }
+  function renderHandoverBar(stop) {
+    return `<div class="handover-bar">${renderHandoverToggle(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p></div>`;
+  }
+
   function renderHandoverTerminal(stop) {
     if (!stop || stop.placeKind !== 'airport') return '';
     ensureHandoverFields(stop);
     const terminal = window.HandoverStops ? HandoverStops.terminalNumber(stop) : (String(stop.terminal) === '2' ? '2' : '1');
+    const onT2 = terminal === '2';
     const id = escapeHtml(stop.id);
-    const radio = (n) => `<label class="tick${terminal === n ? ' on-booked' : ''}"><input type="radio" name="handover-terminal-${id}" data-handover-terminal="${id}" value="${n}"${terminal === n ? ' checked' : ''}> Terminal ${n}</label>`;
-    return `<div class="field-label">Terminal</div><div class="handover-terminal" role="radiogroup" aria-label="Terminal">${radio('1')}${radio('2')}</div>`;
+    return `<div class="handover-terminal-row"><span class="field-label">Terminal</span><button type="button" class="terminal-switch${onT2 ? ' is-t2' : ''}" data-handover-terminal="${id}" aria-pressed="${onT2 ? 'true' : 'false'}" aria-label="Terminal ${terminal}"><span class="${onT2 ? 'is-off' : 'is-on'}">T1</span><span class="terminal-switch-track" aria-hidden="true"><span class="terminal-switch-knob"></span></span><span class="${onT2 ? 'is-on' : 'is-off'}">T2</span></button></div>`;
   }
 
-  function renderHandoverGuests(stop) {
+  function handoverChosenGuests(stop) {
     const HS = window.HandoverStops;
     const guests = HS ? HS.namedGuests(state.plan && state.plan.guests) : [];
+    const selected = new Set((stop.guestIds || []).map(id => String(id)));
+    return { guests, chosen: guests.filter(g => selected.has(String(g.id))) };
+  }
+  function renderHandoverGuests(stop) {
+    const { guests, chosen } = handoverChosenGuests(stop);
     if (!guests.length) {
       return '<p class="muted">No named guests on this tour yet.</p>';
     }
-    const selected = new Set((stop.guestIds || []).map(id => String(id)));
-    return `<div class="handover-people" role="group" aria-label="Who it is for">${guests.map(g => {
-      const on = selected.has(String(g.id));
+    const editing = !chosen.length || !!(state.handoverPeopleEdit && state.handoverPeopleEdit[String(stop.id)]);
+    if (!editing) {
+      return `<div class="handover-names"><span class="handover-names-list">${chosen.map(g => escapeHtml(String(g.name).trim())).join(', ')}</span><button type="button" class="handover-change" data-handover-people-edit="${escapeHtml(stop.id)}">Change</button></div>`;
+    }
+    const ticks = `<div class="handover-people" role="group" aria-label="Who it is for">${guests.map(g => {
+      const on = chosen.some(c => String(c.id) === String(g.id));
       return `<label class="tick${on ? ' on-booked' : ''}"><input type="checkbox" data-handover-guest="${escapeHtml(stop.id)}" value="${escapeHtml(g.id)}"${on ? ' checked' : ''}> ${escapeHtml(String(g.name).trim())}</label>`;
     }).join('')}</div>`;
+    const done = chosen.length
+      ? `<button type="button" class="handover-change" data-handover-people-done="${escapeHtml(stop.id)}">Done</button>`
+      : '';
+    return ticks + done;
   }
 
   function renderHandoverPlaceSelect(stop) {
@@ -6988,17 +7089,16 @@
     ensureHandoverFields(s);
     const id = escapeHtml(s.id);
     const kind = s.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
-    const label = handoverLabel(s);
+    const open = handoverIsOpen(s.id);
     return `
       <article class="stop handover-stop" id="stop-block-${id}">
         <div class="stop-time">
           <input type="time" data-stop-time="${id}" data-time-src="timeline" value="${escapeHtml(s.time || '')}" aria-label="Time">
         </div>
         <div class="rail"><div class="dot pickup"></div></div>
-        <div class="handover-box">
-          <div><span class="badge">${escapeHtml(window.HandoverStops ? HandoverStops.kindLabel(kind) : 'Pick-up')}</span></div>
-          <div class="handover-summary">${escapeHtml(label)}</div>
-          <label class="field-label" for="handover-kind-${id}">Pick-up or drop-off</label>
+        <div class="handover-box handover-card">
+          ${renderHandoverBar(s)}
+          ${open ? `<label class="field-label" for="handover-kind-${id}">Pick-up or drop-off</label>
           <select id="handover-kind-${id}" data-handover-kind="${id}" aria-label="Pick-up or drop-off">
             <option value="pickup"${kind === 'pickup' ? ' selected' : ''}>Pick-up</option>
             <option value="dropoff"${kind === 'dropoff' ? ' selected' : ''}>Drop-off</option>
@@ -7009,7 +7109,7 @@
           ${renderHandoverTerminal(s)}
           ${renderAirportPickupTime(s)}
           <div class="field-label">Who it is for</div>
-          ${renderHandoverGuests(s)}
+          ${renderHandoverGuests(s)}` : ''}
         </div>
         <div class="stop-actions">
           <button type="button" class="icon-btn" data-move="${id}" data-dir="-1" aria-label="Move up">↑</button>
@@ -8384,6 +8484,7 @@
     const stop = newHandoverStop(kind);
     if (!Array.isArray(day.blocks)) day.blocks = [];
     day.blocks.push(stop);
+    setHandoverOpen(stop.id, true);
     sortDayBlocks(day);
     const idx = day.blocks.findIndex(b => b && b.id === stop.id);
     seedTravelMinutes(day, idx >= 0 ? idx : day.blocks.length - 1);
@@ -8397,6 +8498,7 @@
   function renderRoughHandoverDetails(stop) {
     if (!stop || stop.type !== 'handover') return '';
     ensureHandoverFields(stop);
+    if (!handoverIsOpen(stop.id)) return '';
     const id = escapeHtml(stop.id);
     const note = stop.placeKind === 'note'
       ? `<label class="field-label" for="handover-note-${id}">Short note</label><input type="text" id="handover-note-${id}" data-handover-note="${id}" value="${escapeHtml(stop.placeNote || '')}" placeholder="Short note" aria-label="Short note">`
@@ -8604,6 +8706,23 @@
       const markEmpties = planShowsEmptyMarkers(state.plan);
       const noPlace = markEmpties && !system && stopNeedsPlaceLink(s);
       const flagged = notesAreFlagged(s.notes);
+      if (s.type === 'handover') {
+        return `<li class="rough-stop handover-rough${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
+          <div class="handover-card">
+            <div class="handover-bar">
+              ${renderHandoverToggle(s)}
+              ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
+              <p class="handover-oneline">${escapeHtml(handoverCompactLine(s))}</p>
+              <div class="rough-stop-actions">
+                <button type="button" data-rough-move="${escapeHtml(s.id)}" data-rough-day="${dayIndex}" data-dir="-1" aria-label="Move up"${upDis}>↑</button>
+                <button type="button" data-rough-move="${escapeHtml(s.id)}" data-rough-day="${dayIndex}" data-dir="1" aria-label="Move down"${downDis}>↓</button>
+                ${removeBtn}
+              </div>
+            </div>
+            ${renderRoughHandoverDetails(s)}
+          </div>
+        </li>`;
+      }
       return `<li class="rough-stop${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
         <div class="rough-stop-top">
           ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
@@ -8617,7 +8736,6 @@
         </div>
         <span class="rough-stop-nick">${escapeHtml(label)}${noPlace ? missingBadgeHtml('No placeId') : ''}${flagged ? missingBadgeHtml('FLAG') : ''}</span>
         ${noteSnip ? `<span class="rough-stop-note">${escapeHtml(noteSnip)}</span>` : ''}
-        ${s.type === 'handover' ? renderRoughHandoverDetails(s) : ''}
         ${system || s.type === 'handover' ? '' : renderBookingTicksHtml(s, { compact: true })}
       </li>`;
     }).join('');
@@ -8820,7 +8938,7 @@
       });
       // Tap day body (not buttons or the stop’s own time and people) when something is selected → add
       lane.addEventListener('click', e => {
-        if (e.target.closest('button, input, select, textarea, label, .rough-handover')) return;
+        if (e.target.closest('button, input, select, textarea, label, .rough-handover, .handover-card')) return;
         if (state.roughSelectedHandover) {
           addHandoverToRoughDay(state.roughSelectedHandover, dayIndex);
           return;
@@ -11020,10 +11138,34 @@ function renderDayTabs() {
     document.querySelectorAll('[data-handover-place]').forEach(sel => {
       sel.addEventListener('change', () => commitHandoverPlace(sel.getAttribute('data-handover-place'), sel.value));
     });
-    document.querySelectorAll('[data-handover-terminal]').forEach(inp => {
-      inp.addEventListener('change', () => {
-        if (!inp.checked) return;
-        commitHandoverTerminal(inp.getAttribute('data-handover-terminal'), inp.value);
+    document.querySelectorAll('[data-handover-terminal]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-handover-terminal');
+        const onT2 = btn.getAttribute('aria-pressed') === 'true';
+        commitHandoverTerminal(id, onT2 ? '1' : '2');
+      });
+    });
+    document.querySelectorAll('[data-handover-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-handover-toggle');
+        setHandoverOpen(id, !handoverIsOpen(id));
+        render();
+        const next = document.querySelector('[data-handover-toggle="' + CSS.escape(id) + '"]');
+        if (next) next.focus();
+      });
+    });
+    document.querySelectorAll('[data-handover-people-edit]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-handover-people-edit');
+        state.handoverPeopleEdit[String(id)] = true;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-handover-people-done]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-handover-people-done');
+        delete state.handoverPeopleEdit[String(id)];
+        render();
       });
     });
     document.querySelectorAll('[data-handover-guest]').forEach(inp => {
