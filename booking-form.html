@@ -1785,17 +1785,20 @@
     .hotel-stay-paid { cursor: pointer; }
     .tour-fare-block {
       grid-column: 1 / -1;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 4px;
-      align-items: end;
-      justify-items: start;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 4px 8px;
     }
     .tour-fare-block > .field,
     .tour-fare-block > .field-with-currency {
-      width: 100%;
-      max-width: 220px;
+      flex: 1 1 108px;
+      width: auto;
+      min-width: 0;
+      max-width: 168px;
     }
+    .tour-fare-block > .tour-fare-name { flex: 1.4 1 140px; max-width: 220px; }
+    .tour-fare-block > .tour-fare-total { flex: 1.15 1 128px; max-width: 180px; }
     .tour-fare-block .field label,
     .tab-panel.layout-mode .tour-fare-block .field label {
       font-size: 10px;
@@ -1804,23 +1807,128 @@
     }
     .tour-fare-block .field input,
     .tab-panel.layout-mode .tour-fare-block .field input {
-      padding: 3px 8px;
-      font-size: 14px;
-      min-height: 30px;
-      height: 30px;
+      padding: 2px 7px;
+      font-size: 13px;
+      min-height: 28px;
+      height: 28px;
       line-height: 1.2;
     }
     .tour-fare-block .currency-fixed,
     .tour-fare-block .field-with-currency .currency-fixed {
-      min-width: 28px;
-      width: 28px;
-      height: 30px;
-      min-height: 30px;
+      min-width: 24px;
+      width: 24px;
+      height: 28px;
+      min-height: 28px;
       margin-bottom: 0;
-      padding: 0 4px;
-      font-size: 13px;
+      padding: 0 2px;
+      font-size: 12px;
     }
-    .tour-fare-block .price-hint { margin: 2px 0 0; font-size: 12px; }
+    .tour-fare-block .headcount-warn,
+    .tour-fare-block .price-hint { flex: 1 1 100%; margin: 2px 0 0; }
+    .tour-fare-block .price-hint { font-size: 12px; }
+    .date-fold {
+      grid-column: 1 / -1;
+      margin: 0 0 6px;
+      border: none;
+      background: transparent;
+      border-radius: 0;
+    }
+    .date-fold > summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0;
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface-alt, var(--bg));
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .date-fold > summary::before {
+      content: "";
+      width: 0;
+      height: 0;
+      border-style: solid;
+      border-width: 4px 0 4px 6px;
+      border-color: transparent transparent transparent currentColor;
+      flex: 0 0 auto;
+    }
+    .date-fold[open] > summary::before {
+      border-width: 6px 4px 0 4px;
+      border-color: currentColor transparent transparent transparent;
+    }
+    .date-fold-status {
+      font-weight: 650;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+    .date-fold .fold-body { padding: 6px 0 0; }
+    .layout-panel .date-fold > summary { margin-bottom: 0; }
+    .layout-panel .date-fold .fold-body { padding-top: 8px; }
+    .section.dates-section { padding: 10px 14px; }
+    .year-tours-body {
+      overflow: auto;
+      padding: 12px 16px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .year-tour-year > summary,
+    .year-tour-month > summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .year-tour-year > summary::before,
+    .year-tour-month > summary::before {
+      content: "";
+      width: 0;
+      height: 0;
+      border-style: solid;
+      border-width: 4px 0 4px 6px;
+      border-color: transparent transparent transparent currentColor;
+      flex: 0 0 auto;
+    }
+    .year-tour-year[open] > summary::before,
+    .year-tour-month[open] > summary::before {
+      border-width: 6px 4px 0 4px;
+      border-color: currentColor transparent transparent transparent;
+    }
+    .year-tour-count { color: var(--text-secondary); font-size: 12px; font-weight: 650; }
+    .year-tour-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+    .year-tour-months { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px; }
+    .year-tour-year.full-year .year-tour-months {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      align-items: start;
+    }
+    .year-tour-month { margin: 0; }
+    .year-tour-list { display: flex; flex-direction: column; gap: 4px; }
+    .year-tour-item {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px 8px;
+      width: 100%;
+      text-align: left;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .year-tour-item:hover { border-color: var(--accent); }
+    .year-tour-dates { font-weight: 700; }
+    .year-tour-meta { color: var(--text-secondary); font-size: 12px; }
+    .year-tour-item.cancelled { opacity: .72; }
     .hotel-card {
       border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
       background: var(--surface-alt);
@@ -2147,10 +2255,10 @@
 
       .field-with-currency { flex-wrap: nowrap; }
       .field-with-currency .currency-fixed { min-width: 40px; min-height: 44px; height: 44px; font-size: 16px; }
-      /* Keep 16px so iOS does not zoom, but the three tour-fare boxes stay short and narrow. */
-      .tour-fare-block { gap: 4px; }
+      /* Keep 16px so iOS does not zoom. The fare row wraps onto two lines. */
+      .tour-fare-block { gap: 4px 6px; }
       .tour-fare-block > .field,
-      .tour-fare-block > .field-with-currency { max-width: 200px; }
+      .tour-fare-block > .field-with-currency { flex-basis: 46%; max-width: none; }
       .tour-fare-block .field input,
       .tab-panel.layout-mode .tour-fare-block .field input {
         padding: 2px 8px;
@@ -2159,12 +2267,13 @@
         height: 32px;
       }
       .tour-fare-block .field-with-currency .currency-fixed {
-        min-width: 30px;
-        width: 30px;
+        min-width: 28px;
+        width: 28px;
         min-height: 32px;
         height: 32px;
         font-size: 15px;
       }
+      .year-tour-year.full-year .year-tour-months { grid-template-columns: 1fr; }
 
       .computed-value { font-size: 17px; }
 
@@ -2446,6 +2555,10 @@
 	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
 	          Table
 	        </button>
+	        <button class="view-nav-btn" id="navYearTours" onclick="showView('year')">
+	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+	          Year tours
+	        </button>
 	        <a class="view-nav-btn" id="navAnalytics" href="analytics.html" title="Analytics" style="text-decoration:none;">
 	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17v-6"/><path d="M12 17V7"/><path d="M16 17v-3"/></svg>
 	          Analytics
@@ -2640,6 +2753,20 @@
         <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>Click a row to open it in the form.</p></div></details>
       </div>
     </div>
+
+    <!-- ══════ YEAR TOURS VIEW ══════ -->
+    <div class="table-view" id="yearToursView">
+      <div class="table-toolbar">
+        <h2>Year tours</h2>
+        <div class="table-toolbar-actions">
+          <button class="btn btn-outline btn-sm" onclick="loadBookings()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3.26-6.93"/><path d="M3 2v5h5"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div class="year-tours-body" id="yearToursBody"></div>
+    </div>
   </div>
 </div>
 
@@ -2809,7 +2936,9 @@
     const navForm = el('navForm');
     const navLayout = el('navLayout');
     const navTable = el('navTable');
+    const navYearTours = el('navYearTours');
     if (navTable) navTable.classList.toggle('active', currentView === 'table');
+    if (navYearTours) navYearTours.classList.toggle('active', currentView === 'year');
     if (navForm) navForm.classList.toggle('active', inForm && !isLayout);
     if (navLayout) navLayout.classList.toggle('active', inForm && isLayout);
   }
@@ -3042,6 +3171,7 @@
       const fold = document.querySelector(`#tabPanel_${tabId} details.fold[data-fold="${name}"]`);
       if (fold) fold.open = true;
     });
+    refreshDateFoldSummaries(tabId);
 
     recalculateTab(tabId);
     if (typeof state.memberPayOpen === 'boolean') setMemberPayOpen(tabId, state.memberPayOpen, false);
@@ -3646,6 +3776,8 @@
       else showView('form');
     } else if (view === 'table') {
       showView('table');
+    } else if (view === 'year' || view === 'year-tours') {
+      showView('year');
     } else {
       showView('form');
     }
@@ -3914,13 +4046,48 @@
       `;
   }
 
+  function tourDatesFoldHTML(t) {
+    return `
+      <details class="fold date-fold" data-fold="tour-dates">
+        <summary>
+          <span class="date-fold-label">Arrival and departure dates</span>
+          <span class="date-fold-status" id="t${t}_tour_dates_status"></span>
+        </summary>
+        <div class="fold-body">
+          <div class="grid grid-2">
+            <div class="field"><label>Tour arrival date</label>${datePickerControl({ id: 't' + t + '_tour_arrival_date', ariaLabel: 'Open calendar for tour arrival date' })}</div>
+            <div class="field"><label>Departure date</label>${datePickerControl({ id: 't' + t + '_departure_date', ariaLabel: 'Open calendar for departure date' })}</div>
+          </div>
+        </div>
+      </details>`;
+  }
+
+  function flightDatesFoldHTML(t, resizable) {
+    const box = resizable ? ' resizable-box' : '';
+    return `
+      <details class="fold date-fold" data-fold="flights">
+        <summary>
+          <span class="date-fold-label">Flight arrival and departure dates</span>
+          <span class="date-fold-status" id="t${t}_flight_dates_status"></span>
+        </summary>
+        <div class="fold-body">
+          <div class="flights-list${box}" id="t${t}_flights_list"></div>
+          <button type="button" class="member-add" onclick="addFlightRow('${t}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Flight
+          </button>
+        </div>
+      </details>`;
+  }
+
   function tourFareHTML(t) {
     return `
       <div class="tour-fare-block">
-        <div class="field-with-currency"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
-        <div class="field"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
+        <div class="field tour-fare-name"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label" title="The group name is the tour label, not the person’s name"></div>
+        <div class="field-with-currency tour-fare-price"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
+        <div class="field tour-fare-head"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
+        <div class="field-with-currency tour-fare-total"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to use headcount times the price per person"></div>${currencyMarkHTML()}</div>
         <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
-        <div class="field-with-currency"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to use headcount times the price per person"></div>${currencyMarkHTML()}</div>
         <p class="hint price-hint" id="t${t}_price_hint"></p>
       </div>`;
   }
@@ -4074,9 +4241,7 @@
       <div class="section">
         <div class="section-title">Tour Details</div>
         <div class="grid grid-4">
-          <div class="field"><label>Tour arrival date</label>${datePickerControl({ id: 't' + t + '_tour_arrival_date', ariaLabel: 'Open calendar for tour arrival date' })}</div>
-          <div class="field"><label>Departure date</label>${datePickerControl({ id: 't' + t + '_departure_date', ariaLabel: 'Open calendar for departure date' })}</div>
-          <div class="field"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label, not the person’s name"></div>
+          ${tourDatesFoldHTML(t)}
           ${tourFareHTML(t)}
         </div>
         ${tourKindControlsHTML(t)}
@@ -4117,13 +4282,8 @@
           <div class="field"><label>Left to Pay</label><div class="computed-value" id="t${t}_cv_left_to_pay">0</div></div>
         </div>
       </div>
-      <div class="section">
-        <div class="section-title">Flight Details</div>
-        <div class="flights-list" id="t${t}_flights_list"></div>
-        <button type="button" class="member-add" onclick="addFlightRow('${t}')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Flight
-        </button>
+      <div class="section dates-section">
+        ${flightDatesFoldHTML(t, false)}
       </div>
       <div class="section">
         <div class="section-title">Expenses</div>
@@ -4235,9 +4395,7 @@
           <div class="layout-panel lp-tour">
             <div class="layout-panel-title">Tour</div>
             <div class="grid grid-2">
-              <div class="field"><label>Tour arrival date</label>${datePickerControl({ id: 't' + t + '_tour_arrival_date', ariaLabel: 'Open calendar for tour arrival date' })}</div>
-              <div class="field"><label>Departure date</label>${datePickerControl({ id: 't' + t + '_departure_date', ariaLabel: 'Open calendar for departure date' })}</div>
-              <div class="field"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label, not the person’s name"></div>
+              ${tourDatesFoldHTML(t)}
               ${tourFareHTML(t)}
               <div class="field"><label>Organiser’s first name</label><input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name"></div>
               <div class="field"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
@@ -4260,12 +4418,7 @@
           ${bookingCaptureFolds(t)}
 
           <div class="layout-panel lp-flights">
-            <div class="layout-panel-title">Flight Details</div>
-            <div class="flights-list resizable-box" id="t${t}_flights_list"></div>
-            <button type="button" class="member-add" onclick="addFlightRow('${t}')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Add Flight
-            </button>
+            ${flightDatesFoldHTML(t, true)}
           </div>
 
           <div class="layout-panel lp-notes">
@@ -4473,6 +4626,168 @@
     let end = parseISODateUTC(b?.departure_date || '') || start;
     if (end.getTime() < start.getTime()) end = start;
     return { start, end };
+  }
+
+  const yearTourOpenYears = new Set();
+  const yearTourFullYears = new Set();
+  const yearTourOpenMonths = new Set();
+  let yearTourUndatedOpen = false;
+  let yearTourShown = [];
+
+  function buildYearTourPlan(bookings) {
+    const YEAR_TOUR_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const undated = [];
+    const byYear = new Map();
+    (bookings || []).forEach(b => {
+      const range = extractBookingRangeUTC(b);
+      const tour = {
+        id: b.id,
+        title: String(b.group_name || (b.id ? 'Booking #' + b.id : 'Booking')).trim() || 'Booking',
+        cancelled: bookingIsCancelled(b),
+        hotel: b.hotel_name || '',
+        people: b.no_people,
+        arrival: range ? toISODateUTC(range.start) : '',
+        departure: range ? toISODateUTC(range.end) : '',
+      };
+      if (!range) {
+        undated.push(tour);
+        return;
+      }
+      for (let year = range.start.getUTCFullYear(); year <= range.end.getUTCFullYear(); year++) {
+        if (!byYear.has(year)) {
+          byYear.set(year, YEAR_TOUR_MONTHS.map((name, month) => ({ month, name, tours: [] })));
+        }
+        const months = byYear.get(year);
+        for (let month = 0; month < 12; month++) {
+          const monthStart = Date.UTC(year, month, 1);
+          const monthEnd = Date.UTC(year, month + 1, 0);
+          if (range.start.getTime() <= monthEnd && range.end.getTime() >= monthStart) months[month].tours.push(tour);
+        }
+      }
+    });
+    const years = [...byYear.keys()].sort((a, b) => b - a).map(year => {
+      const months = byYear.get(year);
+      months.forEach(month => month.tours.sort((a, b) => String(a.arrival).localeCompare(String(b.arrival)) || String(a.title).localeCompare(String(b.title))));
+      const ids = new Set();
+      months.forEach(month => month.tours.forEach(tour => ids.add(String(tour.id))));
+      return { year, months, tourCount: ids.size };
+    });
+    undated.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    return { years, undated };
+  }
+
+  function yearTourCountLabel(count, noun) {
+    const n = Number(count) || 0;
+    return n === 1 ? '1 ' + noun : n + ' ' + noun + 's';
+  }
+
+  function yearTourDateLabel(tour) {
+    const arrival = tour.arrival ? formatDateDMY(tour.arrival) : '';
+    const departure = tour.departure && tour.departure !== tour.arrival ? formatDateDMY(tour.departure) : '';
+    if (arrival && departure) return arrival + ' – ' + departure;
+    return arrival || departure || 'No date';
+  }
+
+  function yearTourItemHTML(tour) {
+    const bits = [];
+    const people = Number(tour.people);
+    if (Number.isFinite(people) && people > 0) bits.push(people === 1 ? '1 person' : people + ' people');
+    if (tour.hotel) bits.push(tour.hotel);
+    const id = Number(tour.id);
+    const open = Number.isFinite(id) && id > 0 ? ` onclick="openBookingInTab(${id})"` : '';
+    return `<button type="button" class="year-tour-item${tour.cancelled ? ' cancelled' : ''}"${open}>
+      <span class="year-tour-dates">${escapeHtml(yearTourDateLabel(tour))}</span>
+      <span class="year-tour-name">${escapeHtml(tour.title)}</span>
+      ${tour.cancelled ? '<span class="cancelled-tag">Cancelled</span>' : ''}
+      ${bits.length ? `<span class="year-tour-meta">${escapeHtml(bits.join(' · '))}</span>` : ''}
+    </button>`;
+  }
+
+  function yearTourMonthHTML(year, month, full) {
+    const key = year + '-' + month.month;
+    const open = full || yearTourOpenMonths.has(key);
+    const tours = month.tours.map(yearTourItemHTML).join('');
+    const body = tours || '<p class="hint">No tours.</p>';
+    return `<details class="fold year-tour-month" data-month-key="${key}"${open ? ' open' : ''}>
+      <summary>
+        <span>${month.name}</span>
+        <span class="year-tour-count">${month.tours.length ? yearTourCountLabel(month.tours.length, 'tour') : 'No tours'}</span>
+      </summary>
+      <div class="fold-body"><div class="year-tour-list">${body}</div></div>
+    </details>`;
+  }
+
+  function renderYearTours(bookings) {
+    const root = el('yearToursBody');
+    if (!root) return;
+    yearTourShown = bookings || [];
+    const plan = buildYearTourPlan(yearTourShown);
+    if (!plan.years.length && !plan.undated.length) {
+      root.innerHTML = '<p class="hint">No tours yet.</p>';
+      return;
+    }
+    const years = plan.years.map(entry => {
+      const open = yearTourOpenYears.has(entry.year);
+      const full = yearTourFullYears.has(entry.year);
+      const months = (full ? entry.months : entry.months.filter(month => month.tours.length))
+        .map(month => yearTourMonthHTML(entry.year, month, full))
+        .join('');
+      return `<details class="fold year-tour-year${full ? ' full-year' : ''}" data-year="${entry.year}"${open ? ' open' : ''}>
+        <summary>
+          <span>${entry.year}</span>
+          <span class="year-tour-count">${yearTourCountLabel(entry.tourCount, 'tour')}</span>
+          <span class="year-tour-actions">
+            <button type="button" class="btn btn-outline btn-sm" onclick="showYearTourYear(${entry.year}, event)">Show the year</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeYearTourYear(${entry.year}, event)">Close the year</button>
+          </span>
+        </summary>
+        <div class="year-tour-months">${months}</div>
+      </details>`;
+    }).join('');
+    const undated = plan.undated.length
+      ? `<details class="fold year-tour-year" id="yearToursUndated"${yearTourUndatedOpen ? ' open' : ''}>
+          <summary><span>No arrival date</span><span class="year-tour-count">${yearTourCountLabel(plan.undated.length, 'booking')}</span></summary>
+          <div class="year-tour-months"><div class="year-tour-list">${plan.undated.map(yearTourItemHTML).join('')}</div></div>
+        </details>`
+      : '';
+    root.innerHTML = years + undated;
+    root.querySelectorAll('details.year-tour-year[data-year]').forEach(node => {
+      node.addEventListener('toggle', () => {
+        const year = Number(node.getAttribute('data-year'));
+        if (!Number.isFinite(year)) return;
+        if (node.open) yearTourOpenYears.add(year);
+        else yearTourOpenYears.delete(year);
+      });
+    });
+    root.querySelectorAll('details.year-tour-month').forEach(node => {
+      node.addEventListener('toggle', () => {
+        const key = node.getAttribute('data-month-key');
+        if (!key) return;
+        if (node.open) yearTourOpenMonths.add(key);
+        else yearTourOpenMonths.delete(key);
+      });
+    });
+    const undatedNode = document.getElementById('yearToursUndated');
+    if (undatedNode) undatedNode.addEventListener('toggle', () => { yearTourUndatedOpen = undatedNode.open; });
+  }
+
+  function showYearTourYear(year, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    const y = Number(year);
+    if (!Number.isFinite(y)) return;
+    yearTourOpenYears.add(y);
+    yearTourFullYears.add(y);
+    renderYearTours(yearTourShown);
+  }
+
+  function closeYearTourYear(year, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    const y = Number(year);
+    if (!Number.isFinite(y)) return;
+    yearTourOpenYears.delete(y);
+    yearTourFullYears.delete(y);
+    for (let month = 0; month < 12; month++) yearTourOpenMonths.delete(y + '-' + month);
+    renderYearTours(yearTourShown);
   }
 
   function renderYearCalendar(tabId) {
@@ -6023,10 +6338,12 @@
 
     list.appendChild(row);
 
-    if (!data.flight_number) {
+    const fold = list.closest('details');
+    if (!data.flight_number && (!fold || fold.open)) {
       const fn = row.querySelector('.flight-number');
       if (fn) fn.focus();
     }
+    refreshDateFoldSummaries(tabId);
   }
 
   function removeFlightRow(btn, tabId) {
@@ -7647,6 +7964,20 @@
 
   // ── Per-tab form listeners ──
 
+  function refreshDateFoldSummaries(tabId) {
+    const status = document.getElementById('t' + tabId + '_tour_dates_status');
+    if (status) {
+      const arrival = (tEl(tabId, 'tour_arrival_date')?.value || '').trim();
+      const departure = (tEl(tabId, 'departure_date')?.value || '').trim();
+      status.textContent = arrival && departure && arrival !== departure ? (arrival + ' – ' + departure) : (arrival || departure || '');
+    }
+    const flightStatus = document.getElementById('t' + tabId + '_flight_dates_status');
+    if (flightStatus) {
+      const count = document.querySelectorAll('#t' + tabId + '_flights_list .flight-row').length;
+      flightStatus.textContent = count ? (count === 1 ? '1 flight' : count + ' flights') : '';
+    }
+  }
+
   function attachTabListeners(tabId) {
     const panel = el('tabPanel_' + tabId);
     if (!panel) return;
@@ -7769,6 +8100,7 @@
     }
     if (changedId.endsWith('_day_pickup')) schedulePlanHotelSave(tabId);
     updateHotelNightsHint(tabId);
+    refreshDateFoldSummaries(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
     refreshBookingLink(tabId);
     if (autoSaveEnabled) scheduleTabAutoSave(tabId);
@@ -8061,6 +8393,7 @@
     loadSharedAlbumsForBooking(tabId, record.id);
     loadPlanForHotelForm(tabId, record.id);
     paintEmptyFields(el('tabPanel_' + tabId));
+    refreshDateFoldSummaries(tabId);
     refreshBookingLink(tabId);
     applyBookingCancelledChrome(tabId);
   }
@@ -8571,6 +8904,7 @@
       if (globalSearchApi) globalSearchApi.refresh();
       highlightSidebarRecords();
       if (currentView === 'table') renderTable(allBookings);
+      if (currentView === 'year') renderYearTours(allBookings);
       updateGlobalAnalytics();
 
       const enriched = await Promise.all((data || []).map(async b => {
@@ -8597,6 +8931,7 @@
 
 	      highlightSidebarRecords();
 	      if (currentView === 'table') renderTable(allBookings);
+      if (currentView === 'year') renderYearTours(allBookings);
 	      updateGlobalAnalytics();
 	      refreshAllYearCalendars();
       for (const [tabId] of tabs) {
@@ -9009,6 +9344,7 @@
       }
       highlightSidebarRecords();
       if (currentView === 'table') renderTable(allBookings);
+      if (currentView === 'year') renderYearTours(allBookings);
     } catch (err) {
       input.value = tabData.delayUntilYear || '';
       toast(err.message || 'Could not save the delay year.', 'error');
@@ -9039,6 +9375,7 @@
       applyBookingCancelledChrome(tabId);
       highlightSidebarRecords();
       if (currentView === 'table') renderTable(allBookings);
+      if (currentView === 'year') renderYearTours(allBookings);
       toast('Booking marked cancelled. Payments and the rest of the booking are unchanged.', 'success');
     } catch (err) {
       toast(err.message || 'Could not mark the booking cancelled.', 'error');
@@ -9119,8 +9456,11 @@
     currentView = view;
     el('formView').classList.toggle('active', view === 'form');
     el('tableView').classList.toggle('active', view === 'table');
+    const yearView = el('yearToursView');
+    if (yearView) yearView.classList.toggle('active', view === 'year');
     updateLayoutNav();
     if (view === 'table') renderTable(allBookings);
+    if (view === 'year') renderYearTours(allBookings);
   }
 
   // ═══════════════════════════════════════════════════════════════
