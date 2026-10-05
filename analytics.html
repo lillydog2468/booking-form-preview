@@ -676,13 +676,6 @@
 	          <input type="date" id="dateTo" onchange="onFiltersChange()" disabled>
 	        </div>
 	        <div class="field">
-	          <label>Currency</label>
-	          <select id="currencyFilter" onchange="onFiltersChange()">
-	            <option value="GBP">GBP</option>
-	            <option value="CZK">CZK</option>
-	          </select>
-	        </div>
-	        <div class="field">
 	          <label>Include</label>
 	          <select id="includeFilter" onchange="onFiltersChange()">
 	            <option value="all">All tours</option>
@@ -705,7 +698,7 @@
 	              </div>
 	            </div>
 	            <div class="picker-list" id="tourPickerList"></div>
-		            <div class="picker-foot"><details class="page-help"><summary>Help</summary><div class="page-help-body">No selection means all tours. Select filtered uses the date, currency, and include filters.</div></details></div>
+		            <div class="picker-foot"><details class="page-help"><summary>Help</summary><div class="page-help-body">No selection means all tours. Select filtered uses the date and include filters. Amounts are in pounds sterling.</div></details></div>
 		          </div>
 		        </div>
 		        <button class="btn btn-outline" type="button" onclick="clearAllFilters()">Clear filters</button>
@@ -855,21 +848,20 @@
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const DEFAULT_CURRENCY = 'GBP';
-    const CURRENCY_SYMBOL = { GBP: '£', CZK: 'Kč' };
 
-    function normalizeCurrency(code) {
-      const cur = String(code || '').toUpperCase();
-      if (cur === 'EUR') return 'GBP';
-      if (cur === 'GBP' || cur === 'CZK') return cur;
+    function normalizeCurrency() {
       return DEFAULT_CURRENCY;
     }
 
-    function formatMoney(amount, currency) {
-      const cur = normalizeCurrency(currency);
-      const symbol = CURRENCY_SYMBOL[cur] || '';
+    function formatMoney(amount) {
       const n = Number(amount);
-      const formatted = Number.isFinite(n) ? n.toFixed(2) : '0.00';
-      return symbol ? `${symbol}${formatted}` : `${formatted} ${cur}`;
+      const value = Number.isFinite(n) ? n : 0;
+      return new Intl.NumberFormat('en-GB', {
+        style: 'currency',
+        currency: 'GBP',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
     }
 
     function parseISODateUTC(iso) {
@@ -987,7 +979,7 @@
 	      const df = document.getElementById('dateFrom').value || '';
 	      const dt = document.getElementById('dateTo').value || '';
 	      const preset = document.getElementById('datePreset')?.value || 'last180';
-	      const currency = document.getElementById('currencyFilter').value || 'GBP';
+	      const currency = 'GBP';
 	      const include = document.getElementById('includeFilter').value || 'all';
 	      const tourIds = selectedTourIds.size ? [...selectedTourIds] : [];
 	      return { df, dt, preset, currency, include, tourIds };
@@ -1006,7 +998,6 @@
 	        if (!raw) return;
 	        const v = JSON.parse(raw);
 	        if (!v || typeof v !== 'object') return;
-	        if (v.currency) document.getElementById('currencyFilter').value = v.currency;
 	        if (v.include) document.getElementById('includeFilter').value = v.include;
 	        if (v.preset) document.getElementById('datePreset').value = v.preset;
 	        if (typeof v.df === 'string') document.getElementById('dateFrom').value = v.df;
@@ -1065,8 +1056,6 @@
 		      if (presetEl) presetEl.value = 'last180';
 		      applyDatePreset('last180');
 
-		      const currencyEl = document.getElementById('currencyFilter');
-		      if (currencyEl) currencyEl.value = 'GBP';
 		      const incEl = document.getElementById('includeFilter');
 		      if (incEl) incEl.value = 'all';
 
@@ -1133,7 +1122,6 @@
         rows = rows.filter(b => include === 'past' ? isPastTour(b) : !isPastTour(b));
       }
 
-	      rows = rows.filter(b => getBookingBaseCurrency(b) === currency);
 	      if (tourIds && tourIds.length) {
 	        const set = new Set(tourIds.map(x => String(x)));
 	        rows = rows.filter(b => set.has(String(b.id)));
@@ -1443,8 +1431,7 @@
     }
 
     function getCurrencyLabelSuffix() {
-      const c = document.getElementById('currencyFilter').value || 'GBP';
-      return ` (${c})`;
+      return '';
     }
 
     function renderKPIs(paidBookings, outstandingBookings) {
@@ -1808,7 +1795,7 @@
 	      const filters = [
 	        df ? `From: ${formatDateDMY(df)}` : 'From: —',
 	        dt ? `To: ${formatDateDMY(dt)}` : 'To: —',
-	        `Currency: ${currency}`,
+	        'Amounts in pounds (£)',
 	        include === 'past' ? 'Past only' : include === 'upcoming' ? 'Upcoming only' : 'All tours',
 	        tourLabel,
       ].join(' · ');

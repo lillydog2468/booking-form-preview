@@ -39,11 +39,9 @@
     return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]), iso: m[1] + '-' + m[2] + '-' + m[3] };
   }
 
-  /** Blank currency means GBP. EUR is kept as EUR and is never treated as GBP. */
-  function currencyCode(raw) {
-    var c = str(raw).trim().toUpperCase();
-    if (!c) return 'GBP';
-    return c;
+  /** Every recorded amount is shown and totalled in pounds. The number is not converted. */
+  function currencyCode() {
+    return 'GBP';
   }
 
   function formatDMY(iso) {
@@ -58,14 +56,15 @@
     return p.d + ' ' + MONTHS[p.m - 1] + ' ' + p.y;
   }
 
-  function formatAmount(amount, currency) {
+  function formatAmount(amount) {
     var n = Number(amount);
     if (!Number.isFinite(n)) return 'missing';
-    var formatted = n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (currency === 'GBP') return '£' + formatted;
-    if (currency === 'EUR') return '€' + formatted;
-    if (currency === 'CZK') return formatted + ' Kč';
-    return formatted + ' ' + currency;
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(n);
   }
 
   function extrasOf(booking) {
@@ -295,12 +294,8 @@
     return { state: 'recorded', amount: round2(stored), currency: distinct[0] || 'GBP' };
   }
 
-  function noteCurrencies(extras) {
-    var note = str(extras && extras.money && extras.money.fxNote);
-    var found = [];
-    if (/\bCZK\b|Kč/i.test(note)) found.push('CZK');
-    if (/\bEUR\b|€/.test(note)) found.push('EUR');
-    return found;
+  function noteCurrencies() {
+    return [];
   }
 
   var CURRENCY_PAIRS = [
@@ -315,7 +310,7 @@
     return list.filter(function (c, i) { return list.indexOf(c) === i; });
   }
 
-  /** Currencies of amounts that were actually recorded. Blank means GBP. EUR stays EUR. */
+  /** Amounts are always treated as pounds. The stored number is left as it is. */
   function recordedCurrencyCodes(booking, expenseRows) {
     var codes = [];
     CURRENCY_PAIRS.forEach(function (pair) {

@@ -3184,8 +3184,14 @@
     return Math.round(((Number(g.lent) || 0) - guestPaidBack(g)) * 100) / 100;
   }
   function formatAmount(n) {
-    const v = Number(n) || 0;
-    return (Math.round(v * 100) / 100).toFixed(2);
+    const v = Number(n);
+    const value = Number.isFinite(v) ? v : 0;
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
   }
 
   /**
@@ -7729,15 +7735,15 @@
         ${renderGuestAlbums(g)}
         <div class="debt-grid">
           <div class="debt-field">
-            <label for="lent_${g.id}">Lent</label>
+            <label for="lent_${g.id}">Lent (£)</label>
             <input type="number" inputmode="decimal" min="0" step="0.01" id="lent_${g.id}" data-guest-lent="${g.id}" value="${escapeHtml(String(g.lent ?? 0))}" placeholder="0.00">
           </div>
           <div class="debt-field">
-            <label>Paid back</label>
+            <label>Paid back (£)</label>
             <div class="debt-balance" data-debt-paid="${g.id}">${formatAmount(paid)}</div>
           </div>
           <div class="debt-field">
-            <label>Owes (balance)</label>
+            <label>Owes (balance, £)</label>
             <div class="debt-balance ${owes > 0.004 ? 'owes' : 'clear'}" data-debt-balance="${g.id}">${formatAmount(owes)}</div>
           </div>
         </div>
@@ -9884,7 +9890,7 @@ function renderDayTabs() {
       <details class="fold" id="bookingDetailsCard">
         <summary>Booking details</summary>
         <div class="fold-body">
-          ${pageHelp('<p>Saved on this plan, and copied into the booking notes when this plan is linked to a booking. Pounds sterling is the usual currency.</p>')}
+          ${pageHelp('<p>Saved on this plan, and copied into the booking notes when this plan is linked to a booking. Amounts are in pounds sterling.</p>')}
           <label class="field-label">Headcount</label>
           <input type="number" min="1" step="1" data-bd="headcount" value="${escapeHtml(bd.headcount || '')}" placeholder="2 or 3 is usual">
           <div id="bdRoomWarn">${warnHtml}</div>
@@ -9947,7 +9953,7 @@ function renderDayTabs() {
           ${sideRows}
           <button type="button" class="btn btn-outline btn-sm" id="btnAddSideTrip">Add an overnight stay</button>
           <p class="muted">${escapeHtml(depositLine)}</p>
-          ${pageHelp('<p>Currency is GBP unless the note below says CZK or EUR.</p>')}
+          ${pageHelp('<p>Every amount on this plan is in pounds sterling.</p>')}
           <label class="field-label">Price per person (£)</label>
           <input type="number" min="0" step="0.01" data-bd="money.pricePerPerson" value="${escapeHtml(bd.money.pricePerPerson || '')}">
           <label class="field-label">Total (£)</label>
@@ -9969,8 +9975,8 @@ function renderDayTabs() {
           <input type="number" step="0.01" data-bd="money.balance" value="${escapeHtml(bd.money.balance || '')}">
           <label class="field-label">Balance due date</label>
           <input type="text" data-bd="money.balanceDueDate" data-bd-date="1" value="${escapeHtml(dueDate)}" placeholder="DD/MM/YYYY">
-          <label class="field-label">Czech crown or euro note</label>
-          <input type="text" data-bd="money.fxNote" value="${escapeHtml(bd.money.fxNote || '')}" placeholder="e.g. hotel 7,700 CZK">
+          <label class="field-label">Payment note</label>
+          <input type="text" data-bd="money.fxNote" value="${escapeHtml(bd.money.fxNote || '')}" placeholder="Optional note">
           <label><input type="checkbox" data-bd="companion.joining" data-bd-bool="1" ${bd.companion.joining ? 'checked' : ''}> Joining another group (shared week)</label>
           <label class="field-label">Other group’s name</label>
           <input type="text" data-bd="companion.otherGroup" value="${escapeHtml(bd.companion.otherGroup || '')}" placeholder="So this week is not duplicated">

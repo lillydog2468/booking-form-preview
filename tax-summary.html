@@ -148,7 +148,7 @@
     </div>
 
     <section class="totals" id="totals"></section>
-    <p class="note">Figures are only amounts already saved on the booking. A cost that was not recorded is shown as missing, and profit is incomplete until fuel, hotel costs and other costs are all recorded in the same currency. Czech koruna and euros are listed on their own and are not turned into pounds.</p>
+    <p class="note">Figures are only amounts already saved on the booking. A cost that was not recorded is shown as missing, and profit is incomplete until fuel, hotel costs and other costs are all recorded. Every amount is in pounds sterling.</p>
   </main>
 
   <script>
@@ -245,13 +245,8 @@
 
     function flagHtml(row) {
       const bits = [];
-      (row.flags || []).forEach(function (code) {
-        const name = code === 'CZK' ? 'Czech koruna' : code === 'EUR' ? 'euros' : code;
-        bits.push('Includes ' + name + '. That amount is not in the GBP totals.');
-      });
-      (row.noteFlags || []).forEach(function (code) {
-        const name = code === 'CZK' ? 'Czech koruna' : 'euros';
-        bits.push('Currency note mentions ' + name + '. The note is not turned into a figure.');
+      (row.flags || []).forEach(function () {
+        bits.push('Includes an amount that was stored under another label. It is shown in pounds, and the number is unchanged.');
       });
       if (row.companionMoney) bits.push('check: companion with own money');
       if (!bits.length) return '';
@@ -325,7 +320,7 @@
       });
       const blocks = codes.map(function (code) {
         const bag = totals.byCurrency[code];
-        const title = code === 'GBP' ? 'Pounds (GBP)' : code === 'CZK' ? 'Czech koruna (CZK)' : code === 'EUR' ? 'Euros (EUR)' : code;
+        const title = 'Pounds (£)';
         if (!bag || !bag.hasAny) {
           if (code !== 'GBP') return '';
           return '<h3>' + title + '</h3><p>No GBP amounts in this period.</p>';

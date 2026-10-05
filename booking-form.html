@@ -1402,16 +1402,19 @@
     .autosave-toggle input:checked + .toggle-track::after { transform: translateX(16px); }
     .autosave-status { font-size: 11px; color: var(--text-secondary); min-width: 50px; }
 
-    .currency-select {
-      padding: 7px 4px 7px 8px; border: 1px solid var(--border);
-      border-radius: var(--radius); font-family: inherit; font-size: 12px;
-      font-weight: 600; color: var(--text-secondary); background: var(--surface-alt);
-      cursor: pointer; outline: none; min-width: 62px; transition: border-color .15s;
+    .currency-fixed {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 36px; height: 40px; margin-bottom: 1px; padding: 0 8px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      font-size: 15px; font-weight: 700; color: var(--text); background: var(--surface-alt);
     }
-    .currency-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
-    .field-with-currency { display: flex; gap: 6px; align-items: flex-end; }
-    .field-with-currency .field { flex: 1; }
-    .field-with-currency .currency-select { margin-bottom: 1px; height: 40px; }
+    .field-with-currency { display: flex; gap: 6px; align-items: flex-end; min-width: 0; }
+    .field-with-currency .field { flex: 1; min-width: 0; }
+    .field-with-currency .field input { min-width: 0; width: 100%; }
+    .fuel-cost-slot { min-width: 0; }
+    .fuel-cost-slot:empty,
+    .fuel-cost-slot[hidden] { display: none; }
+    .layout-panel.lp-expenses { overflow: visible; }
     .autosave-status.saving { color: var(--warning); }
     .autosave-status.saved { color: var(--success); }
 
@@ -2114,7 +2117,7 @@
       .field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
 
       .field-with-currency { flex-wrap: nowrap; }
-      .field-with-currency .currency-select { min-width: 60px; font-size: 13px; padding: 8px 4px 8px 8px; min-height: 44px; -webkit-appearance: none; }
+      .field-with-currency .currency-fixed { min-width: 40px; min-height: 44px; height: 44px; font-size: 16px; }
 
       .computed-value { font-size: 17px; }
 
@@ -2855,7 +2858,7 @@
           id: row.dataset.expenseId || '',
           description: row.querySelector('.addl-exp-desc')?.value ?? '',
           cost: row.querySelector('.addl-exp-cost')?.value ?? '',
-          currency: row.querySelector('.addl-exp-currency')?.value ?? DEFAULT_CURRENCY,
+          currency: DEFAULT_CURRENCY,
           comments: row.querySelector('.addl-exp-comments')?.value ?? '',
         });
       });
@@ -3125,34 +3128,24 @@
   // ── Currency helper ──
 
   const DEFAULT_CURRENCY = 'GBP';
-  const CURRENCY_SYMBOL = {
-    GBP: '£',
-    EUR: '€',
-    CZK: 'Kč',
-  };
 
-  function normalizeCurrency(code) {
-    const cur = String(code || '').toUpperCase();
-    if (cur === 'EUR') return 'GBP'; // legacy value: UI no longer offers EUR
-    if (cur === 'GBP' || cur === 'CZK') return cur;
+  function normalizeCurrency() {
     return DEFAULT_CURRENCY;
   }
 
-  function formatMoney(amount, currency) {
-    const cur = normalizeCurrency(currency);
-    const symbol = CURRENCY_SYMBOL[cur] || '';
+  function formatMoney(amount) {
     const n = Number(amount);
-    const formatted = Number.isFinite(n) ? n.toFixed(2) : '0.00';
-    // For this app, keep simple prefix formatting.
-    return symbol ? `${symbol}${formatted}` : `${formatted} ${cur}`;
+    const value = Number.isFinite(n) ? n : 0;
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
   }
 
-  function currencySelectHTML(id, selected = DEFAULT_CURRENCY) {
-    const cur = normalizeCurrency(selected);
-    return `<select class="currency-select" id="${id}">
-      <option value="GBP" ${cur === 'GBP' ? 'selected' : ''}>GBP</option>
-      <option value="CZK" ${cur === 'CZK' ? 'selected' : ''}>CZK</option>
-    </select>`;
+  function currencyMarkHTML() {
+    return '<span class="currency-fixed" aria-hidden="true">£</span>';
   }
 
   // ── Date helpers ──
@@ -3752,7 +3745,7 @@
       <details class="fold" data-fold="money">
         <summary>How they paid</summary>
         <div class="fold-body">
-          ${pageHelp('<p>Price, deposit and balance stay in Payments, in pounds sterling. The usual deposit is £200 per person. Use this section for the method, a Czech crown or euro note, and a balance due date when it is not the usual six weeks before arrival.</p>')}
+          ${pageHelp('<p>Price, deposit and balance stay in Payments, in pounds sterling. The usual deposit is £200 per person. Use this section for the method, a payment note, and a balance due date when it is not the usual six weeks before arrival.</p>')}
           <div class="grid grid-3">
             <div class="field"><label>Payment method</label>
               <select id="t${t}_pay_method">
@@ -3764,7 +3757,7 @@
               </select>
             </div>
             <div class="field"><label>Balance due date, if different</label>${datePickerControl({ id: 't' + t + '_balance_due', ariaLabel: 'Open calendar for balance due date' })}</div>
-            <div class="field"><label>Czech crown or euro note</label><input type="text" id="t${t}_fx_note" placeholder="e.g. hotel 7,700 CZK"></div>
+            <div class="field"><label>Payment note</label><input type="text" id="t${t}_fx_note" placeholder="Optional note"></div>
           </div>
         </div>
       </details>
@@ -3847,7 +3840,7 @@
   }
 
   function fuelCostFieldHTML(t) {
-    return `<div id="t${t}_fuel_home"><div class="field-with-currency" id="t${t}_fuel_field"><div class="field"><label id="t${t}_fuel_label">Fuel Cost</label><input type="number" id="t${t}_fuelcost" step="0.01" placeholder="0.00"></div>${currencySelectHTML('t'+t+'_fuelcost_cur')}</div></div>`;
+    return `<div class="fuel-cost-slot" id="t${t}_fuel_home"><div class="field-with-currency" id="t${t}_fuel_field"><div class="field"><label id="t${t}_fuel_label">Fuel cost (£)</label><input type="number" inputmode="decimal" id="t${t}_fuelcost" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div></div>`;
   }
 
   function hotelEditorHTML(t) {
@@ -3896,8 +3889,8 @@
             </div>
             <div id="t${t}_hotel_price_home" class="price-fields-home">
               <div id="t${t}_price_fields" class="price-fields">
-                <div class="field-with-currency"><div class="field"><label>Price / person</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencySelectHTML('t'+t+'_price_per_person_cur')}</div>
-                <div class="field-with-currency"><div class="field"><label>Beading tour price</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" readonly title="Worked out from headcount × price per person"></div>${currencySelectHTML('t'+t+'_beading_tour_price_cur')}</div>
+                <div class="field-with-currency"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
+                <div class="field-with-currency"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" readonly title="Worked out from headcount × price per person"></div>${currencyMarkHTML()}</div>
                 <p class="hint price-hint" id="t${t}_price_hint"></p>
               </div>
             </div>
@@ -4036,9 +4029,9 @@
       <div class="section">
         <div class="section-title">Payments</div>
         <div class="grid grid-4">
-          <div class="field-with-currency"><div class="field"><label>Deposit Made</label><input type="number" id="t${t}_depositmade" step="0.01" placeholder="0.00"></div>${currencySelectHTML('t'+t+'_depositmade_cur')}</div>
+          <div class="field-with-currency"><div class="field"><label>Deposit Made (£)</label><input type="number" id="t${t}_depositmade" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
           <div class="field"><label>Deposit Date Paid</label><div class="date-field-row"><input type="text" class="date-dmy date-popup" id="t${t}_deposit_paid_date" placeholder="DD/MM/YYYY" inputmode="numeric" autocomplete="off" title="Choose a day, or type DD/MM/YYYY"><button type="button" class="date-popup-btn" aria-label="Open calendar for deposit date">${datePopupIcon()}</button></div></div>
-          <div class="field-with-currency"><div class="field"><label>Final Payment Made</label><input type="number" id="t${t}_finalpayment" step="0.01" placeholder="0.00"></div>${currencySelectHTML('t'+t+'_finalpayment_cur')}</div>
+          <div class="field-with-currency"><div class="field"><label>Final Payment Made (£)</label><input type="number" id="t${t}_finalpayment" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
           <div class="field"><label>Final Payment Date</label><div class="date-field-row"><input type="text" class="date-dmy date-popup" id="t${t}_final_payment_date" placeholder="DD/MM/YYYY" inputmode="numeric" autocomplete="off" title="Choose a day, or type DD/MM/YYYY"><button type="button" class="date-popup-btn" aria-label="Open calendar for final payment date">${datePopupIcon()}</button></div></div>
         </div>
         <p class="hint" id="t${t}_depositHint">Suggested deposit: £200 per person.</p>
@@ -4061,7 +4054,7 @@
         <label class="section-sub-label">Hotel Expenses</label>
         ${pageHelp('<p>Each hotel above is listed here with the same name, nights and price in pounds.</p>')}
         <div class="expenses-list" id="t${t}_expenses_list"></div>
-        <div class="grid grid-3" style="margin-top:16px;">
+        <div style="margin-top:16px;">
           ${fuelCostFieldHTML(t)}
         </div>
         <div class="section-divider">
@@ -4222,9 +4215,9 @@
           <div class="layout-panel lp-payments">
             <div class="layout-panel-title">Payments</div>
             <div class="grid grid-2">
-              <div class="field-with-currency"><div class="field"><label>Deposit Made</label><input type="number" id="t${t}_depositmade" step="0.01" placeholder="0.00"></div>${currencySelectHTML('t'+t+'_depositmade_cur')}</div>
+              <div class="field-with-currency"><div class="field"><label>Deposit Made (£)</label><input type="number" id="t${t}_depositmade" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
               <div class="field"><label>Deposit Date Paid</label><div class="date-field-row"><input type="text" class="date-dmy date-popup" id="t${t}_deposit_paid_date" placeholder="DD/MM/YYYY" inputmode="numeric" autocomplete="off" title="Choose a day, or type DD/MM/YYYY"><button type="button" class="date-popup-btn" aria-label="Open calendar for deposit date">${datePopupIcon()}</button></div></div>
-              <div class="field-with-currency"><div class="field"><label>Final Payment Made</label><input type="number" id="t${t}_finalpayment" step="0.01" placeholder="0.00"></div>${currencySelectHTML('t'+t+'_finalpayment_cur')}</div>
+              <div class="field-with-currency"><div class="field"><label>Final Payment Made (£)</label><input type="number" id="t${t}_finalpayment" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
               <div class="field"><label>Final Payment Date</label><div class="date-field-row"><input type="text" class="date-dmy date-popup" id="t${t}_final_payment_date" placeholder="DD/MM/YYYY" inputmode="numeric" autocomplete="off" title="Choose a day, or type DD/MM/YYYY"><button type="button" class="date-popup-btn" aria-label="Open calendar for final payment date">${datePopupIcon()}</button></div></div>
           </div>
           <p class="hint" id="t${t}_depositHint">Suggested deposit: £200 per person.</p>
@@ -4240,10 +4233,10 @@
             <label class="section-sub-label" style="margin-top:2px;">Hotel Expenses</label>
             ${pageHelp('<p>Each hotel above is listed here with the same name, nights and price in pounds.</p>')}
             <div class="expenses-list resizable-box" id="t${t}_expenses_list"></div>
-            <div class="grid grid-2" style="margin-top:12px;">
+            <div style="margin-top:12px;">
               ${fuelCostFieldHTML(t)}
-              <div class="field"><label>Total Expenses</label><div class="computed-value" id="t${t}_cv_totalexpenses">0</div></div>
             </div>
+            <div class="field" style="margin-top:12px;"><label>Total Expenses</label><div class="computed-value" id="t${t}_cv_totalexpenses">0</div></div>
             <div class="section-divider" style="margin-top:12px;">
               <label class="section-sub-label">Additional Expenses</label>
               <div class="additional-expenses-list resizable-box" id="t${t}_addl_expenses_list"></div>
@@ -5563,8 +5556,6 @@
     }
     const input = tEl(tabId, 'depositmade');
     if (input) input.value = suggested.toFixed(2);
-    const cur = tEl(tabId, 'depositmade_cur');
-    if (cur) cur.value = 'GBP';
     onTabInput(tabId, input ? input.id : '');
     toast('Deposit set to £' + suggested.toFixed(2) + ' (£200 × ' + people + ')', 'success');
   }
@@ -6225,11 +6216,8 @@
       </div>
       <div class="grid grid-2">
         <div class="field"><label>Description</label><input type="text" class="addl-exp-desc" value="${data.description || ''}" placeholder="e.g. Toll fees, Parking, Tips..."></div>
-        <div class="field-with-currency"><div class="field"><label>Cost</label><input type="number" class="addl-exp-cost" step="0.01" value="${data.cost || ''}" placeholder="0.00"></div>
-          <select class="currency-select addl-exp-currency">
-            <option value="GBP" ${normalizeCurrency(data.currency || DEFAULT_CURRENCY) === 'GBP' ? 'selected' : ''}>GBP</option>
-            <option value="CZK" ${normalizeCurrency(data.currency) === 'CZK' ? 'selected' : ''}>CZK</option>
-          </select>
+        <div class="field-with-currency"><div class="field"><label>Cost (£)</label><input type="number" class="addl-exp-cost" step="0.01" value="${data.cost || ''}" placeholder="0.00"></div>
+          ${currencyMarkHTML()}
         </div>
       </div>
       <div class="field" style="margin-top:8px;"><label>Note</label><input type="text" class="addl-exp-comments" value="${data.comments || ''}" placeholder="Optional note..."></div>
@@ -6271,7 +6259,7 @@
       const id = row.dataset.expenseId || null;
       const description = row.querySelector('.addl-exp-desc').value.trim();
       const cost = parseFloat(row.querySelector('.addl-exp-cost').value) || 0;
-      const currency = row.querySelector('.addl-exp-currency')?.value || DEFAULT_CURRENCY;
+      const currency = DEFAULT_CURRENCY;
       const comments = row.querySelector('.addl-exp-comments')?.value.trim() || null;
       if (description || cost) {
         items.push({ id: id ? parseInt(id) : null, description, cost, currency, comments });
@@ -6868,7 +6856,8 @@
     const fuelLabel = document.getElementById(`t${tabId}_fuel_label`);
     if (fuel && day && diesel) diesel.appendChild(fuel);
     else if (fuel && fuelHome) fuelHome.appendChild(fuel);
-    if (fuelLabel) fuelLabel.textContent = day ? 'Diesel cost' : 'Fuel Cost';
+    if (fuelHome) fuelHome.hidden = !(fuel && fuelHome.contains(fuel));
+    if (fuelLabel) fuelLabel.textContent = day ? 'Diesel cost (£)' : 'Fuel cost (£)';
     placePriceFields(tabId);
   }
   function placePriceFields(tabId) {
@@ -7449,11 +7438,6 @@
       }
     }
 
-    // Keep Beading Tour Price currency aligned with Price / Person
-    const priceCur = tEl(tabId, 'price_per_person_cur');
-    const beadingCur = tEl(tabId, 'beading_tour_price_cur');
-    if (priceCur && beadingCur) beadingCur.value = normalizeCurrency(priceCur.value || DEFAULT_CURRENCY);
-
     const hotelExpenses = getExpensesTotalCost(tabId);
     const additionalExpenses = getAdditionalExpensesTotalCost(tabId);
     const fuelCost = tNum(tabId, 'fuelcost');
@@ -7471,7 +7455,7 @@
     const cvF = tEl(tabId, 'cv_profit_forecast');
     const cvDue = tEl(tabId, 'cv_final_payment_due_date');
 
-    const baseCurrency = normalizeCurrency(tEl(tabId, 'beading_tour_price_cur')?.value || DEFAULT_CURRENCY);
+    const baseCurrency = DEFAULT_CURRENCY;
     if (cvE) cvE.textContent = formatMoney(totalExpenses, baseCurrency);
     if (cvC) cvC.textContent = formatMoney(totalCost, baseCurrency);
     if (cvL) { cvL.textContent = formatMoney(leftToPay, baseCurrency); cvL.className = 'computed-value' + (leftToPay > 0 ? ' negative' : leftToPay < 0 ? ' positive' : ''); }
@@ -7516,10 +7500,8 @@
       data[f] = NUMERIC_FIELDS.includes(f) ? (val ? parseFloat(val) : null) : (val || null);
     });
 
-    // Currency per field
     CURRENCY_FIELDS.forEach(f => {
-      const sel = tEl(tabId, f + '_cur');
-      if (sel) data[f + '_currency'] = normalizeCurrency(sel.value || DEFAULT_CURRENCY);
+      data[f + '_currency'] = DEFAULT_CURRENCY;
     });
 
     const hotelPrice = tEl(tabId, 'hotel_price');
