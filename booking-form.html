@@ -2920,6 +2920,7 @@
     const payList = document.getElementById(`t${tabId}_members_list`);
     state.memberPayOpen = payList ? !payList.classList.contains('member-pay-closed') : true;
     state.priceSource = tEl(tabId, 'price_per_person')?.dataset.priceSource || '';
+    state.tourPriceSource = tEl(tabId, 'beading_tour_price')?.dataset.tourPriceSource || '';
     state.nightsSource = {
       hotel: tEl(tabId, 'other_hotel_nights')?.dataset.nightsSource || '',
       tour: tEl(tabId, 'hotel_nights')?.dataset.nightsSource || '',
@@ -2943,6 +2944,11 @@
     });
     const restoredPrice = tEl(tabId, 'price_per_person');
     if (restoredPrice) restoredPrice.dataset.priceSource = state.priceSource || '';
+    const restoredTourPrice = tEl(tabId, 'beading_tour_price');
+    if (restoredTourPrice) {
+      if (state.tourPriceSource === 'typed' || state.tourPriceSource === 'computed') restoredTourPrice.dataset.tourPriceSource = state.tourPriceSource;
+      else noteLoadedTourPrice(tabId);
+    }
 
     CURRENCY_FIELDS.forEach(f => {
       const sel = tEl(tabId, f + '_cur');
@@ -3914,7 +3920,7 @@
         <div class="field-with-currency"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
         <div class="field"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
         <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
-        <div class="field-with-currency"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" readonly title="Worked out from headcount × price per person"></div>${currencyMarkHTML()}</div>
+        <div class="field-with-currency"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to use headcount times the price per person"></div>${currencyMarkHTML()}</div>
         <p class="hint price-hint" id="t${t}_price_hint"></p>
       </div>`;
   }
@@ -7050,10 +7056,30 @@
 
   function noteLoadedPrice(tabId) {
     const input = tEl(tabId, 'price_per_person');
-    if (!input) return;
-    if (String(input.value || '').trim()) input.dataset.priceSource = 'typed';
-    else if (input.dataset.priceSource === 'typed') input.dataset.priceSource = '';
+    if (input) {
+      if (String(input.value || '').trim()) input.dataset.priceSource = 'typed';
+      else if (input.dataset.priceSource === 'typed') input.dataset.priceSource = '';
+    }
+    noteLoadedTourPrice(tabId);
     applySuggestedPrice(tabId);
+  }
+
+  function noteLoadedTourPrice(tabId) {
+    const total = tEl(tabId, 'beading_tour_price');
+    if (!total) return;
+    const stored = String(total.value || '').trim();
+    if (!stored) {
+      total.dataset.tourPriceSource = '';
+      return;
+    }
+    const peopleRaw = String(tEl(tabId, 'no_people')?.value || '').trim();
+    const priceRaw = String(tEl(tabId, 'price_per_person')?.value || '').trim();
+    const people = parseFloat(peopleRaw);
+    const price = parseFloat(priceRaw);
+    const canCompute = peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(price);
+    const product = canCompute ? (people * price).toFixed(2) : '';
+    const storedNorm = Number.isFinite(parseFloat(stored)) ? parseFloat(stored).toFixed(2) : stored;
+    total.dataset.tourPriceSource = product && storedNorm === product ? 'computed' : 'typed';
   }
 
   function nightsText(input) {
@@ -7638,6 +7664,11 @@
 	    if (changedId.endsWith('_org_first') || changedId.endsWith('_org_last')) {
 	      fillFirstTravellerFromOrganiser(tabId);
 	    }
+	    const tourPriceEdited = changedId.endsWith('_beading_tour_price') && !changedId.endsWith('_beading_tour_price_cur');
+	    if (tourPriceEdited && (eventType === 'input' || eventType === 'change')) {
+	      const tourPriceInput = tEl(tabId, 'beading_tour_price');
+	      if (tourPriceInput) tourPriceInput.dataset.tourPriceSource = String(tourPriceInput.value || '').trim() ? 'typed' : '';
+	    }
 	    recalculateTab(tabId);
 	    markTabDirty(tabId, true);
 
@@ -7788,10 +7819,12 @@
 
       // A stored tour price stays until both inputs are filled. Clearing it here
       // would wipe the price, the amount left to pay, and the profit on save.
+      // A tour price Keith has typed stays too, including a flat price with headcount 1.
       const canCompute = peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(pricePerPerson);
-      if (canCompute) {
+      if (canCompute && beadingTourPriceInput.dataset.tourPriceSource !== 'typed') {
         const nextVal = (people * pricePerPerson).toFixed(2);
         if (beadingTourPriceInput.value !== nextVal) beadingTourPriceInput.value = nextVal;
+        beadingTourPriceInput.dataset.tourPriceSource = 'computed';
       }
     }
 
@@ -8142,6 +8175,8 @@
     if (dayPickup) dayPickup.value = '';
     const priceInput = tEl(tabId, 'price_per_person');
     if (priceInput) priceInput.dataset.priceSource = '';
+    const tourPriceInput = tEl(tabId, 'beading_tour_price');
+    if (tourPriceInput) tourPriceInput.dataset.tourPriceSource = '';
     ['other_hotel_nights', 'hotel_nights'].forEach(name => {
       const nightsInput = tEl(tabId, name);
       if (nightsInput) nightsInput.dataset.nightsSource = '';
