@@ -59,14 +59,15 @@ test('the booking form shows the warning on the headcount and does not rewrite i
 
   const standardHtml = formSrc.slice(standard, layout);
   const layoutHtml = formSrc.slice(layout, formSrc.indexOf('function ', layout + 10));
-  const foldsHtml = formSrc.slice(folds, standard);
+  const fareHtml = formSrc.slice(formSrc.indexOf('function tourFareHTML'), formSrc.indexOf('function fuelCostFieldHTML'));
+  const foldsHtml = formSrc.slice(folds, formSrc.indexOf('function tourKindControlsHTML'));
 
-  for (const html of [standardHtml, layoutHtml]) {
-    const head = html.indexOf('id="t${t}_no_people"');
-    const warn = html.indexOf('id="t${t}_guestWarn" class="headcount-warn"');
-    assert.ok(head > 0, 'headcount field missing');
-    assert.ok(warn > head, 'warning should follow the headcount field');
-  }
+  const head = fareHtml.indexOf('id="t${t}_no_people"');
+  const warn = fareHtml.indexOf('id="t${t}_guestWarn" class="headcount-warn"');
+  assert.ok(head > 0, 'headcount field missing');
+  assert.ok(warn > head, 'warning should follow the headcount field');
+  assert.ok(standardHtml.includes('${tourFareHTML(t)}'), 'standard form should show the tour fare block');
+  assert.ok(layoutHtml.includes('${tourFareHTML(t)}'), 'layout form should show the tour fare block');
 
   assert.equal(foldsHtml.includes('guestWarn'), false, 'guest warning stays off the rooms fold');
   assert.match(formSrc, /\.headcount-warn \{[\s\S]*var\(--danger\)/);

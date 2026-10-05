@@ -1768,41 +1768,27 @@
     /* ── Hotel stays rows (additional hotels) ── */
     .hotel-stays-list { display: flex; flex-direction: column; gap: 8px; }
     .hotel-stay-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .hotel-stay-row:last-child { border-bottom: none; }
-    .hotel-stay-row select,
-    .hotel-stay-row input[type="text"],
-    .hotel-stay-row input[type="number"] {
-      padding: 9px 13px;
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-family: inherit;
-      font-size: 14px;
-      color: var(--text);
-      background: var(--input-bg);
-      outline: none;
-      transition: border-color .15s;
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--surface);
     }
-    .hotel-stay-row select:focus,
-    .hotel-stay-row input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
+    .hotel-row-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
     }
-    .hotel-stay-num { width: 22px; text-align: center; font-weight: 800; color: var(--text-secondary); }
-    .hotel-stay-select { flex: 2; min-width: 140px; cursor: pointer; }
-    .hotel-stay-other { flex: 2; min-width: 140px; }
-    .hotel-stay-nights { flex: 1; min-width: 110px; }
-    .hotel-stay-paid { flex: 1; min-width: 150px; cursor: pointer; }
-    .hotel-stay-price { width: 110px; }
-    .hotel-stay-row input[type="number"] {
-      padding: 9px 13px; border: 1px solid var(--border); border-radius: var(--radius);
-      font-family: inherit; font-size: 14px; color: var(--text); background: var(--input-bg); outline: none;
+    .hotel-stay-num { font-weight: 800; font-size: 14px; color: var(--text); }
+    .hotel-stay-select,
+    .hotel-stay-paid { cursor: pointer; }
+    .tour-fare-block {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      align-items: end;
     }
     .hotel-card {
       border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
@@ -3861,7 +3847,18 @@
             <option value="other">Somewhere else</option>
           </select>
         </div>
-        <div class="grid grid-2" id="t${t}_tour_price_slot" hidden></div>`;
+      `;
+  }
+
+  function tourFareHTML(t) {
+    return `
+      <div class="tour-fare-block">
+        <div class="field-with-currency"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
+        <div class="field"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
+        <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
+        <div class="field-with-currency"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" readonly title="Worked out from headcount × price per person"></div>${currencyMarkHTML()}</div>
+        <p class="hint price-hint" id="t${t}_price_hint"></p>
+      </div>`;
   }
 
   function fuelCostFieldHTML(t) {
@@ -3886,40 +3883,30 @@
         </div>
         <div class="hotel-card" id="t${t}_primary_hotel_card" hidden>
           <div class="hotel-card-head">
-            <span class="section-sub-label" style="margin:0;">Hotel</span>
-            <label class="booked-tick">
-              <input type="checkbox" id="t${t}_main_hotel_booked">
-              Booked
-            </label>
+            <span class="hotel-stay-num" id="t${t}_primary_hotel_num">Hotel 1</span>
           </div>
           <div class="grid grid-2">
-            <div class="field"><label>Hotel</label>
+            <div class="field"><label>Hotel name</label>
               <select id="t${t}_what_hotel" onchange="onHotelChange('${t}')">
                 <option value="">-- Select --</option>
                 <option value="__other__">Other</option>
               </select>
             </div>
             <div class="field" id="t${t}_other_hotel_wrap" style="display:none;">
-              <label>Other hotel name</label>
+              <label>Hotel name</label>
               <input type="text" id="t${t}_other_hotel_name" placeholder="Hotel name">
             </div>
-            <div class="field"><label>Hotel nights</label><input type="text" id="t${t}_other_hotel_nights" placeholder="e.g. 3 nights"></div>
-            <div class="field"><label>Hotel price (£)</label><input type="number" id="t${t}_hotel_price" step="0.01" inputmode="decimal" placeholder="0.00" title="Hotel price in pounds sterling"></div>
-            <div class="field"><label>Payment</label>
+            <div class="field"><label>Nights</label><input type="text" id="t${t}_other_hotel_nights" placeholder="e.g. 3"></div>
+            <div class="field"><label>Price (£)</label><input type="number" id="t${t}_hotel_price" step="0.01" inputmode="decimal" placeholder="0.00" title="Hotel price in pounds sterling"></div>
+            <div class="field"><label>Paid</label>
               <select id="t${t}_main_hotel_paid">
                 <option value="">Not set</option>
                 <option value="advance">Paid in advance</option>
                 <option value="on_day">Paid on the day</option>
               </select>
             </div>
-            <div id="t${t}_hotel_price_home" class="price-fields-home">
-              <div id="t${t}_price_fields" class="price-fields">
-                <div class="field-with-currency"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
-                <div class="field-with-currency"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" readonly title="Worked out from headcount × price per person"></div>${currencyMarkHTML()}</div>
-                <p class="hint price-hint" id="t${t}_price_hint"></p>
-              </div>
-            </div>
           </div>
+          <input type="checkbox" id="t${t}_main_hotel_booked" hidden>
         </div>
         <div class="hotel-stays-list" id="t${t}_hotel_stays_list"></div>
         <p class="hint" id="t${t}_hotel_nights_hint" hidden></p>
@@ -4026,8 +4013,7 @@
           <div class="field"><label>Tour arrival date</label>${datePickerControl({ id: 't' + t + '_tour_arrival_date', ariaLabel: 'Open calendar for tour arrival date' })}</div>
           <div class="field"><label>Departure date</label>${datePickerControl({ id: 't' + t + '_departure_date', ariaLabel: 'Open calendar for departure date' })}</div>
           <div class="field"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label, not the person’s name"></div>
-          <div class="field"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
-          <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
+          ${tourFareHTML(t)}
         </div>
         ${tourKindControlsHTML(t)}
         ${pageHelp('<p>The group name is the tour label. The organiser is a person and is kept separate, even when the words match.</p>')}
@@ -4188,8 +4174,7 @@
               <div class="field"><label>Tour arrival date</label>${datePickerControl({ id: 't' + t + '_tour_arrival_date', ariaLabel: 'Open calendar for tour arrival date' })}</div>
               <div class="field"><label>Departure date</label>${datePickerControl({ id: 't' + t + '_departure_date', ariaLabel: 'Open calendar for departure date' })}</div>
               <div class="field"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label, not the person’s name"></div>
-              <div class="field"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
-              <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
+              ${tourFareHTML(t)}
               <div class="field"><label>Organiser’s first name</label><input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name"></div>
               <div class="field"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
               <div class="field" style="grid-column:1/-1;"><label>Organiser’s email</label><input type="email" id="t${t}_org_email" placeholder="name@example.com" autocomplete="email"></div>
@@ -6401,22 +6386,37 @@
     const paid = data.paid === 'advance' || data.paid === 'on_day' ? data.paid : '';
 
     row.innerHTML = `
-      <span class="hotel-stay-num">${idx}</span>
-      <label class="booked-tick"><input type="checkbox" class="hotel-stay-booked" ${data.booked ? 'checked' : ''}> Booked</label>
-      <select class="hotel-stay-select" onchange="onHotelStayChange(this, '${tabId}')">
-        <option value="">-- Select Hotel --</option>
-        ${hotelOptions}
-        <option value="__other__" ${isOther ? 'selected' : ''}>Other</option>
-      </select>
-      <input type="text" class="hotel-stay-other" style="display:${isOther ? 'block' : 'none'};" placeholder="Hotel name" value="${escapeAttr(data.custom_hotel_name || '')}">
-      <input type="text" class="hotel-stay-nights" placeholder="Nights (e.g. 3)" value="${escapeAttr(data.nights || '')}">
-      <select class="hotel-stay-paid">
-        <option value="" ${!paid ? 'selected' : ''}>Not set</option>
-        <option value="advance" ${paid === 'advance' ? 'selected' : ''}>Paid in advance</option>
-        <option value="on_day" ${paid === 'on_day' ? 'selected' : ''}>Paid on the day</option>
-      </select>
-      <input type="number" class="hotel-stay-price" step="0.01" inputmode="decimal" placeholder="Price (£)" title="Hotel price in pounds sterling" value="${escapeAttr(data.cost ?? data.price ?? '')}">
-      <button type="button" class="member-remove" onclick="removeHotelStayRow(this, '${tabId}')" title="Remove">&times;</button>
+      <div class="hotel-row-head">
+        <span class="hotel-stay-num">Hotel ${idx}</span>
+        <button type="button" class="member-remove" onclick="removeHotelStayRow(this, '${tabId}')" title="Remove hotel">&times;</button>
+      </div>
+      <div class="grid grid-2">
+        <div class="field"><label>Hotel name</label>
+          <select class="hotel-stay-select" onchange="onHotelStayChange(this, '${tabId}')">
+            <option value="">-- Select --</option>
+            ${hotelOptions}
+            <option value="__other__" ${isOther ? 'selected' : ''}>Other</option>
+          </select>
+        </div>
+        <div class="field" style="display:${isOther ? 'block' : 'none'};">
+          <label>Hotel name</label>
+          <input type="text" class="hotel-stay-other" placeholder="Hotel name" value="${escapeAttr(data.custom_hotel_name || '')}">
+        </div>
+        <div class="field"><label>Nights</label>
+          <input type="text" class="hotel-stay-nights" placeholder="e.g. 3" value="${escapeAttr(data.nights || '')}">
+        </div>
+        <div class="field"><label>Price (£)</label>
+          <input type="number" class="hotel-stay-price" step="0.01" inputmode="decimal" placeholder="0.00" title="Hotel price in pounds sterling" value="${escapeAttr(data.cost ?? data.price ?? '')}">
+        </div>
+        <div class="field"><label>Paid</label>
+          <select class="hotel-stay-paid">
+            <option value="" ${!paid ? 'selected' : ''}>Not set</option>
+            <option value="advance" ${paid === 'advance' ? 'selected' : ''}>Paid in advance</option>
+            <option value="on_day" ${paid === 'on_day' ? 'selected' : ''}>Paid on the day</option>
+          </select>
+        </div>
+      </div>
+      <input type="checkbox" class="hotel-stay-booked" hidden ${data.booked ? 'checked' : ''}>
     `;
     row.dataset.comment = data.comments || data.notes || '';
 
@@ -6449,11 +6449,14 @@
   }
 
   function renumberHotelStayRows(tabId) {
+    const primaryNum = document.getElementById(`t${tabId}_primary_hotel_num`);
+    if (primaryNum) primaryNum.textContent = 'Hotel 1';
     const list = document.getElementById(`t${tabId}_hotel_stays_list`);
     if (!list) return;
+    const start = primaryHotelVisible(tabId) ? 2 : 1;
     list.querySelectorAll('.hotel-stay-row').forEach((row, i) => {
       const num = row.querySelector('.hotel-stay-num');
-      if (num) num.textContent = i + 1;
+      if (num) num.textContent = 'Hotel ' + (start + i);
     });
   }
 
@@ -6462,11 +6465,12 @@
     if (!row) return;
     const otherInput = row.querySelector('.hotel-stay-other');
     if (!otherInput) return;
+    const wrap = otherInput.closest('.field') || otherInput;
     if (selectEl.value === '__other__') {
-      otherInput.style.display = 'block';
+      wrap.style.display = 'block';
       otherInput.focus();
     } else {
-      otherInput.style.display = 'none';
+      wrap.style.display = 'none';
       otherInput.value = '';
       claimOrphanHotelExpense(tabId, selectEl.value, row.querySelector('.hotel-stay-price'), row);
     }
@@ -6526,7 +6530,14 @@
   }
 
   function normHotelName(name) {
-    return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const folded = String(name || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ');
+    if (/^(hotel\s+)?(na|la)\s+bast[ae](\s+hotel)?$/.test(folded)) return 'na basta';
+    return folded;
   }
   function looseHotelName(a, b) {
     const ca = normHotelName(a).replace(/[^a-z0-9]+/g, '');
@@ -6539,6 +6550,13 @@
     if (!sel || !sel.value) return '';
     if (sel.value === '__other__') return tEl(tabId, 'other_hotel_name')?.value.trim() || '';
     return sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.trim() : '';
+  }
+  function primaryShownHotelName(tabId) {
+    const named = selectedHotelName(tabId);
+    if (named) return named;
+    const sel = tEl(tabId, 'what_hotel');
+    if (!sel || !sel.value || sel.value === '__other__') return '';
+    return hotelNameById(sel.value);
   }
   const PRICE_BOOK_KEY = 'keith_tour_price_book_v1';
 
@@ -7103,21 +7121,7 @@
     else if (fuel && fuelHome) fuelHome.appendChild(fuel);
     if (fuelHome) fuelHome.hidden = !(fuel && fuelHome.contains(fuel));
     if (fuelLabel) fuelLabel.textContent = day ? 'Diesel cost (£)' : 'Fuel cost (£)';
-    placePriceFields(tabId);
-  }
-  function placePriceFields(tabId) {
-    const fields = document.getElementById(`t${tabId}_price_fields`);
-    const home = document.getElementById(`t${tabId}_hotel_price_home`);
-    const slot = document.getElementById(`t${tabId}_tour_price_slot`);
-    if (!fields || !slot) return;
-    const inHotelCard = !tabIsDayTrip(tabId) && primaryHotelVisible(tabId) && home;
-    if (inHotelCard) {
-      home.appendChild(fields);
-      slot.hidden = true;
-    } else {
-      slot.appendChild(fields);
-      slot.hidden = false;
-    }
+    renumberHotelStayRows(tabId);
     updatePriceHint(tabId);
   }
   function addAnotherHotel(tabId) {
@@ -7163,7 +7167,8 @@
   }
   function formHotelAlreadyShown(tabId, name) {
     if (!name) return true;
-    if (primaryHotelVisible(tabId) && (normHotelName(selectedHotelName(tabId)) === normHotelName(name) || looseHotelName(selectedHotelName(tabId), name))) return true;
+    const shown = primaryShownHotelName(tabId);
+    if (primaryHotelVisible(tabId) && (normHotelName(shown) === normHotelName(name) || looseHotelName(shown, name))) return true;
     const list = document.getElementById(`t${tabId}_hotel_stays_list`);
     if (!list) return false;
     return Array.from(list.querySelectorAll('.hotel-stay-row')).some(row => {
@@ -7174,7 +7179,7 @@
   function collectFormHotelFlags(tabId) {
     const flags = [];
     if (primaryHotelVisible(tabId)) {
-      const name = selectedHotelName(tabId);
+      const name = primaryShownHotelName(tabId);
       if (name && normHotelName(name) !== 'day trip') {
         flags.push({
           hotelName: name,
@@ -7224,7 +7229,7 @@
   function applyPlanHotelFlags(tabId, hotels) {
     const rows = Array.isArray(hotels) ? hotels : [];
     if (primaryHotelVisible(tabId)) {
-      const matchIdx = findPlanHotelIndex(rows, selectedHotelName(tabId), 'tour');
+      const matchIdx = findPlanHotelIndex(rows, primaryShownHotelName(tabId), 'tour');
       const match = matchIdx >= 0 ? rows[matchIdx] : null;
       const tick = document.getElementById(`t${tabId}_main_hotel_booked`);
       const paid = document.getElementById(`t${tabId}_main_hotel_paid`);
