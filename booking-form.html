@@ -1252,6 +1252,16 @@
       border-color: rgba(79,70,229,.32);
       box-shadow: 0 0 0 2px rgba(79,70,229,.12);
     }
+    .yc-cell.tour.hotel-night,
+    .yc-cell.tour.hotel-night.start,
+    .yc-cell.tour.hotel-night.end,
+    button.yc-cell.tour.hotel-night {
+      background: var(--hotel-night-bg);
+      border-color: var(--hotel-night-border);
+      color: var(--hotel-night-ink);
+      box-shadow: inset 0 0 0 2px var(--hotel-night-border);
+    }
+    .year-cal-hotel-key { margin: 0 0 8px; }
     .yc-cell.today {
       outline: 2px solid var(--accent);
       outline-offset: 1px;
@@ -2023,6 +2033,16 @@
     }
     .hotel-card:has(.hotel-nights-mismatch),
     .hotel-stay-row:has(.hotel-nights-mismatch) { border-color: var(--danger); }
+    .hotel-card.hotel-tone,
+    .hotel-stay-row.hotel-tone {
+      background: var(--hotel-tone-bg);
+      border-color: var(--hotel-tone-border);
+      box-shadow: inset 4px 0 0 var(--hotel-tone-border);
+    }
+    .hotel-card.hotel-tone:has(.hotel-nights-mismatch),
+    .hotel-stay-row.hotel-tone:has(.hotel-nights-mismatch) {
+      border-color: var(--danger);
+    }
     .booked-tick { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
     .day-trip-panel {
       border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
@@ -4246,7 +4266,7 @@
     <div class="year-tours-calendar">
     <div class="layout-panel lp-year-calendar">
       <div class="layout-panel-title">Year Tours</div>
-      <details class="page-help" id="t${t}_yearPickHint"${pickHintHidden}><summary>Help</summary><div class="page-help-body"><p>Select a month. On a day, choose Start tour or Finish tour. The arrival and departure dates below fill in.</p></div></details>
+      <details class="page-help" id="t${t}_yearPickHint"${pickHintHidden}><summary>Help</summary><div class="page-help-body"><p>Select a month. On a day, choose Start tour or Finish tour. The arrival and departure dates below fill in. Hotel nights use the same colour as that hotel.</p></div></details>
       <div class="year-cal-controls">
         <button type="button" class="btn btn-outline btn-sm" onclick="changeTabCalendarYear('${t}', -1)" title="Previous year">‹</button>
         <div class="year-label" id="t${t}_yearLabel">—</div>
@@ -4256,6 +4276,7 @@
         <span class="chip" id="t${t}_openTourChip"><span class="swatch"></span><span class="label" id="t${t}_openTourLabel">Open tour</span></span>
         <span class="chip"><span class="swatch today"></span>Today</span>
       </div>
+      <p class="hint year-cal-hotel-key">Hotel nights use the same colour as each hotel.</p>
       <div class="year-cal-filters" id="t${t}_monthFilters">
         <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'all')" title="Show all months">All</button>
         <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'none')" title="Hide all months">None</button>
@@ -5117,6 +5138,8 @@
 
     const weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (typeof paintHotelTones === 'function') paintHotelTones(tabId);
+    const hotelNights = typeof tabHotelNights === 'function' ? tabHotelNights(tabId) : new Map();
 
     const monthHtml = [];
     for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
@@ -5150,16 +5173,22 @@
         const otherCount = otherTours.length;
 
         const titleParts = [];
+        const nightOwner = hotelNights.get(iso) || null;
         if (inOpenTour) titleParts.push(openTourName ? `Open tour: ${openTourName}` : 'Open tour');
+        if (nightOwner) titleParts.push(nightOwner.label);
         if (otherCount) {
           const names = otherTours.slice(0, 6).map(t => t.title);
           titleParts.push(names.join(', ') + (otherCount > 6 ? ` (+${otherCount - 6} more)` : ''));
         }
         const titleAttr = titleParts.length ? ` title="${escapeHtml(titleParts.join(' • '))}"` : '';
+        const hotelStyle = nightOwner
+          ? ` style="--hotel-night-bg:${nightOwner.tone.bg};--hotel-night-border:${nightOwner.tone.border};--hotel-night-ink:${nightOwner.tone.ink}" data-hotel="${nightOwner.index}"`
+          : '';
 
         const classes = [
           'yc-cell',
           inOpenTour ? 'tour' : '',
+          nightOwner ? 'hotel-night' : '',
           isStart ? 'start' : '',
           isEnd ? 'end' : '',
           isToday ? 'today' : '',
@@ -5168,9 +5197,9 @@
         const dot = otherCount ? `<span class="yc-dot">${otherCount}</span>` : '';
         if (canPick) {
           const dayLabel = formatDateLongGB(iso);
-          cells.push(`<button type="button" class="${classes} pickable" data-yc-day="${iso}" aria-haspopup="dialog" aria-label="${escapeAttr(dayLabel + '. Choose start tour or finish tour')}"${titleAttr}>${dayNum}${dot}</button>`);
+          cells.push(`<button type="button" class="${classes} pickable" data-yc-day="${iso}" aria-haspopup="dialog" aria-label="${escapeAttr(dayLabel + '. Choose start tour or finish tour')}"${hotelStyle}${titleAttr}>${dayNum}${dot}</button>`);
         } else {
-          cells.push(`<div class="${classes}"${titleAttr}>${dayNum}${dot}</div>`);
+          cells.push(`<div class="${classes}"${hotelStyle}${titleAttr}>${dayNum}${dot}</div>`);
         }
       }
 
@@ -7763,6 +7792,107 @@
     return day(a) + ' ' + mon(a) + ' ' + a.getUTCFullYear() + ' \u2013 ' + day(b) + ' ' + mon(b) + ' ' + b.getUTCFullYear();
   }
 
+  function hotelToneAt(index) {
+    const tones = [
+      { bg: '#ccfbf1', border: '#0f766e', ink: '#134e4a' },
+      { bg: '#ffedd5', border: '#c2410c', ink: '#9a3412' },
+      { bg: '#ede9fe', border: '#6d28d9', ink: '#4c1d95' },
+      { bg: '#dbeafe', border: '#1d4ed8', ink: '#1e3a8a' },
+      { bg: '#ecfccb', border: '#3f6212', ink: '#365314' },
+      { bg: '#cffafe', border: '#0e7490', ink: '#155e75' },
+      { bg: '#fce7f3', border: '#be185d', ink: '#9d174d' },
+      { bg: '#fef3c7', border: '#b45309', ink: '#92400e' },
+    ];
+    const n = tones.length;
+    const i = ((Number(index) || 0) % n + n) % n;
+    return tones[i];
+  }
+
+  function applyHotelTone(el, index) {
+    if (!el) return;
+    const tone = hotelToneAt(index);
+    if (el.classList) el.classList.add('hotel-tone');
+    if (el.dataset) el.dataset.hotelTone = String(index % 8);
+    if (el.style && el.style.setProperty) {
+      el.style.setProperty('--hotel-tone-bg', tone.bg);
+      el.style.setProperty('--hotel-tone-border', tone.border);
+      el.style.setProperty('--hotel-tone-ink', tone.ink);
+    }
+  }
+
+  function paintHotelTones(tabId) {
+    let index = 0;
+    if (typeof primaryHotelVisible === 'function' && primaryHotelVisible(tabId)) {
+      applyHotelTone(document.getElementById('t' + tabId + '_primary_hotel_card'), index);
+      index += 1;
+    }
+    const list = document.getElementById('t' + tabId + '_hotel_stays_list');
+    if (list && list.querySelectorAll) {
+      list.querySelectorAll('.hotel-stay-row').forEach(row => {
+        applyHotelTone(row, index);
+        index += 1;
+      });
+    }
+  }
+
+  // Nights slept are check-in inclusive and check-out exclusive, matching the
+  // date strips. The earlier hotel keeps a night if two stays both claim it.
+  function hotelNightIndexByIso(ranges) {
+    const owned = {};
+    (Array.isArray(ranges) ? ranges : []).forEach((range, hotelIndex) => {
+      if (!range || !range.start || !range.end) return;
+      const start = range.start.getTime();
+      const end = range.end.getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      for (let t = start; t < end; t += 86400000) {
+        const d = new Date(t);
+        const iso = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+        if (!Object.prototype.hasOwnProperty.call(owned, iso)) owned[iso] = hotelIndex;
+      }
+    });
+    return owned;
+  }
+
+  function tabHotelNights(tabId) {
+    const stays = [];
+    if (typeof primaryHotelVisible === 'function' && primaryHotelVisible(tabId)) {
+      stays.push({
+        nights: parseNightsCount(nightsText(typeof tEl === 'function' ? tEl(tabId, 'other_hotel_nights') : null)),
+        name: typeof primaryShownHotelName === 'function' ? primaryShownHotelName(tabId) : '',
+      });
+    }
+    const list = document.getElementById('t' + tabId + '_hotel_stays_list');
+    if (list && list.querySelectorAll) {
+      list.querySelectorAll('.hotel-stay-row').forEach(row => {
+        if (!row || !row.querySelector) return;
+        stays.push({
+          nights: parseNightsCount(nightsText(row.querySelector('.hotel-stay-nights'))),
+          name: typeof hotelStayRowName === 'function' ? hotelStayRowName(row) : '',
+        });
+      });
+    }
+    const arrivalEl = typeof tEl === 'function' ? tEl(tabId, 'tour_arrival_date') : null;
+    const departureEl = typeof tEl === 'function' ? tEl(tabId, 'departure_date') : null;
+    const ranges = hotelStayRanges(
+      parseFlexibleDateUTC(arrivalEl && arrivalEl.value || ''),
+      parseFlexibleDateUTC(departureEl && departureEl.value || ''),
+      stays.map(stay => stay.nights)
+    );
+    const owned = hotelNightIndexByIso(ranges);
+    const byIso = new Map();
+    Object.keys(owned).forEach(iso => {
+      const index = owned[iso];
+      const stay = stays[index];
+      const name = stay && stay.name ? stay.name : '';
+      byIso.set(iso, {
+        index,
+        tone: hotelToneAt(index),
+        label: name ? (name + ' · Hotel ' + (index + 1)) : ('Hotel ' + (index + 1)),
+      });
+    });
+    return byIso;
+  }
+
   function refreshHotelDateStrips(tabId) {
     const strips = [];
     const nightsList = [];
@@ -7782,19 +7912,22 @@
         pushStay(row.querySelector('.hotel-date-strip'), row.querySelector('.hotel-stay-nights'));
       });
     }
-    if (!strips.length) return;
-    const arrivalEl = typeof tEl === 'function' ? tEl(tabId, 'tour_arrival_date') : null;
-    const departureEl = typeof tEl === 'function' ? tEl(tabId, 'departure_date') : null;
-    const ranges = hotelStayRanges(
-      parseFlexibleDateUTC(arrivalEl && arrivalEl.value || ''),
-      parseFlexibleDateUTC(departureEl && departureEl.value || ''),
-      nightsList
-    );
-    strips.forEach((strip, i) => {
-      const label = formatHotelStayRange(ranges[i]);
-      strip.textContent = label;
-      strip.hidden = !label;
-    });
+    if (strips.length) {
+      const arrivalEl = typeof tEl === 'function' ? tEl(tabId, 'tour_arrival_date') : null;
+      const departureEl = typeof tEl === 'function' ? tEl(tabId, 'departure_date') : null;
+      const ranges = hotelStayRanges(
+        parseFlexibleDateUTC(arrivalEl && arrivalEl.value || ''),
+        parseFlexibleDateUTC(departureEl && departureEl.value || ''),
+        nightsList
+      );
+      strips.forEach((strip, i) => {
+        const label = formatHotelStayRange(ranges[i]);
+        strip.textContent = label;
+        strip.hidden = !label;
+      });
+    }
+    if (typeof paintHotelTones === 'function') paintHotelTones(tabId);
+    if (typeof renderYearCalendar === 'function') renderYearCalendar(tabId);
   }
 
   function defaultNightsPlaceholder(input) {
@@ -7931,6 +8064,7 @@
     if (fuelHome) fuelHome.hidden = !(fuel && fuelHome.contains(fuel));
     if (fuelLabel) fuelLabel.textContent = day ? 'Diesel cost (£)' : 'Fuel cost (£)';
     renumberHotelStayRows(tabId);
+    paintHotelTones(tabId);
     updatePriceHint(tabId);
   }
   function addAnotherHotel(tabId) {
