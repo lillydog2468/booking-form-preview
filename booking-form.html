@@ -3186,6 +3186,7 @@
       hotel: tEl(tabId, 'other_hotel_nights')?.dataset.nightsSource || '',
       tour: tEl(tabId, 'hotel_nights')?.dataset.nightsSource || '',
     };
+    state.roomsSource = tEl(tabId, 'rooms_singles')?.dataset.roomsSource || '';
     state.openFolds = [...panelFolds(tabId)].filter(d => d.open).map(d => d.getAttribute('data-fold'));
 
     return state;
@@ -3297,6 +3298,12 @@
     setSharedAlbumsRows(tabId, state.sharedAlbums || []);
     fillCompanionSelect(tabId);
     if (state.extras) applyBookingExtras(tabId, state.extras);
+    const restoredRooms = tEl(tabId, 'rooms_singles');
+    if (restoredRooms) {
+      if (state.roomsSource === 'typed' || state.roomsSource === 'headcount') restoredRooms.dataset.roomsSource = state.roomsSource;
+      else if (!roomCountBlank(tabId)) restoredRooms.dataset.roomsSource = 'typed';
+    }
+    suggestRoomsFromHeadcount(tabId);
     restoreNightsSource(tEl(tabId, 'other_hotel_nights'), state.nightsSource && state.nightsSource.hotel);
     restoreNightsSource(tEl(tabId, 'hotel_nights'), state.nightsSource && state.nightsSource.tour);
     (state.openFolds || []).forEach(name => {
@@ -4005,7 +4012,7 @@
       <details class="fold" data-fold="rooms">
         <summary>Rooms</summary>
         <div class="fold-body">
-          ${pageHelp('<p>Singles sleep 1 person. Twins and doubles sleep 2. Rooms to book count each single, twin, or double as one room. Keith’s own room starts ticked and adds one more. Turn it off when he is not staying. A day trip has no hotel room to book.</p>')}
+          ${pageHelp('<p>Singles sleep 1 person. Twins and doubles sleep 2. Rooms to book count each single, twin, or double as one room. Keith’s own room starts ticked and adds one more. Turn it off when he is not staying. A day trip has no hotel room to book. When the headcount is filled in and these rooms are still empty, singles are set to that headcount and Keith’s room stays on. A room number or tick you change is left as you set it.</p>')}
           <div class="grid grid-4">
             <div class="field"><label>Singles</label><input type="number" min="0" step="1" id="t${t}_rooms_singles" placeholder="0"></div>
             <div class="field"><label>Twins</label><input type="number" min="0" step="1" id="t${t}_rooms_twins" placeholder="0"></div>
@@ -6245,6 +6252,67 @@
     });
     sel.innerHTML = opts.join('');
     if (current) sel.value = current;
+  }
+
+  function roomCountBlank(tabId) {
+    return !fieldVal(tabId, 'rooms_singles') && !fieldVal(tabId, 'rooms_twins') && !fieldVal(tabId, 'rooms_doubles');
+  }
+
+  function headcountPeople(tabId) {
+    const raw = fieldVal(tabId, 'no_people');
+    if (!/^\d+$/.test(raw)) return 0;
+    const n = Number(raw);
+    return n > 0 ? n : 0;
+  }
+
+  function markRoomsTyped(tabId) {
+    const singles = tEl(tabId, 'rooms_singles');
+    if (singles) singles.dataset.roomsSource = 'typed';
+  }
+
+  // Empty rooms follow the headcount: that many singles, plus Keith’s own room.
+  // A later edit to singles, twins, doubles, or his tick is kept and not replaced.
+  function suggestRoomsFromHeadcount(tabId) {
+    const singles = tEl(tabId, 'rooms_singles');
+    const keith = tEl(tabId, 'rooms_keith');
+    if (!singles) return;
+    if (singles.dataset.roomsSource === 'typed') return;
+    if (typeof tabIsDayTrip === 'function' && tabIsDayTrip(tabId)) return;
+    const people = headcountPeople(tabId);
+    const follow = singles.dataset.roomsSource === 'headcount';
+    if (!follow && !roomCountBlank(tabId)) {
+      singles.dataset.roomsSource = 'typed';
+      return;
+    }
+    if (!people) {
+      if (follow && !fieldVal(tabId, 'no_people')) {
+        singles.value = '';
+        singles.dataset.roomsSource = '';
+      }
+      return;
+    }
+    singles.value = String(people);
+    singles.dataset.roomsSource = 'headcount';
+    if (keith) keith.checked = true;
+  }
+
+  function savedKeithRoomOff(raw, keithColumn) {
+    if (keithColumn === false || keithColumn === 'false' || keithColumn === 0 || keithColumn === '0') return true;
+    const rooms = raw && typeof raw === 'object' ? (raw.rooms && typeof raw.rooms === 'object' ? raw.rooms : raw) : null;
+    if (!rooms) return false;
+    const choice = rooms.keithRoom;
+    return choice === false || choice === 'false' || choice === 0 || choice === '0';
+  }
+
+  function noteLoadedRooms(tabId, raw, keithColumn) {
+    const singles = tEl(tabId, 'rooms_singles');
+    const keith = tEl(tabId, 'rooms_keith');
+    if (!singles) return;
+    if (savedKeithRoomOff(raw, keithColumn) && keith) keith.checked = false;
+    const keithOff = !!(keith && !keith.checked);
+    if (!roomCountBlank(tabId) || keithOff) singles.dataset.roomsSource = 'typed';
+    else singles.dataset.roomsSource = '';
+    suggestRoomsFromHeadcount(tabId);
   }
 
   function updateRoomWarning(tabId) {
@@ -8565,6 +8633,17 @@
 	      const tourPriceInput = tEl(tabId, 'beading_tour_price');
 	      if (tourPriceInput) tourPriceInput.dataset.tourPriceSource = String(tourPriceInput.value || '').trim() ? 'typed' : '';
 	    }
+    if (
+      changedId.endsWith('_rooms_singles') ||
+      changedId.endsWith('_rooms_twins') ||
+      changedId.endsWith('_rooms_doubles') ||
+      changedId.endsWith('_rooms_keith')
+    ) {
+      markRoomsTyped(tabId);
+    }
+    if (changedId.endsWith('_no_people') || changedId.endsWith('_day_trip')) {
+      suggestRoomsFromHeadcount(tabId);
+    }
 	    recalculateTab(tabId);
 	    markTabDirty(tabId, true);
 
@@ -8944,12 +9023,14 @@
     const deleteBtn = tEl(tabId, 'deleteBtn');
     if (deleteBtn) deleteBtn.style.display = record.id ? 'inline-flex' : 'none';
     fillCompanionSelect(tabId);
+    let roomRaw = null;
     if (splitNotes.extras) {
-      const roomRaw = (splitNotes.rawExtras && Object.keys(splitNotes.rawExtras).length)
+      roomRaw = (splitNotes.rawExtras && Object.keys(splitNotes.rawExtras).length)
         ? splitNotes.rawExtras
         : splitNotes.extras;
       applyBookingExtras(tabId, roomRaw, record.keith_own_room);
     }
+    noteLoadedRooms(tabId, roomRaw, record.keith_own_room);
     noteLoadedPrice(tabId);
     noteLoadedNights(tabId);
     recalculateTab(tabId);
