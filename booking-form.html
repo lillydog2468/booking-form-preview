@@ -2874,6 +2874,8 @@
           id: row.dataset.memberId || '',
           first: row.querySelector('.member-first')?.value ?? '',
           last: row.querySelector('.member-last')?.value ?? '',
+          firstSource: row.querySelector('.member-first')?.dataset.nameSource || '',
+          lastSource: row.querySelector('.member-last')?.dataset.nameSource || '',
           email: row.querySelector('.member-email')?.value ?? '',
           name: row.querySelector('.member-name')?.value ?? '',
           deposit: row.querySelector('.member-deposit')?.value ?? '',
@@ -3001,13 +3003,20 @@
 
     const membersList = document.getElementById(`t${tabId}_members_list`);
     if (membersList) membersList.innerHTML = '';
-    (state.members || []).forEach(m => addMemberRow(tabId, m.first || m.name || '', m.id || '', m.last || '', m.email || '', false, {
-      deposit: m.deposit,
-      final_payment: m.final_payment,
-      deposit_date: m.deposit_date,
-      final_payment_date: m.final_payment_date,
-      paidBy: m.paidBy,
-    }));
+    (state.members || []).forEach(m => {
+      addMemberRow(tabId, m.first || m.name || '', m.id || '', m.last || '', m.email || '', false, {
+        deposit: m.deposit,
+        final_payment: m.final_payment,
+        deposit_date: m.deposit_date,
+        final_payment_date: m.final_payment_date,
+        paidBy: m.paidBy,
+      });
+      const row = membersList?.lastElementChild;
+      const firstEl = row && row.querySelector('.member-first');
+      const lastEl = row && row.querySelector('.member-last');
+      if (firstEl && (m.firstSource === 'organiser' || m.firstSource === 'typed')) firstEl.dataset.nameSource = m.firstSource;
+      if (lastEl && (m.lastSource === 'organiser' || m.lastSource === 'typed')) lastEl.dataset.nameSource = m.lastSource;
+    });
     if ((state.members || []).length === 0) addMemberRow(tabId);
 
     const flightsList = document.getElementById(`t${tabId}_flights_list`);
@@ -5101,11 +5110,16 @@
           const parsed = parseFlexibleDateUTC(inp.value || '');
           if (parsed) inp.value = formatDateDMY(toISODateUTC(parsed));
         }
+        if ((inp.classList.contains('member-first') || inp.classList.contains('member-last')) && list.firstElementChild === row) {
+          inp.dataset.nameSource = String(inp.value || '').trim() ? 'typed' : '';
+        }
         onTabInput(tabId);
       };
       inp.addEventListener('input', fire);
       inp.addEventListener('change', fire);
     });
+    if (String(firstName || '').trim()) row.querySelector('.member-first').dataset.nameSource = 'typed';
+    if (String(lastName || '').trim()) row.querySelector('.member-last').dataset.nameSource = 'typed';
 
     list.appendChild(row);
     paintEmptyFields(row);
@@ -5125,6 +5139,33 @@
       const focusEl = row.querySelector('.member-first');
       if (focusEl) focusEl.focus();
     }
+  }
+
+  function applyOrganiserName(input, value) {
+    if (!input) return;
+    const next = String(value || '').trim();
+    const current = String(input.value || '').trim();
+    const source = input.dataset.nameSource || '';
+    if (source === 'typed') return;
+    if (current && source !== 'organiser') return;
+    if (!next) {
+      if (source === 'organiser') {
+        input.value = '';
+        input.dataset.nameSource = '';
+      }
+      return;
+    }
+    input.value = next;
+    input.dataset.nameSource = 'organiser';
+  }
+
+  function fillFirstTravellerFromOrganiser(tabId) {
+    const list = document.getElementById(`t${tabId}_members_list`);
+    const row = list && list.querySelector('.member-row');
+    if (!row) return;
+    applyOrganiserName(row.querySelector('.member-first'), fieldVal(tabId, 'org_first'));
+    applyOrganiserName(row.querySelector('.member-last'), fieldVal(tabId, 'org_last'));
+    paintEmptyFields(row);
   }
 
   function removeMemberRow(btn, tabId) {
@@ -5531,6 +5572,7 @@
     if (!fieldVal(tabId, 'deposit_paid_date') && x.money.depositDate) setField(tabId, 'deposit_paid_date', toDisplayDMY(x.money.depositDate));
     updateRoomWarning(tabId);
     updateDepositHint(tabId);
+    fillFirstTravellerFromOrganiser(tabId);
     const group = document.getElementById(`t${tabId}_pay_group`);
     const payer = document.getElementById(`t${tabId}_pay_payer`);
     if (group) group.checked = !!(x.payments && x.payments.group);
@@ -7592,6 +7634,9 @@
 	    if (changedId.endsWith('_delay_until')) {
 	      saveDelayYear(tabId);
 	      return;
+	    }
+	    if (changedId.endsWith('_org_first') || changedId.endsWith('_org_last')) {
+	      fillFirstTravellerFromOrganiser(tabId);
 	    }
 	    recalculateTab(tabId);
 	    markTabDirty(tabId, true);
