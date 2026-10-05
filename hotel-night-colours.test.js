@@ -89,17 +89,46 @@ test('the departure morning is not an extra hotel night, and the half-day uses t
   assert.equal(vm.runInContext('hotelDepartureSpillIndex(owned, "2026-10-12")', Object.assign(ctx, { owned: past })), null);
 });
 
+function rgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgbDist(a, b) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
 test('each hotel box has its own softer colour, and calendar day cells use it with black numerals', () => {
   const ctx = load();
-  const first = vm.runInContext('hotelToneAt(0)', ctx);
-  const second = vm.runInContext('hotelToneAt(1)', ctx);
-  assert.equal(first.bg, '#8fd0c4');
-  assert.equal(second.bg, '#f3c49a');
+  const tones = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => vm.runInContext('hotelToneAt(' + i + ')', ctx));
+  const first = tones[0];
+  const second = tones[1];
+  assert.equal(first.bg, '#6cd0bc');
+  assert.equal(second.bg, '#f0a878');
   assert.notEqual(first.bg, '#2dd4bf');
   assert.notEqual(second.bg, '#fb923c');
   assert.notEqual(first.bg, second.bg);
   assert.notEqual(first.border, second.border);
   assert.notEqual(first.bg, '#e8f2d6');
+  // Empty calendar cells composite to about this pale grey-green. The washed lilac
+  // used to sit on top of it. Every hotel tone has to stay clearly off that grey,
+  // off the sage tour panel, and off the pale indigo day wash.
+  const calendarGrey = [245, 250, 238];
+  const tourGreen = [232, 242, 214];
+  const tourWash = [217, 221, 226];
+  const seen = new Set();
+  for (const tone of tones) {
+    assert.equal(seen.has(tone.bg), false);
+    seen.add(tone.bg);
+    const bg = rgb(tone.bg);
+    assert.ok(rgbDist(bg, calendarGrey) >= 100, tone.bg + ' is too close to calendar grey');
+    assert.ok(rgbDist(bg, tourGreen) >= 95, tone.bg + ' is too close to the green tour panel');
+    assert.ok(rgbDist(bg, tourWash) >= 70, tone.bg + ' is too close to the pale calendar day');
+    for (const other of tones) {
+      if (other === tone) continue;
+      assert.ok(rgbDist(bg, rgb(other.bg)) >= 28, tone.bg + ' is too close to ' + other.bg);
+    }
+  }
   assert.match(html, /\.yc-cell\.tour\.hotel-night[\s\S]*background-color:\s*var\(--hotel-night-bg\)/);
   assert.match(html, /\.yc-cell\.tour\.hotel-night[\s\S]*color:\s*#111/);
   assert.match(html, /\.hotel-depart[\s\S]*linear-gradient\(90deg,\s*var\(--hotel-night-bg\)\s*50%/);
