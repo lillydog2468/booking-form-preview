@@ -1902,12 +1902,54 @@
     .year-tour-count { color: var(--text-secondary); font-size: 12px; font-weight: 650; }
     .year-tour-actions { margin-left: auto; display: inline-flex; gap: 6px; }
     .year-tour-months { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px; }
+    #yearToursView { background: var(--layout-panel-bg); }
+    .year-tour-year {
+      background: var(--layout-tour-bg);
+      border-color: var(--layout-panel-border);
+    }
     .year-tour-year.full-year .year-tour-months {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       align-items: start;
+      gap: 10px;
     }
     .year-tour-month { margin: 0; }
+    .year-tour-cal {
+      max-width: 460px;
+      background: rgba(255,255,255,.30);
+      border: 1px solid var(--layout-panel-border);
+      border-radius: 12px;
+      padding: 10px;
+    }
+    [data-theme="dark"] .year-tour-cal { background: rgba(255,255,255,.05); }
+    .year-tour-cal .yc-cell.tour,
+    .year-tour-cal button.yc-cell.tour {
+      background: var(--yt-green, #7dae4a);
+      border-color: #4f7d2e;
+      color: #14210c;
+      cursor: pointer;
+    }
+    .year-tour-cal .yc-cell.tour.start,
+    .year-tour-cal .yc-cell.tour.end {
+      box-shadow: 0 0 0 2px rgba(79, 125, 46, .35);
+    }
+    .year-tour-cal .yc-cell.tour.cancelled { opacity: .55; }
+    .year-tour-chips { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .year-tour-chip {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 1px solid #4f7d2e;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      color: #14210c;
+      background: var(--yt-green, #7dae4a);
+      cursor: pointer;
+    }
+    .year-tour-chip.cancelled { opacity: .7; }
     .year-tour-list { display: flex; flex-direction: column; gap: 4px; }
     .year-tour-item {
       display: flex;
@@ -4694,7 +4736,7 @@
     if (Number.isFinite(people) && people > 0) bits.push(people === 1 ? '1 person' : people + ' people');
     if (tour.hotel) bits.push(tour.hotel);
     const id = Number(tour.id);
-    const open = Number.isFinite(id) && id > 0 ? ` onclick="openBookingInTab(${id})"` : '';
+    const open = Number.isFinite(id) && id > 0 ? ` onclick="openYearTourBooking(${id}, event)"` : '';
     return `<button type="button" class="year-tour-item${tour.cancelled ? ' cancelled' : ''}"${open}>
       <span class="year-tour-dates">${escapeHtml(yearTourDateLabel(tour))}</span>
       <span class="year-tour-name">${escapeHtml(tour.title)}</span>
@@ -4703,18 +4745,123 @@
     </button>`;
   }
 
+  function yearTourGreen(id) {
+    const palette = ['#7dae4a', '#5f8f32', '#9bc46a', '#3f7a3a', '#b5d48a', '#6a9a48'];
+    const n = Math.abs(Number(id) || 0);
+    return palette[n % palette.length];
+  }
+
+  function yearTourById(id) {
+    const want = String(id);
+    for (const booking of yearTourShown || []) {
+      if (String(booking.id) === want) {
+        return {
+          id: booking.id,
+          title: String(booking.group_name || ('Booking #' + booking.id)).trim() || ('Booking #' + booking.id),
+        };
+      }
+    }
+    return null;
+  }
+
+  function yearTourMonthGridHTML(year, month) {
+    const monthIndex = month.month;
+    const first = new Date(Date.UTC(year, monthIndex, 1));
+    const leading = mondayBasedDayIndexUTC(first);
+    const dim = daysInMonthUTC(year, monthIndex);
+    const total = Math.ceil((leading + dim) / 7) * 7;
+    const weekdayRow = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(label => `<div class="yc-weekday">${label}</div>`).join('');
+    const cells = [];
+    for (let cell = 0; cell < total; cell++) {
+      const dayNum = cell - leading + 1;
+      if (dayNum < 1 || dayNum > dim) {
+        cells.push('<div class="yc-cell blank"></div>');
+        continue;
+      }
+      const dayUTC = new Date(Date.UTC(year, monthIndex, dayNum));
+      const dayTime = dayUTC.getTime();
+      const iso = toISODateUTC(dayUTC);
+      const tours = (month.tours || []).filter(tour => {
+        const start = parseISODateUTC(tour.arrival);
+        if (!start) return false;
+        const end = parseISODateUTC(tour.departure || tour.arrival) || start;
+        return dayTime >= start.getTime() && dayTime <= end.getTime();
+      });
+      if (!tours.length) {
+        cells.push(`<div class="yc-cell">${dayNum}</div>`);
+        continue;
+      }
+      const ids = tours.map(tour => Number(tour.id)).filter(id => Number.isFinite(id) && id > 0);
+      const names = tours.map(tour => tour.title).join(', ');
+      const isStart = tours.some(tour => tour.arrival === iso);
+      const isEnd = tours.some(tour => (tour.departure || tour.arrival) === iso);
+      const classes = ['yc-cell', 'tour', 'year-tour-day', isStart ? 'start' : '', isEnd ? 'end' : '', tours.every(tour => tour.cancelled) ? 'cancelled' : ''].filter(Boolean).join(' ');
+      const extra = tours.length > 1 ? `<span class="yc-dot">${tours.length}</span>` : '';
+      cells.push(`<button type="button" class="${classes}" style="--yt-green:${yearTourGreen(tours[0].id)}" data-tour-ids="${ids.join(',')}" title="${escapeAttr(names)}" onclick="openYearTourDay(this, event)">${dayNum}${extra}</button>`);
+    }
+    const chips = (month.tours || []).map(tour => {
+      const id = Number(tour.id);
+      const click = Number.isFinite(id) && id > 0 ? ` onclick="openYearTourBooking(${id}, event)"` : '';
+      return `<button type="button" class="year-tour-chip${tour.cancelled ? ' cancelled' : ''}" style="--yt-green:${yearTourGreen(tour.id)}"${click}>${escapeHtml(yearTourDateLabel(tour))} · ${escapeHtml(tour.title)}</button>`;
+    }).join('');
+    return `<div class="yc-month year-tour-cal"><div class="yc-weekdays">${weekdayRow}</div><div class="yc-grid">${cells.join('')}</div>${chips ? `<div class="year-tour-chips">${chips}</div>` : ''}</div>`;
+  }
+
   function yearTourMonthHTML(year, month, full) {
     const key = year + '-' + month.month;
     const open = full || yearTourOpenMonths.has(key);
-    const tours = month.tours.map(yearTourItemHTML).join('');
-    const body = tours || '<p class="hint">No tours.</p>';
     return `<details class="fold year-tour-month" data-month-key="${key}"${open ? ' open' : ''}>
       <summary>
         <span>${month.name}</span>
         <span class="year-tour-count">${month.tours.length ? yearTourCountLabel(month.tours.length, 'tour') : 'No tours'}</span>
       </summary>
-      <div class="fold-body"><div class="year-tour-list">${body}</div></div>
+      <div class="fold-body">${yearTourMonthGridHTML(year, month)}</div>
     </details>`;
+  }
+
+  function openYearTourBooking(bookingId, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    const panel = document.getElementById('yearTourChoice');
+    if (panel) panel.hidden = true;
+    setFormLayout('layout');
+    openBookingInTab(bookingId);
+  }
+
+  function openYearTourDay(btn, event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    const ids = String(btn?.getAttribute('data-tour-ids') || '').split(',').map(id => id.trim()).filter(Boolean);
+    if (ids.length <= 1) {
+      if (ids[0]) openYearTourBooking(ids[0], event);
+      return;
+    }
+    let panel = document.getElementById('yearTourChoice');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'yearTourChoice';
+      panel.className = 'yc-day-choice';
+      panel.hidden = true;
+      panel.addEventListener('click', clickEvent => clickEvent.stopPropagation());
+      document.body.appendChild(panel);
+      document.addEventListener('click', clickEvent => {
+        if (clickEvent.target.closest('#yearTourChoice') || clickEvent.target.closest('.year-tour-day')) return;
+        panel.hidden = true;
+      });
+    }
+    panel.innerHTML = '<div class="yc-day-choice-actions">' + ids.map(id => {
+      const tour = yearTourById(id);
+      const title = tour ? tour.title : ('Booking #' + id);
+      return `<button type="button" class="btn btn-outline btn-sm" onclick="openYearTourBooking(${Number(id)}, event)">${escapeHtml(title)}</button>`;
+    }).join('') + '</div>';
+    panel.hidden = false;
+    const width = panel.offsetWidth || 196;
+    const height = panel.offsetHeight || 80;
+    const rect = btn.getBoundingClientRect();
+    let left = Math.min(rect.left, window.innerWidth - width - 8);
+    left = Math.max(8, left);
+    let top = rect.bottom + 6;
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 6);
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
   }
 
   function renderYearTours(bookings) {
