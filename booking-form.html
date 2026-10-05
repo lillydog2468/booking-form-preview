@@ -7888,15 +7888,16 @@
   }
 
   function hotelToneAt(index) {
+    // Soft pastels with enough chroma that none of them reads as the pale calendar grey.
     const tones = [
-      { bg: '#8fd0c4', border: '#5a9e94', ink: '#1f4f48' },
-      { bg: '#f3c49a', border: '#c48a52', ink: '#6a4218' },
-      { bg: '#d0c0f0', border: '#8a74b8', ink: '#4a3470' },
-      { bg: '#a8c8f0', border: '#5a88c0', ink: '#1e3a68' },
-      { bg: '#f0b4cc', border: '#c07090', ink: '#6a2848' },
-      { bg: '#f3d48e', border: '#c4a050', ink: '#6a5010' },
-      { bg: '#f0b4b0', border: '#c07068', ink: '#6a2824' },
-      { bg: '#8ec8d8', border: '#4a90a4', ink: '#1a4a58' },
+      { bg: '#6cd0bc', border: '#378d7c', ink: '#1b5549' },
+      { bg: '#f0a878', border: '#b5622a', ink: '#573219' },
+      { bg: '#c598eb', border: '#7e33bd', ink: '#3b1957' },
+      { bg: '#6eb2ed', border: '#2970ae', ink: '#193a57' },
+      { bg: '#f090c0', border: '#c12d77', ink: '#571938' },
+      { bg: '#edcf6e', border: '#ae8f29', ink: '#574819' },
+      { bg: '#e98078', border: '#b0342a', ink: '#571e19' },
+      { bg: '#4ec6e6', border: '#24829b', ink: '#194a57' },
     ];
     const n = tones.length;
     const i = ((Number(index) || 0) % n + n) % n;
