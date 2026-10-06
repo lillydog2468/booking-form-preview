@@ -16,6 +16,7 @@
   <title>Booking Form — Analytics</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="auth-gate.js"></script>
   <script src="place-categories.js"></script>
   <script src="global-search.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -845,7 +846,7 @@
   <script>
     const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const DEFAULT_CURRENCY = 'GBP';
 
@@ -1667,11 +1668,16 @@
 	    }
 
     async function requireSession() {
-      const { data: { session } } = await sb.auth.getSession();
-      if (session) return true;
-      setStatus('Not signed in — redirecting to Booking Form', 'err');
-      setTimeout(() => { window.location.href = 'booking-form.html'; }, 800);
-      return false;
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (session) return true;
+      } catch (_) { /* ask again below */ }
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setStatus('You are offline. Sign in again when you are back online.', 'err');
+        return false;
+      }
+      const session = await AuthGate.require(sb, { title: 'Analytics' });
+      return !!session;
     }
 
     async function applyNavRoleVisibility() {
@@ -1747,6 +1753,11 @@
 	      loadFiltersFromStorage();
 	      applyDatePreset(document.getElementById('datePreset')?.value || 'last180');
 	      Chart.defaults.font.family = "'DM Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+	      const session = await AuthGate.require(sb, { title: 'Analytics' });
+	      if (!session) {
+	        setStatus('You are offline. Sign in again when you are back online.', 'err');
+	        return;
+	      }
 	      await refreshAll();
 	      await applyNavRoleVisibility();
 	      applyChartTheme();
