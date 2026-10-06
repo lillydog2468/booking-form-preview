@@ -16,6 +16,7 @@
   <title>Booking Form</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="auth-gate.js"></script>
   <script src="place-categories.js"></script>
   <script src="global-search.js"></script>
   <style>
@@ -2946,7 +2947,8 @@
 
   const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
-  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let cloudReady = false;
 
   // ═══════════════════════════════════════════════════════════════
 
@@ -2984,12 +2986,18 @@
   function initGlobalSearch() {
     if (!window.GlobalSearch || globalSearchApi) return;
     globalSearchApi = window.GlobalSearch.init({
-      supabase: sb,
-      requireAuth: false,
-      isSignedIn: () => true,
+      supabase: cloudReady ? sb : null,
+      requireAuth: true,
+      isSignedIn: async () => {
+        if (!cloudReady) return true;
+        try {
+          const { data } = await sb.auth.getSession();
+          return !!(data && data.session);
+        } catch (_) { return false; }
+      },
       getBookings: () => allBookings || [],
-      getPeople: () => null,
-      getPlaces: () => null,
+      getPeople: () => cloudReady ? null : [],
+      getPlaces: () => cloudReady ? null : [],
     });
   }
 
@@ -3974,29 +3982,30 @@
     }
   }
 
-  async function checkExistingSession() {
-    // The booking form is a single-user page. A saved sign-in may still fill
-    // the account menu, but the editor opens either way.
+  async function startAfterSignIn() {
+    const session = await AuthGate.require(sb, { title: 'Booking form' });
+    if (!session) {
+      cloudReady = false;
+      AuthGate.useLocalData(sb);
+      loadHotelsFromStorage();
+      loadLocalBookings();
+      openEditor('', '');
+      return;
+    }
+    cloudReady = true;
+    let role = 'user';
     try {
-      const { data: { session } } = await sb.auth.getSession();
-      if (session) {
-        const { data: profile } = await sb.from('profiles')
-          .select('role, status')
-          .eq('id', session.user.id)
-          .maybeSingle();
-
-        if (profile?.status === 'disabled') {
-          await sb.auth.signOut();
-          openEditor('', '');
-          return;
-        }
-
-        openEditor(session.user.email, profile?.role || 'user');
+      const { data: profile } = await sb.from('profiles')
+        .select('role, status')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (profile && profile.status === 'disabled') {
+        await sb.auth.signOut();
         return;
       }
-    } catch (_) { /* still open the editor */ }
-
-    openEditor('', '');
+      role = (profile && profile.role) || 'user';
+    } catch (_) { /* the sign-in is enough to open the form */ }
+    openEditor(session.user.email, role);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -8441,6 +8450,14 @@
     const existing = findHotelByName(trimmed);
     if (existing) return existing.id;
 
+    if (!cloudReady) {
+      const id = nextHotelId++;
+      allHotels.push({ id, name: trimmed, created_at: new Date().toISOString() });
+      saveHotelsToStorage();
+      for (const [tid] of tabs) populateHotelSelects(tid);
+      return id;
+    }
+
     const { data, error } = await sb.from('hotels').insert({ name: trimmed }).select();
     if (error) {
       if (error.code === '23505' || /duplicate/i.test(error.message || '')) {
@@ -9530,7 +9547,22 @@
     }
   }
 
+  function showLoadedBookings() {
+    if (globalSearchApi) globalSearchApi.refresh();
+    highlightSidebarRecords();
+    if (currentView === 'table') renderTable(allBookings);
+    if (currentView === 'year') renderYearTours(allBookings);
+    updateGlobalAnalytics();
+  }
+
   async function loadBookings() {
+    if (!cloudReady) {
+      loadHotelsFromStorage();
+      loadLocalBookings();
+      showLoadedBookings();
+      applyPendingDeepLinkBooking();
+      return;
+    }
     try {
       const { data: hotelsData } = await sb.from('hotels').select('*').order('name');
       if (hotelsData) { allHotels = hotelsData; nextHotelId = allHotels.length ? Math.max(...allHotels.map(h => h.id)) + 1 : 1; }
@@ -9697,6 +9729,22 @@
   async function saveBooking(tabId, silent = false) {
     const tabData = tabs.get(tabId);
     if (!tabData) return;
+    if (!cloudReady) {
+      const data = await getTabFormData(tabId);
+      if (!tabData.bookingId) tabData.bookingId = localNextId++;
+      const record = Object.assign({}, data, { id: tabData.bookingId });
+      const idx = allBookings.findIndex(b => String(b.id) === String(tabData.bookingId));
+      if (idx >= 0) allBookings[idx] = Object.assign({}, allBookings[idx], record);
+      else allBookings.unshift(record);
+      saveLocalBookings();
+      if (activeTabId === tabId) syncBookingAddress(tabData.bookingId);
+      const idInput = tEl(tabId, 'id');
+      if (idInput) idInput.value = tabData.bookingId;
+      markTabDirty(tabId, false);
+      showLoadedBookings();
+      if (!silent) toast('Saved on this device', 'success');
+      return;
+    }
     const data = await getTabFormData(tabId);
 
     const extras = data._extras || collectBookingExtras(tabId);
@@ -10083,6 +10131,14 @@
     if (!activeTabId) return;
     const tabData = tabs.get(activeTabId);
     if (!tabData || !tabData.bookingId) return;
+    if (!cloudReady) {
+      allBookings = allBookings.filter(b => String(b.id) !== String(tabData.bookingId));
+      saveLocalBookings();
+      toast('Booking deleted on this device', 'success');
+      closeTab(activeTabId);
+      await loadBookings();
+      return;
+    }
     try {
       const { error } = await sb.from(TABLE).delete().eq('id', tabData.bookingId);
       if (error) throw error;
@@ -10496,7 +10552,7 @@
     updateLayoutNav();
     renderPriceBook();
     bindPriceBook();
-    checkExistingSession();
+    startAfterSignIn();
 
     const savedAutoSave = localStorage.getItem('autosave_enabled') === 'true';
     if (savedAutoSave) { el('autosaveToggle').checked = true; toggleAutoSave(true); }
