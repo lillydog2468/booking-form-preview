@@ -154,7 +154,7 @@
   <script>
     const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let allBookings = [];
     let allExpenses = [];
@@ -459,7 +459,7 @@
     document.addEventListener('DOMContentLoaded', function () {
       AuthGate.require(sb, { title: 'Tax summary' }).then(function (session) {
         if (!session) {
-          setStatus('Sign in is required before the tax summary can load.');
+          setStatus('You are offline. Sign in again when you are back online.');
           return;
         }
         signedInAsAdmin(session).then(function (ok) {
