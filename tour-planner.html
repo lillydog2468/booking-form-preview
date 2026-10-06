@@ -2639,7 +2639,7 @@
 <script>
   const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
-  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const STORAGE_KEY = 'keith_tour_planner_v1';
   const DELETED_PEOPLE_KEY = 'planner_people_deleted_v1';
@@ -12558,9 +12558,15 @@ function renderDayTabs() {
   function initGlobalSearch() {
     if (!window.GlobalSearch || globalSearchApi) return;
     globalSearchApi = window.GlobalSearch.init({
-      supabase: sb,
-      requireAuth: false,
-      isSignedIn: () => true,
+      supabase: state.cloudAllowed ? sb : null,
+      requireAuth: true,
+      isSignedIn: async () => {
+        if (!state.cloudAllowed) return true;
+        try {
+          const { data } = await sb.auth.getSession();
+          return !!(data && data.session);
+        } catch (_) { return false; }
+      },
       getBookings: () => state.bookings || [],
       getPeople: () => (state.people || []).filter(p => !personIsMergedAway(p)).map(p => ({
         id: p.id,
@@ -12886,7 +12892,12 @@ function renderDayTabs() {
       render,
     };
   }
-  init();
+  state.cloudAllowed = false;
+  AuthGate.require(sb, { title: 'Tour planner' }).then(session => {
+    state.cloudAllowed = !!session;
+    if (!session) AuthGate.useLocalData(sb);
+    init();
+  });
 </script>
 </body>
 </html>
