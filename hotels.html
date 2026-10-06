@@ -301,7 +301,8 @@
   <script>
     const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let cloudReady = false;
     const PLAN_STORAGE_KEY = 'keith_tour_planner_v1';
     const META_STORAGE_KEY = 'keith_hotel_stays_v1';
     const HOTEL_PROFILE_KEY = 'keith_hotel_profiles_v1';
@@ -1107,14 +1108,21 @@
       try { localStorage.setItem('theme', next); } catch {}
     });
 
-    if (window.GlobalSearch) {
+    function initGlobalSearch() {
+      if (!window.GlobalSearch) return;
       window.GlobalSearch.init({
-        supabase: sb,
-        requireAuth: false,
-        isSignedIn: () => true,
+        supabase: cloudReady ? sb : null,
+        requireAuth: true,
+        isSignedIn: async () => {
+          if (!cloudReady) return true;
+          try {
+            const { data } = await sb.auth.getSession();
+            return !!(data && data.session);
+          } catch (_) { return false; }
+        },
         getBookings: () => null,
-        getPeople: () => null,
-        getPlaces: () => null,
+        getPeople: () => cloudReady ? null : [],
+        getPlaces: () => cloudReady ? null : [],
       });
     }
 
@@ -1137,7 +1145,15 @@
     }
 
     fixExternalNavLinks();
-    loadData().catch(err => {
+    AuthGate.require(sb, { title: 'Hotels' }).then(session => {
+      cloudReady = !!session;
+      if (!session) {
+        AuthGate.useLocalData(sb);
+        setStatus('Offline — showing what is saved on this device', '');
+      }
+      initGlobalSearch();
+      return loadData();
+    }).catch(err => {
       console.error(err);
       setStatus(err.message || 'Failed to load', 'err');
     });
