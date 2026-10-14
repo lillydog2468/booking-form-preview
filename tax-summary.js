@@ -240,26 +240,48 @@
     return !isHotelExpense(row) && str(row.description).trim() !== '';
   }
 
+  function fareAmount(people, price, half) {
+    if (root.BookingExtras && root.BookingExtras.tourFare) return root.BookingExtras.tourFare(people, price, half);
+    var count = half && people >= 1 ? people - 0.5 : people;
+    return round2(price * count);
+  }
+
+  function halfPriceOn(booking, extras) {
+    if (root.BookingExtras && root.BookingExtras.leaderHalfOn) return root.BookingExtras.leaderHalfOn(booking, extras);
+    if (booking && booking.leader_half_price === true) return true;
+    return !!(extras && extras.leaderHalfPrice === true);
+  }
+
+  function applyLeaderHalf(stored, people, price, half) {
+    if (stored == null) return null;
+    if (!half || people == null || price == null) return round2(stored);
+    var full = fareAmount(people, price, false);
+    if (full != null && round2(stored) === full) return fareAmount(people, price, true);
+    return round2(stored);
+  }
+
   function incomeOf(booking, extras) {
-    var total = numOrNull(booking.beading_tour_price);
-    if (total != null) {
-      return { state: 'recorded', amount: round2(total), currency: currencyCode(booking.beading_tour_price_currency), source: 'total' };
-    }
+    var half = halfPriceOn(booking, extras);
     var price = numOrNull(booking.price_per_person);
     var people = numOrNull(booking.no_people);
+    var total = numOrNull(booking.beading_tour_price);
+    if (total != null) {
+      return { state: 'recorded', amount: applyLeaderHalf(total, people, price, half), currency: currencyCode(booking.beading_tour_price_currency), source: 'total' };
+    }
     if (price != null && people != null) {
-      return { state: 'recorded', amount: round2(price * people), currency: currencyCode(booking.price_per_person_currency), source: 'price × people' };
+      return { state: 'recorded', amount: fareAmount(people, price, half), currency: currencyCode(booking.price_per_person_currency), source: 'price × people' };
     }
     var money = extras && extras.money ? extras.money : null;
     var notesTotal = numOrNull(money && money.total);
-    if (notesTotal != null) {
-      return { state: 'recorded', amount: round2(notesTotal), currency: 'GBP', source: 'notes total' };
-    }
     var notesPrice = numOrNull(money && money.pricePerPerson);
     var head = numOrNull(extras && extras.headcount);
     if (head == null) head = people;
+    var notesUnit = notesPrice != null ? notesPrice : price;
+    if (notesTotal != null) {
+      return { state: 'recorded', amount: applyLeaderHalf(notesTotal, head, notesUnit, half), currency: 'GBP', source: 'notes total' };
+    }
     if (notesPrice != null && head != null) {
-      return { state: 'recorded', amount: round2(notesPrice * head), currency: 'GBP', source: 'notes price × people' };
+      return { state: 'recorded', amount: fareAmount(head, notesPrice, half), currency: 'GBP', source: 'notes price × people' };
     }
     return { state: 'missing' };
   }
@@ -285,6 +307,9 @@
       return { state: 'recorded', amount: round2(fromNotes), currency: 'GBP' };
     }
     if (stored == null) return { state: 'missing' };
+    var halfDelta = 0;
+    if (root.BookingExtras && root.BookingExtras.leaderHalfDelta) halfDelta = root.BookingExtras.leaderHalfDelta(booking, extras) || 0;
+    stored = round2(stored - halfDelta);
     var curs = [];
     if (price != null) curs.push(currencyCode(booking.beading_tour_price_currency));
     if (deposit != null) curs.push(currencyCode(booking.depositmade_currency));
@@ -421,12 +446,14 @@
     };
   }
 
-  function totalCostOf(booking, income, costs, expenseRows) {
+  function totalCostOf(booking, income, costs, expenseRows, extras) {
     var stored = numOrNull(booking.totalcost);
     if (stored != null) {
+      var halfDelta = 0;
+      if (root.BookingExtras && root.BookingExtras.leaderHalfDelta) halfDelta = root.BookingExtras.leaderHalfDelta(booking, extras) || 0;
       return {
         state: 'recorded',
-        amount: round2(stored),
+        amount: round2(stored - halfDelta),
         currency: singleCurrency(recordedCurrencyCodes(booking, expenseRows)),
         source: 'stored'
       };
@@ -454,7 +481,7 @@
     var costs = costsOf(booking, expenseRows);
     var income = incomeOf(booking, extras);
     var profit = profitOf(booking, costs, expenseRows);
-    var totalCost = totalCostOf(booking, income, costs, expenseRows);
+    var totalCost = totalCostOf(booking, income, costs, expenseRows, extras);
     var ownMoney = hasNonZeroMoney(booking, expenseRows);
     var includeInTotals = decision.role === 'unconfirmed'
       ? false
