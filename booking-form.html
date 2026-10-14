@@ -1616,6 +1616,8 @@
     }
     .field label.req::after { content: " *"; color: var(--danger); }
     .hint { font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px; line-height: 1.4; }
+    .park-hotel-cost { margin: 2px 0 8px; }
+    .park-hotel-cost[hidden] { display: none !important; }
     .page-help { margin: 0 0 8px; }
     .page-help > summary {
       cursor: pointer;
@@ -2003,9 +2005,13 @@
       font-size: 18px;
       font-weight: 800;
       line-height: 1.3;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
     }
     .year-profit-figure.positive { color: var(--success); }
     .year-profit-figure.negative { color: var(--danger); }
+    .year-profit-extra { white-space: nowrap; }
     .year-tours-body {
       overflow: auto;
       padding: 12px 16px 28px;
@@ -2560,7 +2566,7 @@
       }
       .year-tour-year.full-year .year-tour-months { grid-template-columns: 1fr; }
       .year-profit-figures { padding: 10px 12px 0; }
-      .year-profit-figure { font-size: 17px; padding: 12px 14px; }
+      .year-profit-figure { font-size: 17px; padding: 12px 14px; line-height: 1.35; }
 
       .computed-value { font-size: 17px; }
 
@@ -3086,6 +3092,11 @@
     <div class="price-book-body">
       <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>This list is only for day trips and the usual beading holiday. A percentage rise copies prices you have already entered into another year. Each of those prices is rounded up to the next whole pound, with no pence. A price that is already a whole number of pounds stays as it is. Extra hotels, and a tour somewhere other than the usual beading area, are not on this list. Type those amounts on the booking.</p></div></details>
       <p class="hint" id="priceBookYearNote" role="status"></p>
+      <div class="price-row" id="parkHotelPriceRow">
+        <span class="price-length-label">Park Hotel price</span>
+        <input type="text" inputmode="decimal" id="parkHotelPrice" autocomplete="off" placeholder="41" data-price-action="park-hotel" aria-label="Park Hotel price, pounds per person per night" value="41">
+        <span class="price-length-label">£ per person per night</span>
+      </div>
       <div id="priceBookYears"></div>
       <div class="price-book-actions">
         <label>Year <input type="text" id="priceBookNewYear" inputmode="numeric" maxlength="4" placeholder="YYYY" autocomplete="off"></label>
@@ -3273,6 +3284,7 @@
     state.hotel.otherWrapDisplay = document.getElementById(`t${tabId}_other_hotel_wrap`)?.style?.display ?? '';
     state.hotel.price = tEl(tabId, 'hotel_price')?.value ?? '';
     state.hotel.comment = tEl(tabId, 'hotel_price')?.dataset.comment ?? '';
+    state.hotel.costSource = tEl(tabId, 'hotel_price')?.dataset.hotelCostSource || '';
     state.hotel.mainBooked = !!document.getElementById(`t${tabId}_main_hotel_booked`)?.checked;
     state.hotel.mainPaid = document.getElementById(`t${tabId}_main_hotel_paid`)?.value ?? '';
     state.hotel.primaryVisible = primaryHotelVisible(tabId);
@@ -3288,6 +3300,7 @@
           nights: row.querySelector('.hotel-stay-nights')?.value ?? '',
           nightsSource: row.querySelector('.hotel-stay-nights')?.dataset.nightsSource || '',
           price: row.querySelector('.hotel-stay-price')?.value ?? '',
+          costSource: row.querySelector('.hotel-stay-price')?.dataset.hotelCostSource || '',
           comments: row.dataset.comment || '',
           booked: !!row.querySelector('.hotel-stay-booked')?.checked,
           paid: row.querySelector('.hotel-stay-paid')?.value ?? '',
@@ -3395,6 +3408,10 @@
     if (hotelPrice) {
       hotelPrice.value = state.hotel?.price ?? '';
       hotelPrice.dataset.comment = state.hotel?.comment ?? '';
+      const source = state.hotel?.costSource || '';
+      hotelPrice.dataset.hotelCostSource = source === 'park' || source === 'typed'
+        ? source
+        : (String(hotelPrice.value || '').trim() ? 'typed' : '');
     }
     onHotelChange(tabId);
     const otherWrap = document.getElementById(`t${tabId}_other_hotel_wrap`);
@@ -3430,6 +3447,13 @@
       if (row && row.querySelector('.hotel-stay-select')) {
         row.querySelector('.hotel-stay-select').value = hotelVal;
         onHotelStayChange(row.querySelector('.hotel-stay-select'), tabId);
+      }
+      const stayPrice = row && row.querySelector('.hotel-stay-price');
+      if (stayPrice) {
+        const source = s.costSource || '';
+        stayPrice.dataset.hotelCostSource = source === 'park' || source === 'typed'
+          ? source
+          : (String(stayPrice.value || '').trim() ? 'typed' : '');
       }
       const nightsEl = row && row.querySelector('.hotel-stay-nights');
       if (nightsEl) {
@@ -4455,7 +4479,7 @@
               <input type="text" id="t${t}_other_hotel_name" placeholder="Hotel name">
             </div>
             <div class="field"><label>Nights</label><input type="text" id="t${t}_other_hotel_nights" placeholder="e.g. 3"></div>
-            <div class="field"><label>Price (£)</label><input type="number" id="t${t}_hotel_price" step="0.01" inputmode="decimal" placeholder="0.00" title="Hotel price in pounds sterling"></div>
+            <div class="field"><label>Price (£)</label><input type="number" id="t${t}_hotel_price" step="0.01" inputmode="decimal" placeholder="0.00" title="Hotel price in pounds sterling"><p class="hint park-hotel-cost" id="t${t}_park_hotel_cost" hidden></p></div>
             <div class="field"><label>Paid</label>
               <select id="t${t}_main_hotel_paid">
                 <option value="">Not set</option>
@@ -5222,6 +5246,13 @@
     panel.style.top = top + 'px';
   }
 
+  function yearCountPhrase(n, one, many) {
+    const value = Number(n);
+    const shown = Number.isFinite(value) ? value : 0;
+    const text = Math.abs(shown - Math.round(shown)) < 1e-6 ? String(Math.round(shown)) : String(Math.round(shown * 100) / 100);
+    return text + ' ' + (shown === 1 ? one : many);
+  }
+
   function yearProfitFiguresHTML(bookings, openYears, todayYear) {
     const BE = window.BookingExtras;
     if (!BE || !BE.yearProfitTotal || !BE.arrivalYear) return '';
@@ -5229,7 +5260,11 @@
     return years.map(year => {
       const fig = BE.yearProfitTotal(bookings, year, todayYear);
       const tone = fig.amount >= 0 ? 'positive' : 'negative';
-      return `<p class="year-profit-figure ${tone}">${escapeHtml(fig.label + formatMoney(fig.amount))}</p>`;
+      const profit = escapeHtml(fig.label + formatMoney(fig.amount));
+      const people = escapeHtml(' · ' + yearCountPhrase(fig.people, 'person', 'people'));
+      const nights = escapeHtml(' · ' + yearCountPhrase(fig.nights, 'night', 'nights'));
+      const peopleNights = escapeHtml(' · ' + yearCountPhrase(fig.peopleNights, 'people-night', 'people-nights'));
+      return `<p class="year-profit-figure ${tone}"><span class="year-profit-main">${profit}</span><span class="year-profit-extra">${people}</span><span class="year-profit-extra">${nights}</span><span class="year-profit-extra">${peopleNights}</span></p>`;
     }).join('');
   }
 
@@ -7452,6 +7487,7 @@
     const found = orphans[idx];
     if (priceInput && String(priceInput.value || '').trim() === '') {
       priceInput.value = found.cost ?? '';
+      if (String(priceInput.value || '').trim()) priceInput.dataset.hotelCostSource = 'typed';
       if (commentEl) commentEl.dataset.comment = found.comments || '';
     }
     orphans.splice(idx, 1);
@@ -7776,6 +7812,7 @@
         </div>
         <div class="field"><label>Price (£)</label>
           <input type="number" class="hotel-stay-price" step="0.01" inputmode="decimal" placeholder="0.00" title="Hotel price in pounds sterling" value="${escapeAttr(data.cost ?? data.price ?? '')}">
+          <p class="hint park-hotel-cost" hidden></p>
         </div>
         <div class="field"><label>Paid</label>
           <select class="hotel-stay-paid">
@@ -7796,6 +7833,9 @@
       inp.addEventListener('input', () => {
         if (inp.classList.contains('hotel-stay-nights')) {
           inp.dataset.nightsSource = String(inp.value || '').trim() ? 'typed' : '';
+        }
+        if (inp.classList.contains('hotel-stay-price')) {
+          inp.dataset.hotelCostSource = String(inp.value || '').trim() ? 'typed' : '';
         }
         onTabInput(tabId);
       });
@@ -7914,6 +7954,14 @@
     if (ca.length < 8 || cb.length < 8) return false;
     return ca === cb || ca.startsWith(cb) || cb.startsWith(ca);
   }
+  function isParkHotelName(name) {
+    const folded = normHotelName(name);
+    if (!folded) return false;
+    if (folded === 'park hotel') return true;
+    const compact = folded.replace(/[^a-z0-9]+/g, '');
+    if (compact === 'parkhotel') return true;
+    return compact.startsWith('parkhotel') && compact.slice('parkhotel'.length) === 'smrzovka';
+  }
   function selectedHotelName(tabId) {
     const sel = tEl(tabId, 'what_hotel');
     if (!sel || !sel.value) return '';
@@ -7928,6 +7976,7 @@
     return hotelNameById(sel.value);
   }
   const PRICE_BOOK_KEY = 'keith_tour_price_book_v1';
+  const PARK_HOTEL_PRICE_DEFAULT = '41';
 
   function cleanStoredPrice(value) {
     const s = String(value ?? '').trim().replace(/,/g, '').replace(/^£\s*/, '');
@@ -7936,14 +7985,21 @@
     return s;
   }
 
+  function cleanParkHotelPrice(value) {
+    return cleanStoredPrice(value);
+  }
+
   function emptyPriceBook() {
-    return { years: {} };
+    return { years: {}, parkHotelPrice: '' };
   }
 
   function readPriceBook() {
     try {
       const raw = JSON.parse(localStorage.getItem(PRICE_BOOK_KEY) || '');
-      if (!raw || typeof raw !== 'object' || !raw.years || typeof raw.years !== 'object') return emptyPriceBook();
+      const parkHotelPrice = raw && typeof raw === 'object' ? cleanParkHotelPrice(raw.parkHotelPrice) : '';
+      if (!raw || typeof raw !== 'object' || !raw.years || typeof raw.years !== 'object') {
+        return { years: {}, parkHotelPrice };
+      }
       const years = {};
       Object.keys(raw.years).forEach(year => {
         if (!/^\d{4}$/.test(year)) return;
@@ -7956,14 +8012,166 @@
         });
         years[year] = { dayTrip: cleanStoredPrice(row.dayTrip), beading };
       });
-      return { years };
+      return { years, parkHotelPrice };
     } catch (_) {
       return emptyPriceBook();
     }
   }
 
   function writePriceBook(book) {
-    localStorage.setItem(PRICE_BOOK_KEY, JSON.stringify(book));
+    const stored = { years: (book && book.years) || {} };
+    const parkHotelPrice = cleanParkHotelPrice(book && book.parkHotelPrice);
+    if (parkHotelPrice) stored.parkHotelPrice = parkHotelPrice;
+    localStorage.setItem(PRICE_BOOK_KEY, JSON.stringify(stored));
+  }
+
+  function shownParkHotelPrice(book) {
+    return cleanParkHotelPrice(book && book.parkHotelPrice) || PARK_HOTEL_PRICE_DEFAULT;
+  }
+
+  function currentParkHotelRate() {
+    const input = typeof el === 'function' ? el('parkHotelPrice') : null;
+    if (input) {
+      const live = cleanParkHotelPrice(input.value);
+      if (live) return live;
+    }
+    if (typeof readPriceBook === 'function') return shownParkHotelPrice(readPriceBook());
+    return PARK_HOTEL_PRICE_DEFAULT;
+  }
+
+  function parkHotelRoomCount(singles, twins, doubles, keithOn, headcount) {
+    const blank = [singles, twins, doubles].every(value => String(value ?? '').trim() === '');
+    if (blank) {
+      const people = parseInt(String(headcount ?? '').trim(), 10);
+      return Number.isFinite(people) && people > 0 ? people + 1 : 0;
+    }
+    const count = (value) => {
+      const n = parseFloat(String(value ?? '').trim());
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    return count(singles) + count(twins) + count(doubles) + (keithOn ? 1 : 0);
+  }
+
+  function parkHotelNights(value) {
+    const match = /^(\d+)(?:\s*nights?)?$/i.exec(String(value || '').trim());
+    if (!match) return 0;
+    const n = Number(match[1]);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function parkHotelMoney(amount) {
+    const cents = Math.round(Number(amount) * 100);
+    if (!Number.isFinite(cents)) return '';
+    if (cents % 100 === 0) return '£' + String(cents / 100);
+    return '£' + (cents / 100).toFixed(2);
+  }
+
+  function parkHotelCostInputValue(amount) {
+    const cents = Math.round(Number(amount) * 100);
+    if (!Number.isFinite(cents)) return '';
+    if (cents % 100 === 0) return String(cents / 100);
+    return (cents / 100).toFixed(2);
+  }
+
+  function parkHotelCostLine(rooms, nights, rate, amount) {
+    const roomWord = rooms === 1 ? 'room' : 'rooms';
+    const nightWord = nights === 1 ? 'night' : 'nights';
+    return rooms + ' ' + roomWord + ' × ' + nights + ' ' + nightWord + ' × ' + parkHotelMoney(rate) + ' = ' + parkHotelMoney(amount);
+  }
+
+  function parkHotelCostDecision(input) {
+    const skip = !!(input && (input.organiser || input.dayTrip || !isParkHotelName(input.hotelName)));
+    if (skip) return { line: '', fill: null, clearAuto: true };
+    const rooms = parkHotelRoomCount(input.singles, input.twins, input.doubles, !!input.keithOn, input.headcount);
+    const nights = parkHotelNights(input.nights);
+    const rate = cleanParkHotelPrice(input.rate);
+    if (!rooms || !nights || !rate) return { line: '', fill: null, clearAuto: true };
+    const amount = Math.round(rooms * nights * Number(rate) * 100) / 100;
+    const value = String(input.costValue ?? '').trim();
+    const mayFill = !value || input.costSource === 'park';
+    return {
+      line: parkHotelCostLine(rooms, nights, rate, amount),
+      fill: mayFill ? parkHotelCostInputValue(amount) : null,
+      clearAuto: false,
+    };
+  }
+
+  function applyOneParkHotelCost(input, priceInput, lineEl) {
+    const decision = parkHotelCostDecision(input);
+    if (lineEl) {
+      lineEl.textContent = decision.line;
+      lineEl.hidden = !decision.line;
+    }
+    if (!priceInput) return;
+    if (decision.fill != null) {
+      if (priceInput.value !== decision.fill) priceInput.value = decision.fill;
+      priceInput.dataset.hotelCostSource = 'park';
+      return;
+    }
+    if (decision.clearAuto && priceInput.dataset.hotelCostSource === 'park') {
+      priceInput.value = '';
+      priceInput.dataset.hotelCostSource = '';
+    }
+  }
+
+  function parkHotelStayName(select, other) {
+    if (!select || !select.value) return '';
+    if (select.value === '__other__') return other ? String(other.value || '').trim() : '';
+    const label = select.selectedOptions && select.selectedOptions[0] ? select.selectedOptions[0].textContent.trim() : '';
+    return label || (typeof hotelNameById === 'function' ? hotelNameById(select.value) : '');
+  }
+
+  function applyParkHotelCosts(tabId) {
+    const organiser = typeof organiserBooksHotelsOn === 'function' && organiserBooksHotelsOn(tabId);
+    const dayTrip = typeof tabIsDayTrip === 'function' && tabIsDayTrip(tabId);
+    const rooms = {
+      organiser,
+      dayTrip,
+      singles: typeof fieldVal === 'function' ? fieldVal(tabId, 'rooms_singles') : '',
+      twins: typeof fieldVal === 'function' ? fieldVal(tabId, 'rooms_twins') : '',
+      doubles: typeof fieldVal === 'function' ? fieldVal(tabId, 'rooms_doubles') : '',
+      keithOn: !!(typeof tEl === 'function' && tEl(tabId, 'rooms_keith') && tEl(tabId, 'rooms_keith').checked),
+      headcount: typeof fieldVal === 'function' ? fieldVal(tabId, 'no_people') : '',
+      rate: currentParkHotelRate(),
+    };
+    const primaryName = typeof primaryShownHotelName === 'function' ? primaryShownHotelName(tabId) : '';
+    const primaryPrice = typeof tEl === 'function' ? tEl(tabId, 'hotel_price') : null;
+    const primaryNights = typeof tEl === 'function' ? tEl(tabId, 'other_hotel_nights') : null;
+    applyOneParkHotelCost(Object.assign({}, rooms, {
+      hotelName: primaryName,
+      nights: primaryNights ? primaryNights.value : '',
+      costValue: primaryPrice ? primaryPrice.value : '',
+      costSource: primaryPrice ? (primaryPrice.dataset.hotelCostSource || '') : '',
+    }), primaryPrice, document.getElementById('t' + tabId + '_park_hotel_cost'));
+    const list = document.getElementById('t' + tabId + '_hotel_stays_list');
+    if (!list) return;
+    list.querySelectorAll('.hotel-stay-row').forEach(row => {
+      const price = row.querySelector('.hotel-stay-price');
+      applyOneParkHotelCost(Object.assign({}, rooms, {
+        hotelName: parkHotelStayName(row.querySelector('.hotel-stay-select'), row.querySelector('.hotel-stay-other')),
+        nights: row.querySelector('.hotel-stay-nights') ? row.querySelector('.hotel-stay-nights').value : '',
+        costValue: price ? price.value : '',
+        costSource: price ? (price.dataset.hotelCostSource || '') : '',
+      }), price, row.querySelector('.park-hotel-cost'));
+    });
+  }
+
+  function refreshParkHotelCostsOnOpenTabs() {
+    if (typeof tabs === 'undefined' || !tabs) return;
+    for (const [tabId] of tabs) {
+      applyParkHotelCosts(tabId);
+      if (typeof recalculateTab === 'function') recalculateTab(tabId);
+    }
+  }
+
+  function noteLoadedHotelCosts(tabId) {
+    const mark = (input) => {
+      if (!input) return;
+      if (String(input.value || '').trim() && input.dataset.hotelCostSource !== 'park') input.dataset.hotelCostSource = 'typed';
+    };
+    if (typeof tEl === 'function') mark(tEl(tabId, 'hotel_price'));
+    const list = document.getElementById('t' + tabId + '_hotel_stays_list');
+    if (list) list.querySelectorAll('.hotel-stay-price').forEach(mark);
   }
 
   function lengthLabel(nights) {
@@ -7972,10 +8180,18 @@
     return days + (days === 1 ? ' day' : ' days') + ' · ' + n + (n === 1 ? ' night' : ' nights');
   }
 
+  function paintParkHotelPrice(book) {
+    const input = el('parkHotelPrice');
+    if (!input) return;
+    if (typeof document !== 'undefined' && document.activeElement === input) return;
+    input.value = shownParkHotelPrice(book);
+  }
+
   function renderPriceBook() {
+    const book = readPriceBook();
+    paintParkHotelPrice(book);
     const host = el('priceBookYears');
     if (!host) return;
-    const book = readPriceBook();
     const years = Object.keys(book.years).sort();
     if (!years.length) {
       host.innerHTML = '<p class="hint">No years yet.</p>' + pageHelp('<p>Add a year, then type the day-trip price and the usual beading prices. Nothing is filled in for you.</p>');
@@ -8026,6 +8242,15 @@
     }
     writePriceBook(book);
     refreshPricesOnOpenTabs();
+  }
+
+  function saveParkHotelPrice(input) {
+    const cleaned = cleanParkHotelPrice(input.value);
+    if (String(input.value || '').trim() && !cleaned) return;
+    const book = readPriceBook();
+    book.parkHotelPrice = cleaned;
+    writePriceBook(book);
+    if (typeof refreshParkHotelCostsOnOpenTabs === 'function') refreshParkHotelCostsOnOpenTabs();
   }
 
   function addPriceBookYear() {
@@ -8120,7 +8345,27 @@
     toast('Copied the prices that were already entered, with that rise, rounded up to the next whole pound', 'success');
   }
 
+  function onParkHotelPriceFocus(e) {
+    const input = e.target && e.target.closest ? e.target.closest('[data-price-action="park-hotel"]') : null;
+    if (!input || typeof input.select !== 'function') return;
+    setTimeout(() => {
+      if (typeof document !== 'undefined' && document.activeElement === input) input.select();
+    }, 0);
+  }
+
+  function onParkHotelPriceBlur(e) {
+    const input = e.target && e.target.closest ? e.target.closest('[data-price-action="park-hotel"]') : null;
+    if (!input) return;
+    const cleaned = cleanParkHotelPrice(input.value);
+    input.value = cleaned || shownParkHotelPrice(readPriceBook());
+  }
+
   function onPriceBookInput(e) {
+    const park = e.target.closest('[data-price-action="park-hotel"]');
+    if (park) {
+      saveParkHotelPrice(park);
+      return;
+    }
     const input = e.target.closest('[data-price-action="day-trip"], [data-price-action="beading"]');
     if (!input) return;
     savePriceBookField(input);
@@ -8143,6 +8388,8 @@
     if (!book || book.dataset.bound === '1') return;
     book.dataset.bound = '1';
     book.addEventListener('input', onPriceBookInput);
+    book.addEventListener('focusin', onParkHotelPriceFocus);
+    book.addEventListener('focusout', onParkHotelPriceBlur);
     book.addEventListener('click', onPriceBookClick);
   }
 
@@ -9279,6 +9526,10 @@
       }
       suggestRoomsFromHeadcount(tabId);
     }
+    if (changedId.endsWith('_hotel_price') && (eventType === 'input' || eventType === 'change')) {
+      const hotelCostInput = document.getElementById(changedId);
+      if (hotelCostInput) hotelCostInput.dataset.hotelCostSource = String(hotelCostInput.value || '').trim() ? 'typed' : '';
+    }
     if (changedId.endsWith('_leader_half_price')) {
       const total = tEl(tabId, 'beading_tour_price');
       const people = parseFloat(String(tEl(tabId, 'no_people')?.value || '').trim());
@@ -9366,6 +9617,7 @@
       changedId.endsWith('_organiser_books_hotels')
     ) {
       suggestBlankHotelNights(tabId);
+      recalculateTab(tabId);
     }
     if (changedId.endsWith('_hotel_booked') && !changedId.endsWith('_main_hotel_booked')) {
       const tick = document.getElementById(`t${tabId}_main_hotel_booked`);
@@ -9431,6 +9683,7 @@
   // ── Computed fields ──
 
   function recalculateTab(tabId) {
+    if (typeof applyParkHotelCosts === 'function') applyParkHotelCosts(tabId);
     syncHotelExpenseLines(tabId);
     // Beading tour price follows headcount × price per person.
     // Leader half price halves only that organiser's fare: (headcount - 0.5) × price.
@@ -9690,6 +9943,7 @@
     if (record.leader_half_price === true) setCheck(tabId, 'leader_half_price', true);
     noteLoadedPrice(tabId);
     noteLoadedNights(tabId);
+    noteLoadedHotelCosts(tabId);
     recalculateTab(tabId);
     applyMemberPayFold(tabId);
     applyTabYearTint(tabId);
@@ -9774,7 +10028,10 @@
       tabData.orphanHotelExpenses = [];
     }
     const hotelPrice = tEl(tabId, 'hotel_price');
-    if (hotelPrice) hotelPrice.dataset.comment = '';
+    if (hotelPrice) {
+      hotelPrice.dataset.comment = '';
+      hotelPrice.dataset.hotelCostSource = '';
+    }
     tEl(tabId, 'id').value = '';
     tEl(tabId, 'formTitle').textContent = 'New Booking';
     updateTabTitle(tabId, 'New Booking');
