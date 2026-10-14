@@ -6250,7 +6250,7 @@
     mirrorPlanPeopleOntoDetails(plan);
     const id = Number(key);
     const { data, error } = await sb.from('bookings')
-      .select('extra_notes, price_per_person, depositmade, deposit_paid_date, beading_tour_price')
+      .select('extra_notes, price_per_person, no_people, depositmade, deposit_paid_date, beading_tour_price')
       .eq('id', id)
       .maybeSingle();
     if (error || !data) {
@@ -6266,7 +6266,19 @@
     const money = plan.bookingDetails.money || {};
     if (numsDiffer(data.price_per_person, money.pricePerPerson)) patch.price_per_person = Number(money.pricePerPerson);
     if (numsDiffer(data.depositmade, money.depositAmount)) patch.depositmade = Number(money.depositAmount);
-    if (numsDiffer(data.beading_tour_price, money.total)) patch.beading_tour_price = Number(money.total);
+    if (numsDiffer(data.beading_tour_price, money.total)) {
+      let next = Number(money.total);
+      const noteExtras = BookingExtras.splitNotesAndExtras(data.extra_notes).extras;
+      const details = BookingExtras.merge(plan.bookingDetails);
+      const half = noteExtras.leaderHalfPrice === true || details.leaderHalfPrice === true;
+      const people = Number(details.headcount || noteExtras.headcount || data.no_people);
+      const price = Number(details.money.pricePerPerson || noteExtras.money.pricePerPerson || data.price_per_person);
+      if (half && Number.isFinite(next) && Number.isFinite(people) && Number.isFinite(price) && people >= 1 && BookingExtras.tourFare) {
+        const full = BookingExtras.tourFare(people, price, false);
+        if (full != null && Math.abs(next - full) < 0.02) next = BookingExtras.tourFare(people, price, true);
+      }
+      patch.beading_tour_price = next;
+    }
     if (money.depositDate && /^\d{4}-\d{2}-\d{2}$/.test(money.depositDate) && String(data.deposit_paid_date || '').slice(0, 10) !== money.depositDate) {
       patch.deposit_paid_date = money.depositDate;
     }
@@ -6289,8 +6301,16 @@
       if (String(r.twins || '').trim() !== '') colPatch.room_twins = int(r.twins);
       if (String(r.doubles || '').trim() !== '') colPatch.room_doubles = int(r.doubles);
       if (r.keithRoom === true || r.keithRoom === false) colPatch.keith_own_room = r.keithRoom === true;
+      colPatch.leader_half_price = d.leaderHalfPrice === true;
     }
-    let { error: upErr } = await sb.from('bookings').update({ ...patch, ...colPatch }).eq('id', id);
+    let payload = { ...patch, ...colPatch };
+    let { error: upErr } = await sb.from('bookings').update(payload).eq('id', id);
+    const missingCol = upErr && (upErr.code === 'PGRST204' || upErr.code === '42703');
+    if (missingCol && Object.prototype.hasOwnProperty.call(payload, 'leader_half_price') && /leader_half_price/.test(String((upErr && (upErr.message || upErr.details)) || ''))) {
+      payload = { ...payload };
+      delete payload.leader_half_price;
+      ({ error: upErr } = await sb.from('bookings').update(payload).eq('id', id));
+    }
     if (upErr && Object.keys(colPatch).length && (upErr.code === 'PGRST204' || upErr.code === '42703')) {
       ({ error: upErr } = await sb.from('bookings').update(patch).eq('id', id));
     }
@@ -6513,6 +6533,11 @@
     if (!bd.money.depositDate && booking.deposit_paid_date) bd.money.depositDate = String(booking.deposit_paid_date).slice(0, 10);
     if (!bd.money.total && booking.beading_tour_price != null && booking.beading_tour_price !== '') {
       bd.money.total = String(booking.beading_tour_price);
+    }
+    if (booking.leader_half_price === true || (fromNotes && fromNotes.leaderHalfPrice === true)) {
+      bd.leaderHalfPrice = true;
+    } else if (bd.leaderHalfPrice === true) {
+      bd.leaderHalfPrice = false;
     }
     if (!bd.money.balance && booking.left_to_pay != null && booking.left_to_pay !== '') {
       bd.money.balance = String(booking.left_to_pay);
