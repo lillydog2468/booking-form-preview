@@ -492,6 +492,7 @@
       if (!stay) return false;
       if (isDayTripHotelName(stay.hotelName)) return true;
       if (stay.dayTrip) return true;
+      if (stay.organiserBooksHotels) return true;
       return omitUnpaidKelliStay(stay, planHotels);
     }
     function loadMeta() {
@@ -576,7 +577,8 @@
         otherHotelNights: stay.otherHotelNights || '',
         headcount: stay.headcount || '',
         recordedAddress: stay.recordedAddress || '',
-        roomsNeededLabel: stay.dayTrip ? '' : String(stay.roomsNeededLabel || ''),
+        organiserBooksHotels: !!stay.organiserBooksHotels,
+        roomsNeededLabel: (stay.dayTrip || stay.organiserBooksHotels) ? '' : String(stay.roomsNeededLabel || ''),
         peopleLabel: String(stay.peopleLabel || ''),
         hotelsUsedHref: stay.hotelsUsedHref || '',
       });
@@ -722,14 +724,17 @@
         const groupName = b.group_name || plan.groupName || ('Booking #' + b.id);
         const bookingStatus = bookingStatusOf(b);
         const dayTrip = bookingIsDayTrip(b, plan);
+        const organiserBooksHotels = window.BookingExtras && BookingExtras.organiserBooksHotelsOn
+          ? BookingExtras.organiserBooksHotelsOn(b, null)
+          : false;
         const tourName = (b.hotels && b.hotels.name) || plan.tourHotelName || '';
         const link = stayLink(b, plan);
-        const roomBits = dayTrip ? '' : (link.roomsLabel || roomsNeededFor(b, plan, dayTrip));
+        const roomBits = (dayTrip || organiserBooksHotels) ? '' : (link.roomsLabel || roomsNeededFor(b, plan, dayTrip));
         const year = link.year || yearFromIso(arrival);
         const base = {
           bookingKey: key, bookingId: b.id, groupName,
           arrivalDate: arrival, departureDate: departure, hasCloudPlan: cloudPlans.has(key),
-          bookingStatus, dayTrip,
+          bookingStatus, dayTrip, organiserBooksHotels,
           headcount: b.no_people || '',
           otherHotelNights: b.other_hotel_nights || '',
           roomsNeededLabel: roomBits,
@@ -765,12 +770,16 @@
         planHotelsByKey[key] = planHotels;
         const groupName = plan.groupName || 'Local plan';
         const dayTrip = bookingIsDayTrip(null, plan);
+        const organiserBooksHotels = window.BookingExtras && BookingExtras.organiserBooksHotelsOn
+          ? BookingExtras.organiserBooksHotelsOn(null, plan.bookingDetails || null)
+          : false;
         const link = stayLink(null, plan);
         const year = link.year || yearFromIso(plan.arrivalDate || '');
         const base = {
           bookingKey: key, bookingId: /^\d+$/.test(key) ? key : '', groupName,
           arrivalDate: plan.arrivalDate || '', departureDate: plan.departureDate || '',
-          dayTrip, roomsNeededLabel: dayTrip ? '' : (link.roomsLabel || roomsNeededFor(null, plan, dayTrip)),
+          dayTrip, organiserBooksHotels,
+          roomsNeededLabel: (dayTrip || organiserBooksHotels) ? '' : (link.roomsLabel || roomsNeededFor(null, plan, dayTrip)),
           peopleLabel: (link.people || []).join(', '),
           hotelsUsedHref: year ? ('tour-planner.html?tab=hotels&year=' + encodeURIComponent(year)) : 'tour-planner.html?tab=hotels',
         };
