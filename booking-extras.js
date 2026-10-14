@@ -115,7 +115,8 @@
       rescheduledFromId: '',
       dayTrip: null,
       tourPlace: '',
-      leaderHalfPrice: false
+      leaderHalfPrice: false,
+      organiserBooksHotels: false
     };
   }
 
@@ -216,6 +217,11 @@
     };
   }
 
+  function normaliseRoomType(value, sharesWith) {
+    if (!str(sharesWith).trim()) return '';
+    return str(value).trim().toLowerCase() === 'twin' ? 'twin' : 'double';
+  }
+
   function merge(raw) {
     var base = empty();
     var src = isObj(raw) ? raw : {};
@@ -229,12 +235,15 @@
     base.headcount = str(src.headcount).trim();
     base.guests = Array.isArray(src.guests) ? src.guests.map(function (g) {
       var row = isObj(g) ? g : {};
+      var sharesWith = str(row.sharesWith).trim();
       return {
         firstName: str(row.firstName).trim(),
         lastName: str(row.lastName).trim(),
         email: str(row.email).trim(),
         personId: str(row.personId).trim(),
-        paidBy: normalisePayRef(row.paidBy)
+        paidBy: normalisePayRef(row.paidBy),
+        sharesWith: sharesWith,
+        roomType: normaliseRoomType(row.roomType, sharesWith)
       };
     }).filter(function (g) {
       return g.firstName || g.lastName || g.email || g.personId;
@@ -295,6 +304,7 @@
     base.dayTrip = src.dayTrip === true ? true : (src.dayTrip === false ? false : null);
     base.tourPlace = src.tourPlace === 'other' ? 'other' : (src.tourPlace === 'beading' ? 'beading' : '');
     base.leaderHalfPrice = src.leaderHalfPrice === true;
+    base.organiserBooksHotels = src.organiserBooksHotels === true;
     return base;
   }
 
@@ -323,6 +333,7 @@
     if (x.dayTrip === true || x.dayTrip === false) return true;
     if (x.tourPlace === 'beading' || x.tourPlace === 'other') return true;
     if (x.leaderHalfPrice === true) return true;
+    if (x.organiserBooksHotels === true) return true;
     return false;
   }
 
@@ -688,6 +699,53 @@
     return 'The room plan has ' + beds + ' guest ' + bedWord + ' and the headcount is ' + people + '. Singles sleep 1; twins and doubles sleep 2.' + keith;
   }
 
+  /**
+   * Mutual sharesWith links become one double or one twin.
+   * Anyone left over, including a one-sided link, is a single.
+   */
+  function shareRoomPlan(guests) {
+    var list = Array.isArray(guests) ? guests : [];
+    var byId = {};
+    list.forEach(function (g) {
+      if (!isObj(g)) return;
+      var id = str(g.personId).trim();
+      if (id) byId[id] = g;
+    });
+    var used = {};
+    var singles = 0;
+    var doubles = 0;
+    var twins = 0;
+    var pairs = 0;
+    list.forEach(function (g) {
+      if (!isObj(g) || g.named === false) return;
+      var id = str(g.personId).trim();
+      if (id && used[id]) return;
+      var partnerId = str(g.sharesWith).trim();
+      var partner = partnerId && partnerId !== id ? byId[partnerId] : null;
+      var mutual = !!(partner && partner.named !== false && str(partner.sharesWith).trim() === id && id);
+      if (!mutual) {
+        singles += 1;
+        if (id) used[id] = true;
+        return;
+      }
+      used[id] = true;
+      used[partnerId] = true;
+      pairs += 1;
+      if (str(g.roomType).trim().toLowerCase() === 'twin' || str(partner.roomType).trim().toLowerCase() === 'twin') twins += 1;
+      else doubles += 1;
+    });
+    return { singles: singles, doubles: doubles, twins: twins, pairs: pairs };
+  }
+
+  function shareRoomWord(n, one, many) {
+    return n + ' ' + (Number(n) === 1 ? one : many);
+  }
+
+  function shareRoomHint(plan) {
+    if (!plan || !plan.pairs) return '';
+    return 'Pairings suggest ' + shareRoomWord(plan.singles, 'single', 'singles') + ', ' + shareRoomWord(plan.doubles, 'double', 'doubles') + ', ' + shareRoomWord(plan.twins, 'twin', 'twins') + '.';
+  }
+
   function guestCountWarning(headcount, namedGuests) {
     var raw = headcount == null ? '' : String(headcount).trim();
     var named = num(namedGuests);
@@ -851,6 +909,59 @@
     return null;
   }
 
+  function isHotelExpenseRow(row) {
+    if (!row) return false;
+    if (row.hotel_id != null && String(row.hotel_id).trim() !== '') return true;
+    return String(row.custom_hotel_name || '').trim() !== '';
+  }
+
+  function hotelExpenseTotal(expenseRows) {
+    var sum = 0;
+    (expenseRows || []).forEach(function (row) {
+      if (!isHotelExpenseRow(row)) return;
+      var n = finiteOrNull(row.cost);
+      if (n != null) sum += n;
+    });
+    return Math.round(sum * 100) / 100;
+  }
+
+  function otherExpenseTotal(expenseRows) {
+    var sum = 0;
+    (expenseRows || []).forEach(function (row) {
+      if (!row || isHotelExpenseRow(row)) return;
+      if (!String(row.description || '').trim()) return;
+      var n = finiteOrNull(row.cost);
+      if (n != null) sum += n;
+    });
+    return Math.round(sum * 100) / 100;
+  }
+
+  /** True only when the tick is on. A missing flag is the same as unticked. */
+  function organiserBooksHotelsOn(booking, extras) {
+    if (extras && extras.organiserBooksHotels === true) return true;
+    if (extras) return false;
+    var fromBooking = extrasOfBooking(booking);
+    return !!(fromBooking && fromBooking.organiserBooksHotels === true);
+  }
+
+  /**
+   * Hotel spend still sitting inside a saved expenses total.
+   * After a save that already left hotel cost out, this is 0.
+   */
+  function expensesStillIncludeHotels(booking, expenseRows, extras) {
+    if (!organiserBooksHotelsOn(booking, extras)) return 0;
+    var hotels = hotelExpenseTotal(expenseRows);
+    if (!(hotels > 0) || !booking) return 0;
+    var stored = finiteOrNull(booking.totalexpenses);
+    // A blank stored total is handled by the parts that already skip hotel rows.
+    // Subtracting here would turn a missing total into a negative expense.
+    if (stored == null) return 0;
+    var fuel = finiteOrNull(booking.fuelcost) || 0;
+    var withHotels = Math.round((fuel + otherExpenseTotal(expenseRows) + hotels) * 100) / 100;
+    if (Math.abs(stored - withHotels) < 0.02) return hotels;
+    return 0;
+  }
+
   function bookingIsDayTrip(booking, plan) {
     var extras = extrasOfBooking(booking);
     var flagged = extras ? explicitDayTrip(extras.dayTrip) : null;
@@ -869,6 +980,9 @@
   /** Who, hotel, place, year, and rooms for one booking. The same facts on every page. */
   function bookingLink(booking, plan) {
     var dayTrip = bookingIsDayTrip(booking, plan);
+    var detailExtras = extrasOfBooking(booking);
+    if (!detailExtras && plan && isObj(plan.bookingDetails)) detailExtras = plan.bookingDetails;
+    var organiserHotels = organiserBooksHotelsOn(booking, detailExtras);
     var arrival = (booking && (booking.tour_arrival_date || booking.arrivalDate)) || (plan && plan.arrivalDate) || '';
     var source = null;
     var column = booking && booking.keith_own_room;
@@ -886,7 +1000,8 @@
       hotel: hotelOnBooking(booking, plan),
       places: placesOnBooking(booking, plan),
       dayTrip: dayTrip,
-      roomsLabel: dayTrip ? '' : roomsNeededLabel(source, column)
+      organiserBooksHotels: organiserHotels,
+      roomsLabel: (dayTrip || organiserHotels) ? '' : roomsNeededLabel(source, column)
     };
   }
 
@@ -1019,6 +1134,8 @@
     roomsNeededLabel: roomsNeededLabel,
     roomPlanStarted: roomPlanStarted,
     roomWarning: roomWarning,
+    shareRoomPlan: shareRoomPlan,
+    shareRoomHint: shareRoomHint,
     guestCountWarning: guestCountWarning,
     suggestedDepositGbp: suggestedDepositGbp,
     organiserFullName: organiserFullName,
@@ -1034,6 +1151,9 @@
     hotelOnBooking: hotelOnBooking,
     placesOnBooking: placesOnBooking,
     bookingIsDayTrip: bookingIsDayTrip,
+    organiserBooksHotelsOn: organiserBooksHotelsOn,
+    hotelExpenseTotal: hotelExpenseTotal,
+    expensesStillIncludeHotels: expensesStillIncludeHotels,
     bookingLink: bookingLink,
     tourFare: tourFare,
     leaderHalfOn: leaderHalfOn,
