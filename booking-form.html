@@ -684,23 +684,13 @@
       width: 76px; padding: 4px 8px; border: 1px solid #111; border-radius: 8px;
       font: inherit; font-weight: 800; color: #111; background: #fff;
     }
-    .org-label-row {
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    }
-    .leader-half {
-      display: inline-flex; align-items: center; gap: 4px;
-      font-size: 12px; font-weight: 700; color: var(--text-secondary);
-      white-space: nowrap; cursor: pointer;
-    }
-    .leader-half input {
-      margin: 0; width: 14px; height: 14px; accent-color: #1a1d26;
-      appearance: none; border: 1.5px solid #6b7280; border-radius: 3px;
-      background: #fff; display: inline-grid; place-content: center; flex: 0 0 auto;
-    }
-    .leader-half input:checked {
-      background: #1a1d26 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.2 4.6 9 10 3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px 11px no-repeat;
-      border-color: #1a1d26;
-    }
+    .org-names { display: contents; }
+    .org-first,
+    .org-last { min-width: 0; }
+    .org-first > input,
+    .org-last > input { height: 38px; min-height: 38px; }
+    .tab-panel.layout-mode .org-first > input,
+    .tab-panel.layout-mode .org-last > input { height: 33px; min-height: 33px; }
     .record-item { position: relative; }
     .record-delay {
       position: relative; z-index: 4;
@@ -1494,6 +1484,91 @@
       box-shadow: 0 0 0 3px var(--accent-glow);
     }
     .member-row .member-email { flex: 1.35; min-width: 160px; }
+    .member-share {
+      flex: 1 0 100%;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .member-share[hidden] { display: none; }
+    .member-share-btn, .member-unshare {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-secondary);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.2;
+      cursor: pointer;
+      min-height: 26px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .member-share-btn[hidden], .member-unshare[hidden], .member-share-tag[hidden], .room-type-switch[hidden] { display: none; }
+    .member-share-btn:hover, .member-unshare:hover { border-color: var(--accent); color: var(--text); }
+    .member-share-icon { flex: 0 0 auto; }
+    .member-share-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      background: var(--surface-alt);
+      border-radius: 999px;
+      padding: 3px 8px;
+      line-height: 1.3;
+    }
+    .room-type-switch {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .room-type-switch button {
+      border: 0;
+      background: transparent;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      min-height: 24px;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+    .room-type-switch button.is-on { background: var(--accent); color: #fff; }
+    .member-share-menu {
+      position: fixed;
+      z-index: 500;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+      padding: 4px;
+      max-height: min(240px, 50vh);
+      overflow: auto;
+    }
+    .member-share-option, .member-share-empty {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: var(--text);
+    }
+    .member-share-option { cursor: pointer; min-height: 36px; }
+    .member-share-option:hover { background: var(--surface-alt); }
+    .member-share-empty { color: var(--text-secondary); font-weight: 650; margin: 0; }
+    .room-share-hint { margin-top: 0; }
     .member-pay-bar {
       display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
       margin: 0 0 8px; min-width: 0;
@@ -2089,6 +2164,35 @@
       border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px;
       background: var(--accent-soft);
     }
+    .tour-kind-toggles {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px;
+      margin: 10px 0;
+    }
+    .tour-kind-toggles .day-trip-toggle { margin: 0; }
+    .hotel-room-choices { margin: 0 0 12px; }
+    .hotel-room-choices .grid-4 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .hotel-room-choices .grid-4 .field:last-child { grid-column: 1 / -1; }
+    .organiser-hotels-note { margin: 0 0 10px; font-weight: 700; }
+    .organiser-hotels-note[hidden] { display: none !important; }
+    .hotel-booking-panel.organiser-arranges {
+      pointer-events: none;
+      background: #e4e6ec;
+      border-radius: 12px;
+    }
+    .hotel-booking-panel.organiser-arranges .hotel-card,
+    .hotel-booking-panel.organiser-arranges .hotel-card.hotel-tone,
+    .hotel-booking-panel.organiser-arranges .hotel-stay-row,
+    .hotel-booking-panel.organiser-arranges .hotel-stay-row.hotel-tone {
+      background: #d5d8e0;
+      border-color: #b7bcc6;
+      box-shadow: none;
+    }
+    .hotel-booking-panel.organiser-arranges .field input,
+    .hotel-booking-panel.organiser-arranges .field select {
+      background: #eceef2;
+      color: #4b5160;
+      border-color: #c5c9d2;
+    }
     .day-trip-toggle {
       display: inline-flex; align-items: center; gap: 8px;
       font-weight: 700; font-size: 14px; margin: 10px 0; cursor: pointer;
@@ -2399,6 +2503,17 @@
       .section-title { font-size: 12px; margin-bottom: 14px; padding-bottom: 8px; }
 
       .field label { font-size: 11px; margin-bottom: 4px; }
+      .org-names {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
+        align-items: stretch;
+        grid-column: 1 / -1;
+      }
+      .org-first > input,
+      .org-last > input,
+      .tab-panel.layout-mode .org-first > input,
+      .tab-panel.layout-mode .org-last > input { height: 44px; min-height: 44px; }
       /* 16px prevents iOS auto-zoom on focus */
       .field input, .field select, .field textarea { padding: 10px 12px; font-size: 16px; min-height: 44px; -webkit-appearance: none; border-radius: var(--radius); }
       .field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
@@ -2453,6 +2568,13 @@
       .member-pay-amt input[type="number"] { flex-basis: 110px; width: 110px; }
       .member-pay .date-popup-btn { width: 44px; height: 44px; }
       .member-row .member-email { flex: 1 1 100%; }
+      .member-share { flex: 1 0 100%; }
+      .member-share-btn, .member-unshare, .room-type-switch button, .member-share-option {
+        min-height: 44px;
+        font-size: 14px;
+      }
+      .member-share-btn, .member-unshare { padding: 6px 12px; }
+      .room-type-switch button { padding: 6px 12px; }
       .member-row .member-albums { padding-left: 0; }
       .member-row .member-remove {
         position: absolute; top: 6px; right: 8px;
@@ -4035,21 +4157,6 @@
       <div class="section-title">More about this booking</div>
       ${pageHelp('<p>Save with whatever you have. A group label on its own is enough, and so is an email on its own. Empty boxes stay shaded until they are filled. It is saved with the booking notes.</p>')}
 
-      <details class="fold" data-fold="rooms">
-        <summary>Rooms</summary>
-        <div class="fold-body">
-          ${pageHelp('<p>Singles sleep 1 person. Twins and doubles sleep 2. Rooms to book count each single, twin, or double as one room. Keith’s own room starts ticked and adds one more. Turn it off when he is not staying. A day trip has no hotel room to book. When the headcount is filled in and these rooms are still empty, singles are set to that headcount and Keith’s room stays on. A room number or tick you change is left as you set it.</p>')}
-          <div class="grid grid-4">
-            <div class="field"><label>Singles</label><input type="number" min="0" step="1" id="t${t}_rooms_singles" placeholder="0"></div>
-            <div class="field"><label>Twins</label><input type="number" min="0" step="1" id="t${t}_rooms_twins" placeholder="0"></div>
-            <div class="field"><label>Doubles</label><input type="number" min="0" step="1" id="t${t}_rooms_doubles" placeholder="0"></div>
-            <div class="field"><label>Keith’s room</label><label class="hint" style="display:flex;gap:8px;align-items:center;font-weight:650;"><input type="checkbox" id="t${t}_rooms_keith" checked> Keith has his own room</label></div>
-          </div>
-          <p class="hint" id="t${t}_roomsNeeded"></p>
-          <div id="t${t}_roomWarn"></div>
-        </div>
-      </details>
-
       <details class="fold" data-fold="travel">
         <summary>Arrival, departure and pick-up</summary>
         <div class="fold-body">
@@ -4198,10 +4305,20 @@
 
   function tourKindControlsHTML(t) {
     return `
-        <label class="day-trip-toggle">
-          <input type="checkbox" id="t${t}_day_trip">
-          Day trip
-        </label>
+        <div class="tour-kind-toggles">
+          <label class="day-trip-toggle">
+            <input type="checkbox" id="t${t}_day_trip">
+            Day trip
+          </label>
+          <label class="day-trip-toggle">
+            <input type="checkbox" id="t${t}_leader_half_price" title="Halve this organiser’s fare only. Other guests stay at the full price per person.">
+            Leader half price
+          </label>
+          <label class="day-trip-toggle">
+            <input type="checkbox" id="t${t}_organiser_books_hotels" title="This organiser books the hotels. Keith does not count the hotel cost, the rooms, or a nights warning.">
+            Organiser books hotels
+          </label>
+        </div>
         <div class="field" id="t${t}_tour_place_wrap">
           <label for="t${t}_tour_place">Where is this tour</label>
           <select id="t${t}_tour_place">
@@ -4262,8 +4379,25 @@
     return `<div class="fuel-cost-slot" id="t${t}_fuel_home"><div class="field-with-currency" id="t${t}_fuel_field"><div class="field"><label id="t${t}_fuel_label">Fuel cost (£)</label><input type="number" inputmode="decimal" id="t${t}_fuelcost" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div></div>`;
   }
 
+  function hotelRoomChoicesHTML(t) {
+    return `
+      <div class="hotel-room-choices" id="t${t}_hotel_room_choices">
+        <label class="section-sub-label">Rooms</label>
+        <div class="grid grid-4">
+          <div class="field"><label>Singles</label><input type="number" min="0" step="1" id="t${t}_rooms_singles" placeholder="0"></div>
+          <div class="field"><label>Twins</label><input type="number" min="0" step="1" id="t${t}_rooms_twins" placeholder="0"></div>
+          <div class="field"><label>Doubles</label><input type="number" min="0" step="1" id="t${t}_rooms_doubles" placeholder="0"></div>
+          <div class="field"><label>Keith’s room</label><label class="hint" style="display:flex;gap:8px;align-items:center;font-weight:650;"><input type="checkbox" id="t${t}_rooms_keith" checked> Keith has his own room</label></div>
+        </div>
+        <p class="hint" id="t${t}_roomsNeeded"></p>
+        <p class="hint room-share-hint" id="t${t}_roomShareHint" hidden></p>
+        <div id="t${t}_roomWarn"></div>
+      </div>`;
+  }
+
   function hotelEditorHTML(t) {
     return `
+      ${hotelRoomChoicesHTML(t)}
       <div id="t${t}_day_trip_panel" class="day-trip-panel" hidden>
         <p class="hint">Day trip. There is no hotel for Keith to book.</p>
         ${pageHelp('<p>Record where to pick the group up.</p>')}
@@ -4273,7 +4407,8 @@
         </div>
         <div id="t${t}_diesel_slot"></div>
       </div>
-      <div id="t${t}_hotel_booking_panel">
+      <p class="hint organiser-hotels-note" id="t${t}_organiser_hotels_note" hidden>Organiser arranges hotels.</p>
+      <div id="t${t}_hotel_booking_panel" class="hotel-booking-panel">
         <div id="t${t}_no_hotel_hint">
           <p class="hint">No hotel booked yet.</p>
           ${pageHelp('<p>Add one only when Keith has booked it.</p>')}
@@ -4417,14 +4552,10 @@
         ${tourKindControlsHTML(t)}
         ${pageHelp('<p>The group name is the tour label. The organiser is a person and is kept separate, even when the words match.</p>')}
         <div class="grid grid-3">
-          <div class="field">
-            <div class="org-label-row">
-              <label for="t${t}_org_first">Organiser’s first name</label>
-              <label class="leader-half"><input type="checkbox" id="t${t}_leader_half_price" title="Halve this organiser’s fare only. Other guests stay at the full price per person."> Leader half price</label>
-            </div>
-            <input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name">
+          <div class="org-names">
+            <div class="field org-first"><label for="t${t}_org_first">Organiser’s first name</label><input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name"></div>
+            <div class="field org-last"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
           </div>
-          <div class="field"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
           <div class="field"><label>Organiser’s email</label><input type="email" id="t${t}_org_email" placeholder="name@example.com" autocomplete="email"></div>
         </div>
         <div class="section-sub">
@@ -4574,14 +4705,10 @@
             <div class="grid grid-2">
               ${tourDatesFoldHTML(t)}
               ${tourFareHTML(t)}
-              <div class="field">
-                <div class="org-label-row">
-                  <label for="t${t}_org_first">Organiser’s first name</label>
-                  <label class="leader-half"><input type="checkbox" id="t${t}_leader_half_price" title="Halve this organiser’s fare only. Other guests stay at the full price per person."> Leader half price</label>
-                </div>
-                <input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name">
+              <div class="org-names">
+                <div class="field org-first"><label for="t${t}_org_first">Organiser’s first name</label><input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name"></div>
+                <div class="field org-last"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
               </div>
-              <div class="field"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
               <div class="field" style="grid-column:1/-1;"><label>Organiser’s email</label><input type="email" id="t${t}_org_email" placeholder="name@example.com" autocomplete="email"></div>
             </div>
             ${tourKindControlsHTML(t)}
@@ -5790,9 +5917,40 @@
       <input type="text" placeholder="Surname" value="${escapeAttr(lastName)}" class="member-last" autocomplete="family-name">
       <input type="email" placeholder="Email" value="${escapeAttr(email)}" class="member-email" autocomplete="email">
       <button type="button" class="member-remove" onclick="removeMemberRow(this, '${tabId}')" title="Remove">&times;</button>
+      <div class="member-share" hidden>
+        <button type="button" class="member-share-btn" aria-haspopup="listbox" aria-expanded="false" title="Share a room with another guest">
+          <svg class="member-share-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Share with
+        </button>
+        <span class="member-share-tag" hidden></span>
+        <span class="room-type-switch" hidden role="group" aria-label="Shared room type">
+          <button type="button" data-type="double">Double</button>
+          <button type="button" data-type="twin">Twin</button>
+        </span>
+        <button type="button" class="member-unshare" hidden>Unshare</button>
+      </div>
       ${memberPayBlockHTML(pay)}
       <div class="member-albums" hidden></div>
     `;
+
+    row.querySelector('.member-share-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleShareMenu(tabId, row, e.currentTarget);
+    });
+    row.querySelector('.member-unshare')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      unpairGuestRow(row);
+      closeShareMenus();
+      paintRoomShares(tabId);
+      suggestRoomsFromHeadcount(tabId);
+      onTabInput(tabId);
+    });
+    row.querySelectorAll('.room-type-switch button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setShareRoomType(tabId, row, btn.dataset.type);
+      });
+    });
 
     row.querySelectorAll('input, select').forEach(inp => {
       const fire = () => {
@@ -5802,6 +5960,11 @@
         }
         if ((inp.classList.contains('member-first') || inp.classList.contains('member-last')) && list.firstElementChild === row) {
           inp.dataset.nameSource = String(inp.value || '').trim() ? 'typed' : '';
+        }
+        if (inp.classList.contains('member-first') || inp.classList.contains('member-last')) {
+          if (!guestRowNamed(row)) unpairGuestRow(row);
+          paintRoomShares(tabId);
+          suggestRoomsFromHeadcount(tabId);
         }
         onTabInput(tabId);
       };
@@ -5813,6 +5976,7 @@
 
     list.appendChild(row);
     paintEmptyFields(row);
+    paintRoomShares(tabId);
     refreshMemberPayments(tabId);
     refreshMemberAlbumLines(tabId);
 
@@ -5856,11 +6020,17 @@
     applyOrganiserName(row.querySelector('.member-first'), fieldVal(tabId, 'org_first'));
     applyOrganiserName(row.querySelector('.member-last'), fieldVal(tabId, 'org_last'));
     paintEmptyFields(row);
+    if (typeof paintRoomShares === 'function') paintRoomShares(tabId);
   }
 
   function removeMemberRow(btn, tabId) {
-    btn.closest('.member-row').remove();
+    const row = btn.closest('.member-row');
+    unpairGuestRow(row);
+    row.remove();
     renumberMemberRows(tabId);
+    closeShareMenus();
+    paintRoomShares(tabId);
+    suggestRoomsFromHeadcount(tabId);
     onTabInput(tabId);
   }
 
@@ -5885,6 +6055,7 @@
       const firstName = first || (last || email ? '' : legacy);
       if (firstName || last || email) {
         const paidBySel = row.querySelector('.member-paid-by');
+        const sharesWith = (row.dataset.sharesWith || '').trim();
         members.push({
           id: id ? parseInt(id) : null,
           first_name: firstName,
@@ -5895,6 +6066,9 @@
           deposit_date: toStorageISO(row.querySelector('.member-deposit-date')?.value || '') || '',
           final_payment_date: toStorageISO(row.querySelector('.member-paid-date')?.value || '') || '',
           paidBy: (paidBySel?.value || paidBySel?.dataset.value || '').trim(),
+          personId: (row.dataset.personId || '').trim(),
+          sharesWith,
+          roomType: sharesWith ? ((row.dataset.roomType || '') === 'twin' ? 'twin' : 'double') : '',
         });
       }
     });
@@ -6142,8 +6316,10 @@
       firstName: m.first_name || '',
       lastName: m.last_name || '',
       email: m.email || '',
-      personId: '',
+      personId: m.personId || '',
       paidBy: m.paidBy && m.paidBy !== 'self' ? String(m.paidBy) : '',
+      sharesWith: m.sharesWith || '',
+      roomType: m.roomType || '',
     }));
     x.payments = {
       group: !!document.getElementById(`t${tabId}_pay_group`)?.checked,
@@ -6178,6 +6354,7 @@
     x.money.balanceDueDate = toStorageISO(fieldVal(tabId, 'balance_due')) || '';
     x.money.fxNote = fieldVal(tabId, 'fx_note');
     x.leaderHalfPrice = checkVal(tabId, 'leader_half_price');
+    x.organiserBooksHotels = checkVal(tabId, 'organiser_books_hotels');
     const people = Number(x.headcount) || 0;
     const price = Number(x.money.pricePerPerson) || 0;
     const deposit = Number(x.money.depositAmount) || 0;
@@ -6261,6 +6438,7 @@
     const dayBox = tEl(tabId, 'day_trip');
     if (dayBox && (x.dayTrip === true || x.dayTrip === false)) dayBox.checked = x.dayTrip === true;
     setCheck(tabId, 'leader_half_price', x.leaderHalfPrice === true);
+    setCheck(tabId, 'organiser_books_hotels', x.organiserBooksHotels === true);
     const placeSel = tEl(tabId, 'tour_place');
     if (placeSel && (x.tourPlace === 'beading' || x.tourPlace === 'other')) placeSel.value = x.tourPlace;
     syncHotelPanel(tabId);
@@ -6280,7 +6458,11 @@
       if (!entry) return;
       const sel = entry.row.querySelector('.member-paid-by');
       if (sel) sel.dataset.value = g.paidBy && g.paidBy !== 'self' ? String(g.paidBy) : '';
+      if (g.personId) entry.row.dataset.personId = g.personId;
+      entry.row.dataset.sharesWith = g.sharesWith || '';
+      entry.row.dataset.roomType = g.sharesWith ? (g.roomType === 'twin' ? 'twin' : 'double') : '';
     });
+    paintRoomShares(tabId);
     refreshMemberPayments(tabId);
     applyMemberPayFold(tabId);
   }
@@ -6300,6 +6482,240 @@
     if (current) sel.value = current;
   }
 
+  function guestRowNamed(row) {
+    if (!row) return false;
+    const first = row.querySelector('.member-first')?.value.trim() || '';
+    const last = row.querySelector('.member-last')?.value.trim() || '';
+    return !!(first || last);
+  }
+
+  function guestRowLabel(row) {
+    const first = row.querySelector('.member-first')?.value.trim() || '';
+    const last = row.querySelector('.member-last')?.value.trim() || '';
+    return [first, last].filter(Boolean).join(' ');
+  }
+
+  function rowSharePartner(row) {
+    if (!row) return null;
+    const id = (row.dataset.personId || '').trim();
+    const partnerId = (row.dataset.sharesWith || '').trim();
+    if (!id || !partnerId) return null;
+    const list = row.closest('.members-list');
+    if (!list) return null;
+    const partner = [...list.querySelectorAll('.member-row')].find(other => (other.dataset.personId || '').trim() === partnerId);
+    if (!partner || partner === row) return null;
+    if ((partner.dataset.sharesWith || '').trim() !== id) return null;
+    if (!guestRowNamed(row) || !guestRowNamed(partner)) return null;
+    return partner;
+  }
+
+  function ensureGuestPersonId(row) {
+    const existing = (row.dataset.personId || '').trim();
+    if (existing) return existing;
+    const id = 'person_' + Math.random().toString(36).slice(2, 10);
+    row.dataset.personId = id;
+    return id;
+  }
+
+  function unpairGuestRow(row) {
+    if (!row) return;
+    const id = (row.dataset.personId || '').trim();
+    const partnerId = (row.dataset.sharesWith || '').trim();
+    const list = row.closest('.members-list');
+    row.dataset.sharesWith = '';
+    row.dataset.roomType = '';
+    if (!list) return;
+    list.querySelectorAll('.member-row').forEach(other => {
+      if (other === row) return;
+      const otherId = (other.dataset.personId || '').trim();
+      const otherPartner = (other.dataset.sharesWith || '').trim();
+      if ((id && otherPartner === id) || (partnerId && otherId === partnerId)) {
+        other.dataset.sharesWith = '';
+        other.dataset.roomType = '';
+      }
+    });
+  }
+
+  function pairGuestRows(tabId, row, other) {
+    if (!row || !other || row === other) return;
+    if (!guestRowNamed(row) || !guestRowNamed(other)) return;
+    unpairGuestRow(row);
+    unpairGuestRow(other);
+    const a = ensureGuestPersonId(row);
+    const b = ensureGuestPersonId(other);
+    row.dataset.sharesWith = b;
+    other.dataset.sharesWith = a;
+    row.dataset.roomType = 'double';
+    other.dataset.roomType = 'double';
+    closeShareMenus();
+    paintRoomShares(tabId);
+    suggestRoomsFromHeadcount(tabId);
+    onTabInput(tabId);
+  }
+
+  function setShareRoomType(tabId, row, type) {
+    const roomType = type === 'twin' ? 'twin' : 'double';
+    const partner = rowSharePartner(row);
+    if (!partner) return;
+    row.dataset.roomType = roomType;
+    partner.dataset.roomType = roomType;
+    paintRoomShares(tabId);
+    suggestRoomsFromHeadcount(tabId);
+    onTabInput(tabId);
+  }
+
+  function unpairedShareGuests(tabId, row) {
+    const list = document.getElementById(`t${tabId}_members_list`);
+    if (!list) return [];
+    const out = [];
+    list.querySelectorAll('.member-row').forEach(other => {
+      if (other === row || !guestRowNamed(other) || rowSharePartner(other)) return;
+      out.push({ row: other, name: guestRowLabel(other) });
+    });
+    return out;
+  }
+
+  function guestSharePlan(tabId) {
+    const BE = window.BookingExtras;
+    if (!BE || !BE.shareRoomPlan) return { singles: 0, doubles: 0, twins: 0, pairs: 0 };
+    const list = document.getElementById(`t${tabId}_members_list`);
+    if (!list) return BE.shareRoomPlan([]);
+    const guests = [];
+    list.querySelectorAll('.member-row').forEach(row => {
+      if (!guestRowNamed(row)) return;
+      guests.push({
+        personId: (row.dataset.personId || '').trim(),
+        sharesWith: (row.dataset.sharesWith || '').trim(),
+        roomType: (row.dataset.roomType || '').trim(),
+        named: true,
+      });
+    });
+    return BE.shareRoomPlan(guests);
+  }
+
+  function updateRoomShareHint(tabId) {
+    const el = document.getElementById(`t${tabId}_roomShareHint`);
+    if (!el) return;
+    const skip = (typeof tabIsDayTrip === 'function' && tabIsDayTrip(tabId))
+      || (typeof organiserBooksHotelsOn === 'function' && organiserBooksHotelsOn(tabId));
+    const singles = tEl(tabId, 'rooms_singles');
+    const typed = !!(singles && singles.dataset.roomsSource === 'typed');
+    const plan = !skip && typeof guestSharePlan === 'function' ? guestSharePlan(tabId) : null;
+    const text = typed && plan && plan.pairs && window.BookingExtras && BookingExtras.shareRoomHint
+      ? BookingExtras.shareRoomHint(plan)
+      : '';
+    el.textContent = text;
+    el.hidden = !text;
+  }
+
+  let openShareMenu = null;
+
+  function closeShareMenus() {
+    if (!openShareMenu) return;
+    openShareMenu.menu.remove();
+    if (openShareMenu.btn) openShareMenu.btn.setAttribute('aria-expanded', 'false');
+    openShareMenu = null;
+  }
+
+  function placeShareMenu(menu, btn) {
+    const rect = btn.getBoundingClientRect();
+    const width = Math.min(260, window.innerWidth - 16);
+    let left = rect.left;
+    if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;
+    if (left < 8) left = 8;
+    menu.style.width = width + 'px';
+    menu.style.left = left + 'px';
+    const below = rect.bottom + 4;
+    menu.style.top = below + 'px';
+    const height = menu.offsetHeight;
+    if (below + height > window.innerHeight - 8) menu.style.top = Math.max(8, rect.top - height - 4) + 'px';
+  }
+
+  function toggleShareMenu(tabId, row, btn) {
+    if (openShareMenu && openShareMenu.btn === btn) {
+      closeShareMenus();
+      return;
+    }
+    closeShareMenus();
+    const menu = document.createElement('div');
+    menu.className = 'member-share-menu';
+    menu.setAttribute('role', 'listbox');
+    const options = unpairedShareGuests(tabId, row);
+    if (!options.length) {
+      const empty = document.createElement('p');
+      empty.className = 'member-share-empty';
+      empty.textContent = 'No other guests to share with';
+      menu.appendChild(empty);
+    } else {
+      options.forEach(opt => {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.className = 'member-share-option';
+        choice.setAttribute('role', 'option');
+        choice.textContent = opt.name;
+        choice.addEventListener('click', (e) => {
+          e.stopPropagation();
+          pairGuestRows(tabId, row, opt.row);
+        });
+        menu.appendChild(choice);
+      });
+    }
+    document.body.appendChild(menu);
+    placeShareMenu(menu, btn);
+    btn.setAttribute('aria-expanded', 'true');
+    openShareMenu = { menu, btn };
+  }
+
+  function paintRoomShares(tabId) {
+    const list = document.getElementById(`t${tabId}_members_list`);
+    if (!list) return;
+    list.querySelectorAll('.member-row').forEach(row => {
+      const box = row.querySelector('.member-share');
+      if (!box) return;
+      const named = guestRowNamed(row);
+      box.hidden = !named;
+      const partner = rowSharePartner(row);
+      const tag = box.querySelector('.member-share-tag');
+      const shareBtn = box.querySelector('.member-share-btn');
+      const typeSwitch = box.querySelector('.room-type-switch');
+      const unshare = box.querySelector('.member-unshare');
+      if (!partner) {
+        if (tag) { tag.hidden = true; tag.textContent = ''; }
+        if (shareBtn) shareBtn.hidden = false;
+        if (typeSwitch) typeSwitch.hidden = true;
+        if (unshare) unshare.hidden = true;
+        return;
+      }
+      const type = (row.dataset.roomType === 'twin' || partner.dataset.roomType === 'twin') ? 'twin' : 'double';
+      row.dataset.roomType = type;
+      partner.dataset.roomType = type;
+      if (tag) {
+        tag.hidden = false;
+        tag.textContent = 'Room: shared with ' + guestRowLabel(partner);
+      }
+      if (shareBtn) shareBtn.hidden = true;
+      if (typeSwitch) {
+        typeSwitch.hidden = false;
+        typeSwitch.querySelectorAll('button').forEach(button => {
+          const on = button.dataset.type === type;
+          button.classList.toggle('is-on', on);
+          button.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+      }
+      if (unshare) unshare.hidden = false;
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest && (e.target.closest('.member-share-btn') || e.target.closest('.member-share-menu'))) return;
+    closeShareMenus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeShareMenus();
+  });
+  window.addEventListener('resize', () => closeShareMenus());
+  window.addEventListener('scroll', () => closeShareMenus(), true);
+
   function roomCountBlank(tabId) {
     return !fieldVal(tabId, 'rooms_singles') && !fieldVal(tabId, 'rooms_twins') && !fieldVal(tabId, 'rooms_doubles');
   }
@@ -6317,29 +6733,53 @@
   }
 
   // Empty rooms follow the headcount: that many singles, plus Keith’s own room.
+  // A mutual pair counts as one double or one twin, and the people left over stay singles.
   // A later edit to singles, twins, doubles, or his tick is kept and not replaced.
   function suggestRoomsFromHeadcount(tabId) {
     const singles = tEl(tabId, 'rooms_singles');
+    const twins = tEl(tabId, 'rooms_twins');
+    const doubles = tEl(tabId, 'rooms_doubles');
     const keith = tEl(tabId, 'rooms_keith');
     if (!singles) return;
-    if (singles.dataset.roomsSource === 'typed') return;
+    if (singles.dataset.roomsSource === 'typed') {
+      if (typeof updateRoomShareHint === 'function') updateRoomShareHint(tabId);
+      return;
+    }
     if (typeof tabIsDayTrip === 'function' && tabIsDayTrip(tabId)) return;
+    if (typeof organiserBooksHotelsOn === 'function' && organiserBooksHotelsOn(tabId)) return;
     const people = headcountPeople(tabId);
     const follow = singles.dataset.roomsSource === 'headcount';
     if (!follow && !roomCountBlank(tabId)) {
       singles.dataset.roomsSource = 'typed';
+      if (typeof updateRoomShareHint === 'function') updateRoomShareHint(tabId);
+      return;
+    }
+    const plan = (typeof guestSharePlan === 'function') ? guestSharePlan(tabId) : null;
+    if (plan && plan.pairs > 0) {
+      singles.value = String(plan.singles);
+      if (twins) twins.value = plan.twins ? String(plan.twins) : '';
+      if (doubles) doubles.value = plan.doubles ? String(plan.doubles) : '';
+      singles.dataset.roomsSource = 'headcount';
+      if (keith) keith.checked = true;
+      if (typeof updateRoomShareHint === 'function') updateRoomShareHint(tabId);
       return;
     }
     if (!people) {
       if (follow && !fieldVal(tabId, 'no_people')) {
         singles.value = '';
+        if (twins) twins.value = '';
+        if (doubles) doubles.value = '';
         singles.dataset.roomsSource = '';
       }
+      if (typeof updateRoomShareHint === 'function') updateRoomShareHint(tabId);
       return;
     }
     singles.value = String(people);
+    if (twins) twins.value = '';
+    if (doubles) doubles.value = '';
     singles.dataset.roomsSource = 'headcount';
     if (keith) keith.checked = true;
+    if (typeof updateRoomShareHint === 'function') updateRoomShareHint(tabId);
   }
 
   function savedKeithRoomOff(raw, keithColumn) {
@@ -6350,14 +6790,33 @@
     return choice === false || choice === 'false' || choice === 0 || choice === '0';
   }
 
+  function keithColumnIsOff(keithColumn) {
+    return keithColumn === false || keithColumn === 'false' || keithColumn === 0 || keithColumn === '0';
+  }
+
+  // Blank singles, twins and doubles were not typed. An old extras file can
+  // still say keithRoom false while the room columns are null. That is not a
+  // room plan, so the headcount fills the singles and Keith’s room stays on.
+  // A number in any room box, or keith_own_room saved false, is left as entered.
   function noteLoadedRooms(tabId, raw, keithColumn) {
     const singles = tEl(tabId, 'rooms_singles');
     const keith = tEl(tabId, 'rooms_keith');
     if (!singles) return;
-    if (savedKeithRoomOff(raw, keithColumn) && keith) keith.checked = false;
-    const keithOff = !!(keith && !keith.checked);
-    if (!roomCountBlank(tabId) || keithOff) singles.dataset.roomsSource = 'typed';
-    else singles.dataset.roomsSource = '';
+    const countsBlank = roomCountBlank(tabId);
+    const columnOff = keithColumnIsOff(keithColumn);
+    const savedOff = savedKeithRoomOff(raw, keithColumn);
+    const skipFill = (typeof tabIsDayTrip === 'function' && tabIsDayTrip(tabId))
+      || (typeof organiserBooksHotelsOn === 'function' && organiserBooksHotelsOn(tabId));
+    if (!countsBlank || columnOff) {
+      if (savedOff && keith) keith.checked = false;
+      singles.dataset.roomsSource = (!countsBlank || (keith && !keith.checked)) ? 'typed' : '';
+    } else if (skipFill) {
+      if (savedOff && keith) keith.checked = false;
+      singles.dataset.roomsSource = '';
+    } else {
+      if (keith) keith.checked = true;
+      singles.dataset.roomsSource = '';
+    }
     suggestRoomsFromHeadcount(tabId);
   }
 
@@ -6374,7 +6833,8 @@
       doubles: fieldVal(tabId, 'rooms_doubles'),
       keithRoom: checkVal(tabId, 'rooms_keith'),
     };
-    const roomMsg = BE.roomWarning(head, rooms);
+    const skipRooms = tabIsDayTrip(tabId) || organiserBooksHotelsOn(tabId);
+    const roomMsg = skipRooms ? '' : BE.roomWarning(head, rooms);
     const named = getMembersData(tabId).filter(m => (m.first_name || m.last_name)).length;
     const guestMsg = BE.guestCountWarning(head, named);
     if (roomEl) roomEl.innerHTML = roomMsg ? '<div class="room-warn" role="status">' + escapeHtml(roomMsg) + '</div>' : '';
@@ -6393,7 +6853,8 @@
       }
     }
     const neededEl = document.getElementById(`t${tabId}_roomsNeeded`);
-    if (neededEl) neededEl.textContent = tabIsDayTrip(tabId) ? '' : BE.roomsNeededLabel(rooms);
+    if (neededEl) neededEl.textContent = skipRooms ? '' : BE.roomsNeededLabel(rooms);
+    if (typeof updateRoomShareHint === 'function') updateRoomShareHint(tabId);
   }
 
   function updateDepositHint(tabId) {
@@ -6954,6 +7415,10 @@
   function syncHotelExpenseLines(tabId) {
     const list = document.getElementById(`t${tabId}_expenses_list`);
     if (!list) return;
+    if (organiserBooksHotelsOn(tabId)) {
+      list.innerHTML = '';
+      return;
+    }
     const mirrored = hotelDraftsForTab(tabId).map(hotelExpenseLineHtml).join('');
     const recorded = orphanHotelExpenses(tabId).map(o => hotelExpenseLineHtml({
       name: o.name || 'Hotel',
@@ -7140,7 +7605,12 @@
     return total;
   }
 
+  function organiserBooksHotelsOn(tabId) {
+    return !!tEl(tabId, 'organiser_books_hotels')?.checked;
+  }
+
   function getExpensesTotalCost(tabId) {
+    if (organiserBooksHotelsOn(tabId)) return 0;
     let total = 0;
     hotelDraftsForTab(tabId).forEach(d => { total += hotelCostNumber(d.priceRaw); });
     orphanHotelExpenses(tabId).forEach(o => { total += hotelCostNumber(o.cost); });
@@ -8148,6 +8618,10 @@
   // do not add up to arrival → departure. Extras such as Prague, the airport,
   // and side trips are not part of that sum.
   function suggestBlankHotelNights(tabId) {
+    if (typeof organiserBooksHotelsOn === 'function' && organiserBooksHotelsOn(tabId)) {
+      updateHotelNightsHint(tabId);
+      return;
+    }
     const len = !tabIsDayTrip(tabId) ? tourLengthFromDates(tabId) : null;
     const nights = len && len.nights >= 1 ? len.nights : 0;
     const fields = hotelNightFields(tabId);
@@ -8157,6 +8631,15 @@
 
   function updateHotelNightsHint(tabId) {
     const hint = document.getElementById(`t${tabId}_hotel_nights_hint`);
+    if (typeof organiserBooksHotelsOn === 'function' && organiserBooksHotelsOn(tabId)) {
+      if (hint) {
+        hint.hidden = true;
+        hint.textContent = '';
+        if (hint.classList) hint.classList.remove('hotel-nights-mismatch');
+      }
+      paintHotelNightsMismatch(tabId, false);
+      return;
+    }
     const len = !tabIsDayTrip(tabId) ? tourLengthFromDates(tabId) : null;
     const nights = len && len.nights >= 1 ? len.nights : 0;
     const fields = hotelNightFields(tabId);
@@ -8244,10 +8727,16 @@
   }
   function syncHotelPanel(tabId) {
     const day = tabIsDayTrip(tabId);
+    const organiser = organiserBooksHotelsOn(tabId);
     const dayPanel = document.getElementById(`t${tabId}_day_trip_panel`);
     const bookPanel = document.getElementById(`t${tabId}_hotel_booking_panel`);
+    const organiserNote = document.getElementById(`t${tabId}_organiser_hotels_note`);
     if (dayPanel) dayPanel.hidden = !day;
-    if (bookPanel) bookPanel.hidden = day;
+    if (bookPanel) {
+      bookPanel.hidden = day;
+      bookPanel.classList.toggle('organiser-arranges', organiser && !day);
+    }
+    if (organiserNote) organiserNote.hidden = !organiser || day;
     const hotelFold = document.querySelector(`#tabPanel_${tabId} details.fold[data-fold="hotel"]`);
     if (hotelFold) hotelFold.hidden = day;
     const placeWrap = document.getElementById(`t${tabId}_tour_place_wrap`);
@@ -8731,7 +9220,18 @@
     ) {
       markRoomsTyped(tabId);
     }
-    if (changedId.endsWith('_no_people') || changedId.endsWith('_day_trip')) {
+    if (changedId.endsWith('_no_people') || changedId.endsWith('_day_trip') || changedId.endsWith('_organiser_books_hotels')) {
+      if (changedId.endsWith('_organiser_books_hotels') && organiserBooksHotelsOn(tabId)) {
+        const singles = tEl(tabId, 'rooms_singles');
+        if (singles && singles.dataset.roomsSource === 'headcount') {
+          singles.value = '';
+          const twins = tEl(tabId, 'rooms_twins');
+          const doubles = tEl(tabId, 'rooms_doubles');
+          if (twins) twins.value = '';
+          if (doubles) doubles.value = '';
+          singles.dataset.roomsSource = '';
+        }
+      }
       suggestRoomsFromHeadcount(tabId);
     }
     if (changedId.endsWith('_leader_half_price')) {
@@ -8792,7 +9292,7 @@
     if (changedId.endsWith('_tour_arrival_date') || changedId.endsWith('_departure_date')) {
       applyTabYearTint(tabId);
     }
-    if (changedId.endsWith('_group_name') || changedId.endsWith('_what_hotel') || changedId.endsWith('_other_hotel_name') || changedId.endsWith('_day_trip') || changedId.endsWith('_tour_place')) {
+    if (changedId.endsWith('_group_name') || changedId.endsWith('_what_hotel') || changedId.endsWith('_other_hotel_name') || changedId.endsWith('_day_trip') || changedId.endsWith('_tour_place') || changedId.endsWith('_organiser_books_hotels')) {
       syncHotelPanel(tabId);
     }
     const priceEdited = changedId.endsWith('_price_per_person') && !changedId.endsWith('_price_per_person_cur');
@@ -8817,7 +9317,8 @@
     if (
       changedId.endsWith('_tour_arrival_date') ||
       changedId.endsWith('_departure_date') ||
-      changedId.endsWith('_day_trip')
+      changedId.endsWith('_day_trip') ||
+      changedId.endsWith('_organiser_books_hotels')
     ) {
       suggestBlankHotelNights(tabId);
     }
@@ -9205,7 +9706,7 @@
         : escapeHtml(shown);
       return `<span><strong>${escapeHtml(label)}</strong> ${body}</span>`;
     };
-    const roomsText = link.dayTrip ? 'No hotel room to book' : (link.roomsLabel || '—');
+    const roomsText = link.dayTrip ? 'No hotel room to book' : (link.organiserBooksHotels ? 'Organiser arranges hotels' : (link.roomsLabel || '—'));
     box.innerHTML = [
       bit('Who', link.people.join(', '), plannerLinkHref(tabId, 'people')),
       bit('Hotel', link.hotel, plannerLinkHref(tabId, 'hotels', link.year)),
@@ -10010,6 +10511,8 @@
     let rooms = '—';
     if (window.BookingExtras && BookingExtras.bookingIsDayTrip && BookingExtras.bookingIsDayTrip(record)) {
       rooms = 'No hotel room to book';
+    } else if (window.BookingExtras && BookingExtras.organiserBooksHotelsOn && BookingExtras.organiserBooksHotelsOn(record, extras)) {
+      rooms = 'Organiser arranges hotels';
     } else if (window.BookingExtras && BookingExtras.roomsNeededLabel) {
       rooms = BookingExtras.roomsNeededLabel(extras, column) || '—';
     }
