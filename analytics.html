@@ -1160,10 +1160,24 @@
       return Math.round((stored - delta) * 100) / 100;
     }
 
+    function bookingHotelAdjust(b) {
+      if (!window.BookingExtras || !BookingExtras.expensesStillIncludeHotels) return 0;
+      const rows = (allExpenses || []).filter(e => String(e.booking_id) === String(b && b.id));
+      return BookingExtras.expensesStillIncludeHotels(b, rows, bookingExtrasOf(b)) || 0;
+    }
+
+    function bookingExpenses(b) {
+      return Math.round(((Number(b && b.totalexpenses) || 0) - bookingHotelAdjust(b)) * 100) / 100;
+    }
+
+    function bookingProfit(b) {
+      return Math.round(((Number(b && b.totalprofit) || 0) + bookingHotelAdjust(b)) * 100) / 100;
+    }
+
     function getPotentialProfit(b) {
       // Potential profit before tour completes: expected revenue minus expected expenses.
       const revenue = bookingRevenue(b);
-      const expenses = Number(b.totalexpenses) || 0;
+      const expenses = bookingExpenses(b);
       return revenue - expenses;
     }
 
@@ -1185,8 +1199,8 @@
         if (!map.has(key)) map.set(key, { revenue: 0, realizedProfit: 0, potentialProfit: 0, expenses: 0, left: 0 });
         const v = map.get(key);
         v.revenue += bookingRevenue(b);
-        v.expenses += Number(b.totalexpenses) || 0;
-        if (isPastTour(b)) v.realizedProfit += Number(b.totalprofit) || 0;
+        v.expenses += bookingExpenses(b);
+        if (isPastTour(b)) v.realizedProfit += bookingProfit(b);
         else v.potentialProfit += getPotentialProfit(b);
       }
       const keys = [...map.keys()].sort();
@@ -1211,9 +1225,13 @@
 
       for (const e of allExpenses) {
         if (!ids.has(e.booking_id)) continue;
+        const booking = bookings.find(b => String(b.id) === String(e.booking_id));
+        const organiser = booking && window.BookingExtras && BookingExtras.organiserBooksHotelsOn
+          && BookingExtras.organiserBooksHotelsOn(booking, bookingExtrasOf(booking));
         const cost = Number(e.cost) || 0;
-        if (e.hotel_id || e.custom_hotel_name) hotels += cost;
-        else if (e.description) additional += cost;
+        if (e.hotel_id || e.custom_hotel_name) {
+          if (!organiser) hotels += cost;
+        } else if (e.description) additional += cost;
       }
 
       return { fuel, hotels, additional };
@@ -1375,7 +1393,7 @@
       const upcoming = paidBookings.filter(b => !isPastTour(b));
 
       const revenue = paidBookings.reduce((s, b) => s + (bookingRevenue(b)), 0);
-      const realizedProfit = completed.reduce((s, b) => s + (Number(b.totalprofit) || 0), 0);
+      const realizedProfit = completed.reduce((s, b) => s + bookingProfit(b), 0);
       const potentialProfit = upcoming.reduce((s, b) => s + getPotentialProfit(b), 0);
       const potentialMargin = revenue ? (potentialProfit / revenue) : 0;
 
@@ -1432,7 +1450,7 @@
     function topToursByProfit(bookings, limit = 8) {
       return [...bookings]
         .filter(b => b.group_name)
-        .sort((a, b) => (Number(b.totalprofit) || 0) - (Number(a.totalprofit) || 0))
+        .sort((a, b) => bookingProfit(b) - bookingProfit(a))
         .slice(0, limit);
     }
 
@@ -1463,8 +1481,8 @@
       const tours = paidBookings.length;
       const completed = paidBookings.filter(isPastTour);
       const upcoming = tours - completed.length;
-      const realizedProfit = completed.reduce((s, b) => s + (Number(b.totalprofit) || 0), 0);
-      const expenses = paidBookings.reduce((s, b) => s + (Number(b.totalexpenses) || 0), 0);
+      const realizedProfit = completed.reduce((s, b) => s + bookingProfit(b), 0);
+      const expenses = paidBookings.reduce((s, b) => s + bookingExpenses(b), 0);
       const revenue = paidBookings.reduce((s, b) => s + (bookingRevenue(b)), 0);
       const outstanding = outstandingBookings.reduce((s, b) => s + Math.max(0, bookingLeft(b)), 0);
       const potentialProfit = paidBookings.filter(b => !isPastTour(b)).reduce((s, b) => s + getPotentialProfit(b), 0);
@@ -1543,7 +1561,7 @@
         type: 'bar',
         data: {
           labels: top.map(b => b.group_name || `#${b.id}`),
-          datasets: [{ label: 'Profit', data: top.map(b => Number(b.totalprofit) || 0), backgroundColor: 'rgba(22,163,74,.65)' }]
+          datasets: [{ label: 'Profit', data: top.map(b => bookingProfit(b)), backgroundColor: 'rgba(22,163,74,.65)' }]
         },
         options: Object.assign({}, opts, {
           indexAxis: 'y',
@@ -1641,8 +1659,8 @@
         })
         .map(b => {
           const paid = (Number(b.depositmade) || 0) + (Number(b.finalpayment) || 0);
-          const expenses = Number(b.totalexpenses) || 0;
-          const profit = isPastTour(b) ? (Number(b.totalprofit) || 0) : getPotentialProfit(b);
+          const expenses = bookingExpenses(b);
+          const profit = isPastTour(b) ? bookingProfit(b) : getPotentialProfit(b);
           const left = Math.max(0, bookingLeft(b));
           const cls = profit >= 0 ? 'pos' : 'neg';
           const cur = currency;
