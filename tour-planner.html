@@ -10460,7 +10460,7 @@ function renderDayTabs() {
     }
     const place = placeNames.length ? placeNames.join(', ') : '—';
     const year = link.year || '—';
-    const rooms = link.dayTrip ? 'No hotel room to book' : (link.roomsLabel || '—');
+    const rooms = link.dayTrip ? 'No hotel room to book' : (link.organiserBooksHotels ? 'Organiser arranges hotels' : (link.roomsLabel || '—'));
     const hotelsHref = 'hotels.html' + (link.year ? ('?year=' + encodeURIComponent(link.year)) : '');
     return `<div class="booking-link" id="bookingLink">
       <button type="button" data-booking-link="people">Who: ${escapeHtml(people)}</button>
