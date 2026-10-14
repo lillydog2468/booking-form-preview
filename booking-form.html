@@ -684,6 +684,23 @@
       width: 76px; padding: 4px 8px; border: 1px solid #111; border-radius: 8px;
       font: inherit; font-weight: 800; color: #111; background: #fff;
     }
+    .org-label-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .leader-half {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; font-weight: 700; color: var(--text-secondary);
+      white-space: nowrap; cursor: pointer;
+    }
+    .leader-half input {
+      margin: 0; width: 14px; height: 14px; accent-color: #1a1d26;
+      appearance: none; border: 1.5px solid #6b7280; border-radius: 3px;
+      background: #fff; display: inline-grid; place-content: center; flex: 0 0 auto;
+    }
+    .leader-half input:checked {
+      background: #1a1d26 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.2 4.6 9 10 3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px 11px no-repeat;
+      border-color: #1a1d26;
+    }
     .record-item { position: relative; }
     .record-delay {
       position: relative; z-index: 4;
@@ -4235,7 +4252,7 @@
         <div class="field tour-fare-name"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label" title="The group name is the tour label, not the person’s name"></div>
         <div class="field-with-currency tour-fare-price"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
         <div class="field tour-fare-head"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
-        <div class="field-with-currency tour-fare-total"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to use headcount times the price per person"></div>${currencyMarkHTML()}</div>
+        <div class="field-with-currency tour-fare-total"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to follow the price per person. Leader half price takes a half off that organiser only."></div>${currencyMarkHTML()}</div>
         <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
         <p class="hint price-hint" id="t${t}_price_hint"></p>
       </div>`;
@@ -4400,7 +4417,13 @@
         ${tourKindControlsHTML(t)}
         ${pageHelp('<p>The group name is the tour label. The organiser is a person and is kept separate, even when the words match.</p>')}
         <div class="grid grid-3">
-          <div class="field"><label>Organiser’s first name</label><input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name"></div>
+          <div class="field">
+            <div class="org-label-row">
+              <label for="t${t}_org_first">Organiser’s first name</label>
+              <label class="leader-half"><input type="checkbox" id="t${t}_leader_half_price" title="Halve this organiser’s fare only. Other guests stay at the full price per person."> Leader half price</label>
+            </div>
+            <input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name">
+          </div>
           <div class="field"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
           <div class="field"><label>Organiser’s email</label><input type="email" id="t${t}_org_email" placeholder="name@example.com" autocomplete="email"></div>
         </div>
@@ -4473,6 +4496,7 @@
         <div class="grid grid-2">
           <div class="field"><label>Total Cost</label><div class="computed-value" id="t${t}_cv_totalcost">0</div></div>
           <div class="field"><label>Total Profit</label><div class="computed-value" id="t${t}_cv_totalprofit">0</div></div>
+          <div class="field"><label>Profit forecast</label><div class="computed-value" id="t${t}_cv_profit_forecast">0</div></div>
         </div>
       </div>
       <div class="section">
@@ -4550,7 +4574,13 @@
             <div class="grid grid-2">
               ${tourDatesFoldHTML(t)}
               ${tourFareHTML(t)}
-              <div class="field"><label>Organiser’s first name</label><input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name"></div>
+              <div class="field">
+                <div class="org-label-row">
+                  <label for="t${t}_org_first">Organiser’s first name</label>
+                  <label class="leader-half"><input type="checkbox" id="t${t}_leader_half_price" title="Halve this organiser’s fare only. Other guests stay at the full price per person."> Leader half price</label>
+                </div>
+                <input type="text" id="t${t}_org_first" placeholder="First name" autocomplete="given-name">
+              </div>
               <div class="field"><label>Organiser’s surname</label><input type="text" id="t${t}_org_last" placeholder="Surname" autocomplete="family-name"></div>
               <div class="field" style="grid-column:1/-1;"><label>Organiser’s email</label><input type="email" id="t${t}_org_email" placeholder="name@example.com" autocomplete="email"></div>
             </div>
@@ -5687,7 +5717,7 @@
     let tourPrice = null;
     if (tourRaw !== '' && Number.isFinite(Number(tourRaw))) tourPrice = Number(tourRaw);
     else if (perRaw !== '' && headRaw !== '' && Number.isFinite(Number(perRaw)) && Number.isFinite(Number(headRaw))) {
-      tourPrice = Number(perRaw) * Number(headRaw);
+      tourPrice = tourFareAmount(Number(headRaw), Number(perRaw), leaderHalfPriceOn(tabId));
     }
     const amountsComplete = countedRows > 0 && rowsWithAmount === countedRows;
     const bits = [];
@@ -6147,11 +6177,17 @@
     x.money.method = tEl(tabId, 'pay_method')?.value || '';
     x.money.balanceDueDate = toStorageISO(fieldVal(tabId, 'balance_due')) || '';
     x.money.fxNote = fieldVal(tabId, 'fx_note');
+    x.leaderHalfPrice = checkVal(tabId, 'leader_half_price');
     const people = Number(x.headcount) || 0;
     const price = Number(x.money.pricePerPerson) || 0;
     const deposit = Number(x.money.depositAmount) || 0;
     const finalPay = Number(fieldVal(tabId, 'finalpayment')) || 0;
-    if (people && price) x.money.balance = String(Math.round((people * price - deposit - finalPay) * 100) / 100);
+    const tourRaw = x.money.total;
+    const tourNum = tourRaw === '' ? null : Number(tourRaw);
+    let fare = null;
+    if (tourNum != null && Number.isFinite(tourNum)) fare = tourNum;
+    else if (people && price) fare = tourFareAmount(people, price, x.leaderHalfPrice);
+    if (fare != null) x.money.balance = String(Math.round((fare - deposit - finalPay) * 100) / 100);
     x.companion.joining = checkVal(tabId, 'companion_joining');
     x.companion.otherBookingId = tEl(tabId, 'companion_id')?.value || '';
     x.companion.otherGroup = fieldVal(tabId, 'companion_name');
@@ -6224,6 +6260,7 @@
     setField(tabId, 'delay_until', x.delayUntilYear || '');
     const dayBox = tEl(tabId, 'day_trip');
     if (dayBox && (x.dayTrip === true || x.dayTrip === false)) dayBox.checked = x.dayTrip === true;
+    setCheck(tabId, 'leader_half_price', x.leaderHalfPrice === true);
     const placeSel = tEl(tabId, 'tour_place');
     if (placeSel && (x.tourPlace === 'beading' || x.tourPlace === 'other')) placeSel.value = x.tourPlace;
     syncHotelPanel(tabId);
@@ -7378,7 +7415,7 @@
   const PRICE_BOOK_KEY = 'keith_tour_price_book_v1';
 
   function cleanStoredPrice(value) {
-    const s = String(value ?? '').trim().replace(/,/g, '');
+    const s = String(value ?? '').trim().replace(/,/g, '').replace(/^£\s*/, '');
     if (!s) return '';
     if (!/^\d+(\.\d+)?$/.test(s)) return '';
     return s;
@@ -7681,7 +7718,7 @@
     });
   }
 
-  function updatePriceHint(tabId, choice) {
+  function updatePriceHint(tabId, choice, appliedPrice) {
     const hint = document.getElementById(`t${tabId}_price_hint`);
     if (!hint) return;
     const picked = choice || priceYearChoice(tabId);
@@ -7715,10 +7752,13 @@
       const listLabel = fromFilter
         ? (yearName + ' list, from the year filter, until an arrival date is set')
         : (yearName + ' list');
+      const listed = appliedPrice || (source === 'table' ? cleanStoredPrice(tEl(tabId, 'price_per_person')?.value) : '');
       if (!len) {
         text = 'Usual beading area. The ' + listLabel + ' is in use. Enter the arrival and departure dates to match a length. Extra hotels are not filled from that list.';
+      } else if (listed) {
+        text = listLabel.charAt(0).toUpperCase() + listLabel.slice(1) + '. ' + lengthLabel(len.nights) + '. £' + listed + ' from the ' + yearName + ' beading list is in the price box. It can still be changed. Extra hotels are typed separately.';
       } else {
-        text = listLabel.charAt(0).toUpperCase() + listLabel.slice(1) + '. ' + lengthLabel(len.nights) + '. The price per person comes from the ' + yearName + ' beading list when that length has a price. Extra hotels are typed separately.';
+        text = listLabel.charAt(0).toUpperCase() + listLabel.slice(1) + '. ' + lengthLabel(len.nights) + '. The ' + yearName + ' beading list has no price for this length, so the price box is left empty. Extra hotels are typed separately.';
       }
     }
     if (warn) text = warn + ' ' + text;
@@ -7732,8 +7772,9 @@
     if (!input) return;
     const choice = priceYearChoice(tabId);
     updatePriceBookYearNote(tabId);
-    if (input.dataset.priceSource === 'typed') {
-      updatePriceHint(tabId, choice);
+    // A blank box is not a typed price, even if an earlier edit marked it as one.
+    if (input.dataset.priceSource === 'typed' && String(input.value || '').trim()) {
+      updatePriceHint(tabId, choice, '');
       return;
     }
     // The list year must be the arrival year whenever arrival is known.
@@ -7743,7 +7784,7 @@
         input.value = '';
         input.dataset.priceSource = '';
       }
-      updatePriceHint(tabId, choice);
+      updatePriceHint(tabId, choice, '');
       recalculateTab(tabId);
       return;
     }
@@ -7762,12 +7803,23 @@
     if (next) {
       input.value = next;
       input.dataset.priceSource = 'table';
-    } else if (input.dataset.priceSource === 'table') {
+    } else if (input.dataset.priceSource === 'table' || !String(input.value || '').trim()) {
       input.value = '';
       input.dataset.priceSource = '';
+      // The tour total was only headcount times this list price. Drop it with the price.
+      // A total Keith typed stays.
+      const tour = tEl(tabId, 'beading_tour_price');
+      if (tour && tour.dataset.tourPriceSource !== 'typed') {
+        tour.value = '';
+        tour.dataset.tourPriceSource = '';
+      }
     }
-    updatePriceHint(tabId, choice);
+    updatePriceHint(tabId, choice, next);
     recalculateTab(tabId);
+    if (typeof paintEmptyFields === 'function') {
+      const panel = typeof el === 'function' ? el('tabPanel_' + tabId) : null;
+      if (panel) paintEmptyFields(panel);
+    }
   }
 
   function refreshPricesOnOpenTabs() {
@@ -7784,6 +7836,20 @@
     applySuggestedPrice(tabId);
   }
 
+  function leaderHalfPriceOn(tabId) {
+    return !!tEl(tabId, 'leader_half_price')?.checked;
+  }
+
+  function tourFareAmount(people, price, half) {
+    const extras = typeof window !== 'undefined' ? window.BookingExtras : null;
+    if (extras && extras.tourFare) return extras.tourFare(people, price, half);
+    const p = Number(people);
+    const x = Number(price);
+    if (!Number.isFinite(p) || !Number.isFinite(x)) return null;
+    const count = half && p >= 1 ? p - 0.5 : p;
+    return Math.round(count * x * 100) / 100;
+  }
+
   function noteLoadedTourPrice(tabId) {
     const total = tEl(tabId, 'beading_tour_price');
     if (!total) return;
@@ -7797,9 +7863,15 @@
     const people = parseFloat(peopleRaw);
     const price = parseFloat(priceRaw);
     const canCompute = peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(price);
-    const product = canCompute ? (people * price).toFixed(2) : '';
+    const half = leaderHalfPriceOn(tabId);
+    const expected = canCompute ? tourFareAmount(people, price, half) : null;
+    const full = canCompute ? tourFareAmount(people, price, false) : null;
     const storedNorm = Number.isFinite(parseFloat(stored)) ? parseFloat(stored).toFixed(2) : stored;
-    total.dataset.tourPriceSource = product && storedNorm === product ? 'computed' : 'typed';
+    const expectedNorm = expected == null ? '' : expected.toFixed(2);
+    const fullNorm = full == null ? '' : full.toFixed(2);
+    const follows = expectedNorm && storedNorm === expectedNorm;
+    const staleFull = half && fullNorm && storedNorm === fullNorm;
+    total.dataset.tourPriceSource = follows || staleFull ? 'computed' : 'typed';
   }
 
   function nightsText(input) {
@@ -8662,6 +8734,18 @@
     if (changedId.endsWith('_no_people') || changedId.endsWith('_day_trip')) {
       suggestRoomsFromHeadcount(tabId);
     }
+    if (changedId.endsWith('_leader_half_price')) {
+      const total = tEl(tabId, 'beading_tour_price');
+      const people = parseFloat(String(tEl(tabId, 'no_people')?.value || '').trim());
+      const price = parseFloat(String(tEl(tabId, 'price_per_person')?.value || '').trim());
+      if (total && total.dataset.tourPriceSource === 'typed' && Number.isFinite(people) && Number.isFinite(price)) {
+        const other = tourFareAmount(people, price, !leaderHalfPriceOn(tabId));
+        const current = parseFloat(String(total.value || '').trim());
+        if (other != null && Number.isFinite(current) && current.toFixed(2) === other.toFixed(2)) {
+          total.dataset.tourPriceSource = 'computed';
+        }
+      }
+    }
 	    recalculateTab(tabId);
 	    markTabDirty(tabId, true);
 
@@ -8725,6 +8809,7 @@
       changedId.endsWith('_departure_date') ||
       changedId.endsWith('_day_trip') ||
       changedId.endsWith('_tour_place') ||
+      changedId.endsWith('_no_people') ||
       (priceEdited && eventType === 'input')
     ) {
       applySuggestedPrice(tabId);
@@ -8801,7 +8886,8 @@
 
   function recalculateTab(tabId) {
     syncHotelExpenseLines(tabId);
-    // Beading Tour Price = No. People × Price / Person
+    // Beading tour price follows headcount × price per person.
+    // Leader half price halves only that organiser's fare: (headcount - 0.5) × price.
     const peopleInput = tEl(tabId, 'no_people');
     const pricePerPersonInput = tEl(tabId, 'price_per_person');
     const beadingTourPriceInput = tEl(tabId, 'beading_tour_price');
@@ -8815,9 +8901,11 @@
       // would wipe the price, the amount left to pay, and the profit on save.
       // A tour price Keith has typed stays too, including a flat price with headcount 1.
       const canCompute = peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(pricePerPerson);
+      const half = leaderHalfPriceOn(tabId);
       if (canCompute && beadingTourPriceInput.dataset.tourPriceSource !== 'typed') {
-        const nextVal = (people * pricePerPerson).toFixed(2);
-        if (beadingTourPriceInput.value !== nextVal) beadingTourPriceInput.value = nextVal;
+        const next = tourFareAmount(people, pricePerPerson, half);
+        const nextVal = next == null ? '' : next.toFixed(2);
+        if (nextVal && beadingTourPriceInput.value !== nextVal) beadingTourPriceInput.value = nextVal;
         beadingTourPriceInput.dataset.tourPriceSource = 'computed';
       }
     }
@@ -8872,6 +8960,9 @@
   }
 
   async function getTabFormData(tabId) {
+    // A blank price is filled from the list before the row is saved.
+    // A price Keith typed is left as it is.
+    applySuggestedPrice(tabId);
     const data = {};
     FIELDS.forEach(f => {
       const input = tEl(tabId, f);
@@ -8917,6 +9008,7 @@
     data.totalcost = (data.beading_tour_price || 0) + totalExpenses;
     data.left_to_pay = (data.beading_tour_price || 0) - totalPayments;
     data.totalprofit = totalPayments - totalExpenses;
+    data.leader_half_price = checkVal(tabId, 'leader_half_price');
 
     // Child data
     data._members = getMembersData(tabId);
@@ -9049,6 +9141,7 @@
       applyBookingExtras(tabId, roomRaw, record.keith_own_room);
     }
     noteLoadedRooms(tabId, roomRaw, record.keith_own_room);
+    if (record.leader_half_price === true) setCheck(tabId, 'leader_half_price', true);
     noteLoadedPrice(tabId);
     noteLoadedNights(tabId);
     recalculateTab(tabId);
@@ -9665,18 +9758,32 @@
       keith_own_room: r.keithRoom === true ? true : (r.keithRoom === false ? false : null),
       payment_method: m.method || null,
       currency_note: m.fxNote || null,
+      leader_half_price: x.leaderHalfPrice === true,
     };
   }
   function isMissingColumnError(err) {
     return !!err && (err.code === 'PGRST204' || err.code === '42703');
   }
   async function saveBookingRow(bookingData, extras, bid) {
-    const full = { ...bookingData, ...bookingColumnsFromExtras(extras) };
-    const run = row => bid
-      ? sb.from(TABLE).update(row).eq('id', bid).select()
-      : sb.from(TABLE).insert([row]).select();
-    let res = await run(full);
-    if (isMissingColumnError(res.error)) res = await run(bookingData);
+    const optional = bookingColumnsFromExtras(extras);
+    const optionalKeys = Object.keys(optional);
+    let row = { ...bookingData, ...optional };
+    const run = payload => bid
+      ? sb.from(TABLE).update(payload).eq('id', bid).select()
+      : sb.from(TABLE).insert([payload]).select();
+    let res = await run(row);
+    const dropped = new Set();
+    while (res.error && isMissingColumnError(res.error) && dropped.size < optionalKeys.length) {
+      const named = missingColumnFromError(res.error);
+      const drop = (named && optionalKeys.includes(named) && !dropped.has(named))
+        ? named
+        : optionalKeys.find(col => !dropped.has(col));
+      if (!drop) break;
+      dropped.add(drop);
+      row = { ...row };
+      delete row[drop];
+      res = await run(row);
+    }
     return res;
   }
   function memberMoneyOrNull(value) {
