@@ -114,8 +114,66 @@
       delayUntilYear: '',
       rescheduledFromId: '',
       dayTrip: null,
-      tourPlace: ''
+      tourPlace: '',
+      leaderHalfPrice: false
     };
+  }
+
+  function finiteOrNull(v) {
+    if (v == null) return null;
+    if (typeof v === 'string' && v.trim() === '') return null;
+    var n = typeof v === 'number' ? v : Number(str(v).trim());
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Headcount times the price per person. Leader half price takes a half off that one fare. */
+  function tourFare(people, price, half) {
+    var p = Number(people);
+    var x = Number(price);
+    if (!Number.isFinite(p) || !Number.isFinite(x)) return null;
+    var count = half && p >= 1 ? p - 0.5 : p;
+    return Math.round(count * x * 100) / 100;
+  }
+
+  function leaderHalfOn(booking, extras) {
+    if (booking && booking.leader_half_price === true) return true;
+    return !!(extras && extras.leaderHalfPrice === true);
+  }
+
+  /**
+   * Tour revenue in pounds.
+   * A stored beading tour price is kept, including one already halved and one
+   * that was typed by hand. When leader half price is on and the stored total
+   * is still the full headcount product, the leader's half fare is taken off.
+   * With no stored total, the same rule is applied to price × people.
+   */
+  function tourRevenue(booking, extras) {
+    var b = booking || {};
+    var half = leaderHalfOn(b, extras);
+    var price = finiteOrNull(b.price_per_person);
+    var people = finiteOrNull(b.no_people);
+    if (price == null && extras && extras.money) price = finiteOrNull(extras.money.pricePerPerson);
+    if (people == null && extras) people = finiteOrNull(extras.headcount);
+    var stored = finiteOrNull(b.beading_tour_price);
+    if (stored == null && extras && extras.money) stored = finiteOrNull(extras.money.total);
+    if (stored != null) {
+      if (half && price != null && people != null) {
+        var full = tourFare(people, price, false);
+        if (full != null && Math.abs(stored - full) < 0.02) return tourFare(people, price, true);
+      }
+      return Math.round(stored * 100) / 100;
+    }
+    if (price != null && people != null) return tourFare(people, price, half);
+    return null;
+  }
+
+  /** Pounds to take off a stored total that is still the undiscounted headcount product. */
+  function leaderHalfDelta(booking, extras) {
+    var stored = finiteOrNull(booking && booking.beading_tour_price);
+    var revenue = tourRevenue(booking, extras);
+    if (stored == null || revenue == null) return 0;
+    var delta = Math.round((stored - revenue) * 100) / 100;
+    return delta > 0 ? delta : 0;
   }
 
   function normaliseDelayYear(value) {
@@ -236,6 +294,7 @@
     base.rescheduledFromId = normaliseLinkedBookingId(src.rescheduledFromId);
     base.dayTrip = src.dayTrip === true ? true : (src.dayTrip === false ? false : null);
     base.tourPlace = src.tourPlace === 'other' ? 'other' : (src.tourPlace === 'beading' ? 'beading' : '');
+    base.leaderHalfPrice = src.leaderHalfPrice === true;
     return base;
   }
 
@@ -263,6 +322,7 @@
     if (x.rescheduledFromId) return true;
     if (x.dayTrip === true || x.dayTrip === false) return true;
     if (x.tourPlace === 'beading' || x.tourPlace === 'other') return true;
+    if (x.leaderHalfPrice === true) return true;
     return false;
   }
 
@@ -974,6 +1034,10 @@
     hotelOnBooking: hotelOnBooking,
     placesOnBooking: placesOnBooking,
     bookingIsDayTrip: bookingIsDayTrip,
-    bookingLink: bookingLink
+    bookingLink: bookingLink,
+    tourFare: tourFare,
+    leaderHalfOn: leaderHalfOn,
+    tourRevenue: tourRevenue,
+    leaderHalfDelta: leaderHalfDelta
   };
 })(typeof window !== 'undefined' ? window : globalThis);
