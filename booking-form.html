@@ -1167,20 +1167,42 @@
     }
     [data-theme="dark"] .month-pill { background: rgba(255,255,255,.06); }
     .month-pill.active {
-      background: rgba(79,70,229,.14);
-      border-color: rgba(79,70,229,.26);
+      background: rgba(79,70,229,.24);
+      border-color: rgba(79,70,229,.62);
       color: var(--text);
+      box-shadow: inset 0 2px 0 rgba(255,255,255,.45), inset 0 -3px 6px rgba(49,46,129,.35);
+    }
+    [data-theme="dark"] .month-pill.active {
+      background: rgba(129,140,248,.32);
+      border-color: rgba(165,180,252,.7);
+      box-shadow: inset 0 2px 0 rgba(255,255,255,.16), inset 0 -3px 6px rgba(0,0,0,.45);
     }
     .month-pill.action { color: var(--text); }
     .month-pill:hover { filter: brightness(0.98); }
+    .month-pill:active { transform: translateY(1px); }
 
     .year-cal-months {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      display: flex;
+      flex-direction: column;
       gap: 10px;
-      max-height: 55vh;
+      max-height: 70vh;
       overflow: auto;
-      padding-right: 4px;
+      padding: 0 4px 8px 0;
+    }
+    @media (max-width: 600px) {
+      .year-cal-filters { gap: 8px; }
+      .month-pill {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 8px 10px;
+        font-size: 13px;
+        touch-action: manipulation;
+      }
+      .year-cal-months {
+        max-height: none;
+        overflow: visible;
+        padding: 0 0 12px;
+      }
     }
     .yc-month {
       border: 1px solid var(--layout-panel-border);
@@ -4516,20 +4538,20 @@
       </div>
       <p class="hint year-cal-hotel-key">Hotel nights use the same colour as each hotel. The departure morning is half the last hotel’s colour.</p>
       <div class="year-cal-filters" id="t${t}_monthFilters">
-        <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'all')" title="Show all months">All</button>
-        <button type="button" class="month-pill action" onclick="setTabCalendarMonths('${t}', 'none')" title="Hide all months">None</button>
-        <button type="button" class="month-pill" id="t${t}_m0" onclick="toggleTabCalendarMonth('${t}', 0)">Jan</button>
-        <button type="button" class="month-pill" id="t${t}_m1" onclick="toggleTabCalendarMonth('${t}', 1)">Feb</button>
-        <button type="button" class="month-pill" id="t${t}_m2" onclick="toggleTabCalendarMonth('${t}', 2)">Mar</button>
-        <button type="button" class="month-pill" id="t${t}_m3" onclick="toggleTabCalendarMonth('${t}', 3)">Apr</button>
-        <button type="button" class="month-pill" id="t${t}_m4" onclick="toggleTabCalendarMonth('${t}', 4)">May</button>
-        <button type="button" class="month-pill" id="t${t}_m5" onclick="toggleTabCalendarMonth('${t}', 5)">Jun</button>
-        <button type="button" class="month-pill" id="t${t}_m6" onclick="toggleTabCalendarMonth('${t}', 6)">Jul</button>
-        <button type="button" class="month-pill" id="t${t}_m7" onclick="toggleTabCalendarMonth('${t}', 7)">Aug</button>
-        <button type="button" class="month-pill" id="t${t}_m8" onclick="toggleTabCalendarMonth('${t}', 8)">Sep</button>
-        <button type="button" class="month-pill" id="t${t}_m9" onclick="toggleTabCalendarMonth('${t}', 9)">Oct</button>
-        <button type="button" class="month-pill" id="t${t}_m10" onclick="toggleTabCalendarMonth('${t}', 10)">Nov</button>
-        <button type="button" class="month-pill" id="t${t}_m11" onclick="toggleTabCalendarMonth('${t}', 11)">Dec</button>
+        <button type="button" class="month-pill action" data-month-mode="all" aria-pressed="false" onclick="setTabCalendarMonths('${t}', 'all')" title="Show all months">All</button>
+        <button type="button" class="month-pill action" data-month-mode="none" aria-pressed="false" onclick="setTabCalendarMonths('${t}', 'none')" title="Hide all months">None</button>
+        <button type="button" class="month-pill" id="t${t}_m0" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 0)">Jan</button>
+        <button type="button" class="month-pill" id="t${t}_m1" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 1)">Feb</button>
+        <button type="button" class="month-pill" id="t${t}_m2" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 2)">Mar</button>
+        <button type="button" class="month-pill" id="t${t}_m3" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 3)">Apr</button>
+        <button type="button" class="month-pill" id="t${t}_m4" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 4)">May</button>
+        <button type="button" class="month-pill" id="t${t}_m5" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 5)">Jun</button>
+        <button type="button" class="month-pill" id="t${t}_m6" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 6)">Jul</button>
+        <button type="button" class="month-pill" id="t${t}_m7" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 7)">Aug</button>
+        <button type="button" class="month-pill" id="t${t}_m8" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 8)">Sep</button>
+        <button type="button" class="month-pill" id="t${t}_m9" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 9)">Oct</button>
+        <button type="button" class="month-pill" id="t${t}_m10" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 10)">Nov</button>
+        <button type="button" class="month-pill" id="t${t}_m11" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 11)">Dec</button>
       </div>
       <div class="year-cal-months" id="t${t}_yearCalendar"></div>
     </div>
@@ -4906,6 +4928,26 @@
     return (mask & (1 << mi)) !== 0;
   }
 
+  const LAYOUT_CALENDAR_MONTHS_KEY = 'layout_calendar_months';
+
+  function savedCalendarMonths() {
+    try {
+      const raw = localStorage.getItem(LAYOUT_CALENDAR_MONTHS_KEY);
+      if (raw == null || raw === '') return null;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return null;
+      return (n >>> 0) & 0xFFF;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function rememberCalendarMonths(mask) {
+    try {
+      localStorage.setItem(LAYOUT_CALENDAR_MONTHS_KEY, String((Number(mask) >>> 0) & 0xFFF));
+    } catch (err) {}
+  }
+
   function setTabCalendarMonthsMask(tabId, mask) {
     const td = tabs.get(tabId);
     if (!td) return;
@@ -4933,8 +4975,9 @@
     const td = tabs.get(tabId);
     if (td) { td.calendarYearPinned = true; td.calendarMonthsPinned = true; }
     const m = String(mode || '').toLowerCase();
-    if (m === 'none') setTabCalendarMonthsMask(tabId, 0);
-    else setTabCalendarMonthsMask(tabId, 0xFFF);
+    const next = m === 'none' ? 0 : 0xFFF;
+    setTabCalendarMonthsMask(tabId, next);
+    rememberCalendarMonths(next);
     renderYearCalendar(tabId);
   }
 
@@ -4943,17 +4986,34 @@
     if (td) { td.calendarYearPinned = true; td.calendarMonthsPinned = true; }
     const mi = Number(monthIndex);
     if (!Number.isFinite(mi) || mi < 0 || mi > 11) return;
-    // A new tour picks one month at a time. A saved tour keeps the overview toggle.
-    if (td && td.startedNew) setTabCalendarMonthsMask(tabId, 1 << mi);
-    else setTabCalendarMonthsMask(tabId, getTabCalendarMonthsMask(tabId) ^ (1 << mi));
+    const next = getTabCalendarMonthsMask(tabId) ^ (1 << mi);
+    setTabCalendarMonthsMask(tabId, next);
+    rememberCalendarMonths(next);
     renderYearCalendar(tabId);
   }
 
   function syncTabCalendarMonthFilterUI(tabId) {
+    const mask = getTabCalendarMonthsMask(tabId) & 0xFFF;
     for (let mi = 0; mi < 12; mi++) {
       const btn = tEl(tabId, 'm' + mi);
       if (!btn) continue;
-      btn.classList.toggle('active', isTabCalendarMonthSelected(tabId, mi));
+      const on = (mask & (1 << mi)) !== 0;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    const filters = tEl(tabId, 'monthFilters');
+    if (!filters) return;
+    const allBtn = filters.querySelector('[data-month-mode="all"]');
+    const noneBtn = filters.querySelector('[data-month-mode="none"]');
+    if (allBtn) {
+      const on = mask === 0xFFF;
+      allBtn.classList.toggle('active', on);
+      allBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    if (noneBtn) {
+      const on = mask === 0;
+      noneBtn.classList.toggle('active', on);
+      noneBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
   }
 
@@ -5002,7 +5062,7 @@
         title: String(b.group_name || (b.id ? 'Booking #' + b.id : 'Booking')).trim() || 'Booking',
         cancelled: bookingIsCancelled(b),
         hotel: b.hotel_name || '',
-        people: b.no_people,
+        people: (typeof BookingExtras !== 'undefined' && BookingExtras.bookingHeadcount) ? BookingExtras.bookingHeadcount(b) : b.no_people,
         dayTrip: yearTourIsDayTrip(b),
         arrival: range ? toISODateUTC(range.start) : '',
         departure: range ? toISODateUTC(range.end) : '',
@@ -5372,13 +5432,19 @@
     const currentBookingId = tabData?.bookingId || null;
     const currentRange = getTabTourRangeUTC(tabId);
     const todayUTC = utcStartOfToday();
-    if (tabData && !tabData.calendarMonthsPinned) {
-      if (tabData.startedNew && !currentRange) {
-        const today = utcStartOfToday();
-        const month = year === today.getUTCFullYear() ? today.getUTCMonth() : 0;
-        tabData.calendarMonthsMask = 1 << month;
-      } else {
-        tabData.calendarMonthsMask = monthsMaskForRangeInYearUTC(currentRange, year);
+    if (tabData) {
+      const savedMonths = savedCalendarMonths();
+      if (savedMonths != null) {
+        tabData.calendarMonthsMask = savedMonths;
+        tabData.calendarMonthsPinned = true;
+      } else if (!tabData.calendarMonthsPinned) {
+        if (!currentRange && tabData.startedNew) {
+          const today = utcStartOfToday();
+          const month = year === today.getUTCFullYear() ? today.getUTCMonth() : 0;
+          tabData.calendarMonthsMask = 1 << month;
+        } else {
+          tabData.calendarMonthsMask = monthsMaskForRangeInYearUTC(currentRange, year);
+        }
       }
     }
     syncTabCalendarMonthFilterUI(tabId);
@@ -5506,18 +5572,6 @@
       ? monthHtml.join('')
       : `<div style="padding:10px 2px;color:var(--text-secondary);font-weight:800;font-size:12px;">No months selected.</div>`;
     bindYearCalendarPicks(tabId, calendarEl);
-
-    // Keep scrolling contained inside the calendar (avoid scrolling the whole layout panel).
-    if (currentRange && currentRange.start.getUTCFullYear() === year) {
-      const targetMonth = currentRange.start.getUTCMonth();
-      const target = calendarEl.querySelector(`.yc-month[data-month="${targetMonth}"]`);
-      if (target) {
-        requestAnimationFrame(() => {
-          const top = (target.offsetTop || 0) - 2;
-          calendarEl.scrollTop = Math.max(0, top);
-        });
-      }
-    }
   }
 
   function refreshAllYearCalendars() {
@@ -8487,6 +8541,7 @@
     const warn = mismatchWarning(picked);
     const source = tEl(tabId, 'price_per_person')?.dataset.priceSource || '';
     const yearName = picked.listYear || '';
+    let missingEntry = false;
     if (warn && source === 'typed') {
       hint.textContent = warn + ' A price already typed on this booking is left as it is.';
       hint.classList.add('price-year-warn');
@@ -8507,7 +8562,7 @@
         ? 'This tour is somewhere other than the usual beading area, so it is not on the ' + yearName + ' price list. Type the price here. Extra hotels stay as amounts you type yourself.'
         : 'This tour is somewhere other than the usual beading area, so it is not on the price list. Type the price here. Extra hotels stay as amounts you type yourself.';
     } else if (!yearName) {
-      text = 'Set the arrival date to choose the price list. A suggested price is not taken from the current calendar year. The year filter is used only when there is no arrival date.';
+      text = 'Set the arrival date to choose the price list. A headcount on its own does not pick a price. A suggested price is not taken from the current calendar year. The year filter is used only when there is no arrival date.';
     } else {
       const len = tourLengthFromDates(tabId);
       const fromFilter = !picked.arrivalYear && picked.filterYear;
@@ -8520,13 +8575,15 @@
       } else if (listed) {
         text = listLabel.charAt(0).toUpperCase() + listLabel.slice(1) + '. ' + lengthLabel(len.nights) + '. £' + listed + ' from the ' + yearName + ' beading list is in the price box. It can still be changed. Extra hotels are typed separately.';
       } else {
-        text = listLabel.charAt(0).toUpperCase() + listLabel.slice(1) + '. ' + lengthLabel(len.nights) + '. The ' + yearName + ' beading list has no price for this length, so the price box is left empty. Extra hotels are typed separately.';
+        const nightWord = len.nights === 1 ? 'night' : 'nights';
+        text = 'The price book has no entry for ' + yearName + ', ' + len.nights + ' ' + nightWord + ', so the price box is left empty.';
+        missingEntry = true;
       }
     }
     if (warn) text = warn + ' ' + text;
     hint.textContent = text;
-    hint.classList.toggle('price-year-warn', !!warn);
-    hint.setAttribute('role', warn ? 'alert' : 'status');
+    hint.classList.toggle('price-year-warn', !!warn || missingEntry);
+    hint.setAttribute('role', (warn || missingEntry) ? 'alert' : 'status');
   }
 
   function applySuggestedPrice(tabId) {
@@ -9525,6 +9582,7 @@
         }
       }
       suggestRoomsFromHeadcount(tabId);
+      if (changedId.endsWith('_no_people')) suggestBlankHotelNights(tabId);
     }
     if (changedId.endsWith('_hotel_price') && (eventType === 'input' || eventType === 'change')) {
       const hotelCostInput = document.getElementById(changedId);
