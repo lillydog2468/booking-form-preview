@@ -992,28 +992,61 @@
     return n == null ? 0 : Math.round(n * 100) / 100;
   }
 
+  function bookingHeadcount(booking) {
+    var n = finiteOrNull(booking && booking.no_people);
+    if (n == null || n < 0) return 0;
+    return n;
+  }
+
+  function isoDayUTC(value) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim());
+    if (!m) return null;
+    return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+
+  /** Nights from arrival to departure. A same-day tour, or a missing date, is 0. */
+  function bookingNights(booking) {
+    var start = isoDayUTC(booking && booking.tour_arrival_date);
+    var end = isoDayUTC(booking && booking.departure_date);
+    if (start == null || end == null || end < start) return 0;
+    return Math.round((end - start) / 86400000);
+  }
+
   /**
    * One year's tours are those that start in that year.
    * A finished year uses the saved profit. This year and later use the forecast.
+   * People, nights, and people-nights use that same set of bookings.
+   * People-nights is the sum of each tour's headcount times its nights.
    */
   function yearProfitTotal(bookings, year, todayYear) {
     var y = Number(year);
     var past = y < Number(todayYear);
     var seen = {};
     var sum = 0;
+    var people = 0;
+    var nights = 0;
+    var peopleNights = 0;
     (bookings || []).forEach(function (b) {
       if (!b) return;
       if (Number(arrivalYear(b.tour_arrival_date)) !== y) return;
       var id = b.id == null ? '' : String(b.id);
       if (id && seen[id]) return;
       if (id) seen[id] = true;
+      var head = bookingHeadcount(b);
+      var stay = bookingNights(b);
       sum += past ? savedProfit(b) : forecastProfit(b);
+      people += head;
+      nights += stay;
+      peopleNights += head * stay;
     });
     return {
       year: y,
       past: past,
       amount: Math.round(sum * 100) / 100,
-      label: y + (past ? ' profit: ' : ' projected profit: ')
+      people: Math.round(people * 100) / 100,
+      nights: nights,
+      peopleNights: Math.round(peopleNights * 100) / 100,
+      label: y + (past ? ' profit ' : ' projected profit ')
     };
   }
 
