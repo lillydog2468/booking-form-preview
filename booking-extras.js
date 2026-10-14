@@ -962,6 +962,61 @@
     return 0;
   }
 
+  function bookingExpenseRows(booking) {
+    return [].concat((booking && booking._expenses) || [], (booking && booking._additional_expenses) || []);
+  }
+
+  /**
+   * The form's profit forecast: tour price, with leader half price, minus
+   * hotel, fuel and other expenses. Organiser-books-hotels leaves the hotel out.
+   */
+  function forecastProfit(booking, expenseRows) {
+    var extras = extrasOfBooking(booking);
+    var rows = expenseRows || bookingExpenseRows(booking);
+    var revenue = tourRevenue(booking, extras);
+    if (revenue == null) revenue = 0;
+    var stored = booking ? finiteOrNull(booking.totalexpenses) : null;
+    var expenses;
+    if (stored != null) {
+      expenses = stored - (expensesStillIncludeHotels(booking, rows, extras) || 0);
+    } else {
+      var fuel = finiteOrNull(booking && booking.fuelcost) || 0;
+      var hotels = organiserBooksHotelsOn(booking, extras) ? 0 : hotelExpenseTotal(rows);
+      expenses = fuel + otherExpenseTotal(rows) + hotels;
+    }
+    return Math.round((revenue - expenses) * 100) / 100;
+  }
+
+  function savedProfit(booking) {
+    var n = finiteOrNull(booking && booking.totalprofit);
+    return n == null ? 0 : Math.round(n * 100) / 100;
+  }
+
+  /**
+   * One year's tours are those that start in that year.
+   * A finished year uses the saved profit. This year and later use the forecast.
+   */
+  function yearProfitTotal(bookings, year, todayYear) {
+    var y = Number(year);
+    var past = y < Number(todayYear);
+    var seen = {};
+    var sum = 0;
+    (bookings || []).forEach(function (b) {
+      if (!b) return;
+      if (Number(arrivalYear(b.tour_arrival_date)) !== y) return;
+      var id = b.id == null ? '' : String(b.id);
+      if (id && seen[id]) return;
+      if (id) seen[id] = true;
+      sum += past ? savedProfit(b) : forecastProfit(b);
+    });
+    return {
+      year: y,
+      past: past,
+      amount: Math.round(sum * 100) / 100,
+      label: y + (past ? ' profit: ' : ' projected profit: ')
+    };
+  }
+
   function bookingIsDayTrip(booking, plan) {
     var extras = extrasOfBooking(booking);
     var flagged = extras ? explicitDayTrip(extras.dayTrip) : null;
@@ -1154,6 +1209,9 @@
     organiserBooksHotelsOn: organiserBooksHotelsOn,
     hotelExpenseTotal: hotelExpenseTotal,
     expensesStillIncludeHotels: expensesStillIncludeHotels,
+    forecastProfit: forecastProfit,
+    savedProfit: savedProfit,
+    yearProfitTotal: yearProfitTotal,
     bookingLink: bookingLink,
     tourFare: tourFare,
     leaderHalfOn: leaderHalfOn,
