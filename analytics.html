@@ -17,6 +17,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="auth-gate.js"></script>
+  <script src="booking-extras.js"></script>
   <script src="place-categories.js"></script>
   <script src="global-search.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -1086,7 +1087,7 @@
     }
 
     function isFullyPaid(b) {
-      return (Number(b.left_to_pay) || 0) <= 0;
+      return bookingLeft(b) <= 0;
     }
 
     function computeFinalPaymentDueUTC(b) {
@@ -1134,13 +1135,34 @@
     function getFilteredSets() {
       const raw = filterBookingsRaw();
       const paid = raw.filter(isFullyPaid);
-      const outstanding = raw.filter(b => (Number(b.left_to_pay) || 0) > 0);
+      const outstanding = raw.filter(b => bookingLeft(b) > 0);
       return { raw, paid, outstanding };
+    }
+
+    function bookingExtrasOf(b) {
+      if (!window.BookingExtras || !b) return null;
+      return BookingExtras.splitNotesAndExtras(b.extra_notes).extras;
+    }
+
+    function bookingRevenue(b) {
+      const extras = bookingExtrasOf(b);
+      if (window.BookingExtras && BookingExtras.tourRevenue) {
+        const n = BookingExtras.tourRevenue(b, extras);
+        return Number(n) || 0;
+      }
+      return Number(b && b.beading_tour_price) || 0;
+    }
+
+    function bookingLeft(b) {
+      const stored = Number(b && b.left_to_pay) || 0;
+      if (!window.BookingExtras || !BookingExtras.leaderHalfDelta) return stored;
+      const delta = BookingExtras.leaderHalfDelta(b, bookingExtrasOf(b)) || 0;
+      return Math.round((stored - delta) * 100) / 100;
     }
 
     function getPotentialProfit(b) {
       // Potential profit before tour completes: expected revenue minus expected expenses.
-      const revenue = Number(b.beading_tour_price) || 0;
+      const revenue = bookingRevenue(b);
       const expenses = Number(b.totalexpenses) || 0;
       return revenue - expenses;
     }
@@ -1153,7 +1175,7 @@
         const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
         if (!map.has(key)) map.set(key, { revenue: 0, realizedProfit: 0, potentialProfit: 0, expenses: 0, left: 0 });
         const v = map.get(key);
-        const left = Number(b.left_to_pay) || 0;
+        const left = bookingLeft(b);
         if (left > 0) v.left += left;
       }
       for (const b of paidBookings) {
@@ -1162,7 +1184,7 @@
         const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
         if (!map.has(key)) map.set(key, { revenue: 0, realizedProfit: 0, potentialProfit: 0, expenses: 0, left: 0 });
         const v = map.get(key);
-        v.revenue += Number(b.beading_tour_price) || 0;
+        v.revenue += bookingRevenue(b);
         v.expenses += Number(b.totalexpenses) || 0;
         if (isPastTour(b)) v.realizedProfit += Number(b.totalprofit) || 0;
         else v.potentialProfit += getPotentialProfit(b);
@@ -1352,13 +1374,13 @@
       const completed = paidBookings.filter(isPastTour);
       const upcoming = paidBookings.filter(b => !isPastTour(b));
 
-      const revenue = paidBookings.reduce((s, b) => s + (Number(b.beading_tour_price) || 0), 0);
+      const revenue = paidBookings.reduce((s, b) => s + (bookingRevenue(b)), 0);
       const realizedProfit = completed.reduce((s, b) => s + (Number(b.totalprofit) || 0), 0);
       const potentialProfit = upcoming.reduce((s, b) => s + getPotentialProfit(b), 0);
       const potentialMargin = revenue ? (potentialProfit / revenue) : 0;
 
       const outstandingTours = outstandingBookings;
-      const outstanding = outstandingTours.reduce((s, b) => s + (Number(b.left_to_pay) || 0), 0);
+      const outstanding = outstandingTours.reduce((s, b) => s + bookingLeft(b), 0);
 
       const dueTours = outstandingTours
         .map(b => {
@@ -1419,7 +1441,7 @@
       let left = 0;
       for (const b of bookings) {
         paid += (Number(b.depositmade) || 0) + (Number(b.finalpayment) || 0);
-        left += Number(b.left_to_pay) || 0;
+        left += bookingLeft(b);
       }
       return { paid, left };
     }
@@ -1443,8 +1465,8 @@
       const upcoming = tours - completed.length;
       const realizedProfit = completed.reduce((s, b) => s + (Number(b.totalprofit) || 0), 0);
       const expenses = paidBookings.reduce((s, b) => s + (Number(b.totalexpenses) || 0), 0);
-      const revenue = paidBookings.reduce((s, b) => s + (Number(b.beading_tour_price) || 0), 0);
-      const outstanding = outstandingBookings.reduce((s, b) => s + Math.max(0, Number(b.left_to_pay) || 0), 0);
+      const revenue = paidBookings.reduce((s, b) => s + (bookingRevenue(b)), 0);
+      const outstanding = outstandingBookings.reduce((s, b) => s + Math.max(0, bookingLeft(b)), 0);
       const potentialProfit = paidBookings.filter(b => !isPastTour(b)).reduce((s, b) => s + getPotentialProfit(b), 0);
       const potentialMargin = revenue ? (potentialProfit / revenue) : 0;
 
@@ -1621,7 +1643,7 @@
           const paid = (Number(b.depositmade) || 0) + (Number(b.finalpayment) || 0);
           const expenses = Number(b.totalexpenses) || 0;
           const profit = isPastTour(b) ? (Number(b.totalprofit) || 0) : getPotentialProfit(b);
-          const left = Math.max(0, Number(b.left_to_pay) || 0);
+          const left = Math.max(0, bookingLeft(b));
           const cls = profit >= 0 ? 'pos' : 'neg';
           const cur = currency;
           return `
