@@ -992,8 +992,16 @@
     return n == null ? 0 : Math.round(n * 100) / 100;
   }
 
+  /**
+   * bookings.no_people is text, such as "7".
+   * A blank column uses the headcount saved in the booking extras JSON.
+   */
   function bookingHeadcount(booking) {
     var n = finiteOrNull(booking && booking.no_people);
+    if (n == null) {
+      var extras = extrasOfBooking(booking);
+      if (extras) n = finiteOrNull(extras.headcount);
+    }
     if (n == null || n < 0) return 0;
     return n;
   }
@@ -1004,7 +1012,7 @@
     return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   }
 
-  /** Nights from arrival to departure. A same-day tour, or a missing date, is 0. */
+  /** Nights from tour_arrival_date to departure_date. A same-day tour, or a missing date, is 0. */
   function bookingNights(booking) {
     var start = isoDayUTC(booking && booking.tour_arrival_date);
     var end = isoDayUTC(booking && booking.departure_date);
@@ -1244,6 +1252,8 @@
     expensesStillIncludeHotels: expensesStillIncludeHotels,
     forecastProfit: forecastProfit,
     savedProfit: savedProfit,
+    bookingHeadcount: bookingHeadcount,
+    bookingNights: bookingNights,
     yearProfitTotal: yearProfitTotal,
     bookingLink: bookingLink,
     tourFare: tourFare,
