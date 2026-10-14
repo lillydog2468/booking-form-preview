@@ -246,6 +246,19 @@
     return round2(price * count);
   }
 
+  function organiserHotels(booking, extras) {
+    if (root.BookingExtras && root.BookingExtras.organiserBooksHotelsOn) return root.BookingExtras.organiserBooksHotelsOn(booking, extras);
+    return !!(extras && extras.organiserBooksHotels === true);
+  }
+
+  function hotelAdjustment(booking, expenseRows, extras) {
+    if (!organiserHotels(booking, extras)) return 0;
+    if (root.BookingExtras && root.BookingExtras.expensesStillIncludeHotels) {
+      return root.BookingExtras.expensesStillIncludeHotels(booking, expenseRows, extras) || 0;
+    }
+    return 0;
+  }
+
   function halfPriceOn(booking, extras) {
     if (root.BookingExtras && root.BookingExtras.leaderHalfOn) return root.BookingExtras.leaderHalfOn(booking, extras);
     if (booking && booking.leader_half_price === true) return true;
@@ -397,29 +410,37 @@
     return base;
   }
 
-  function costsOf(booking, expenseRows) {
+  function costsOf(booking, expenseRows, extras) {
+    var skipHotels = organiserHotels(booking, extras);
+    var rows = expenseRows || [];
+    var hotelRows = skipHotels ? [] : rows.filter(isHotelExpense);
+    var adjust = skipHotels ? hotelAdjustment(booking, rows, extras) : 0;
+    var hotelsBucket = skipHotels
+      ? { state: 'recorded', amount: 0, currency: 'GBP' }
+      : sumExpenseBucket(hotelRows);
     var stored = numOrNull(booking.totalexpenses);
     if (stored != null) {
-      var currency = singleCurrency(recordedCurrencyCodes(booking, expenseRows));
+      var currency = singleCurrency(recordedCurrencyCodes(booking, rows));
       return {
         state: 'recorded',
-        amount: round2(stored),
+        amount: round2(stored - adjust),
         currency: currency,
         source: 'stored',
         fuel: recordedAmount(booking.fuelcost, booking.fuelcost_currency),
-        hotels: sumExpenseBucket((expenseRows || []).filter(isHotelExpense)),
-        other: sumExpenseBucket((expenseRows || []).filter(isOtherExpense))
+        hotels: hotelsBucket,
+        other: sumExpenseBucket(rows.filter(isOtherExpense))
       };
     }
-    return partsCosts(booking, expenseRows);
+    return partsCosts(booking, skipHotels ? rows.filter(function (row) { return !isHotelExpense(row); }) : rows);
   }
 
-  function profitOf(booking, costs, expenseRows) {
+  function profitOf(booking, costs, expenseRows, extras) {
     var stored = numOrNull(booking.totalprofit);
     if (stored != null) {
+      var adjust = hotelAdjustment(booking, expenseRows, extras);
       return {
         state: 'recorded',
-        amount: round2(stored),
+        amount: round2(stored + adjust),
         currency: singleCurrency(recordedCurrencyCodes(booking, expenseRows)),
         source: 'stored'
       };
@@ -451,9 +472,10 @@
     if (stored != null) {
       var halfDelta = 0;
       if (root.BookingExtras && root.BookingExtras.leaderHalfDelta) halfDelta = root.BookingExtras.leaderHalfDelta(booking, extras) || 0;
+      var hotelDelta = hotelAdjustment(booking, expenseRows, extras);
       return {
         state: 'recorded',
-        amount: round2(stored - halfDelta),
+        amount: round2(stored - halfDelta - hotelDelta),
         currency: singleCurrency(recordedCurrencyCodes(booking, expenseRows)),
         source: 'stored'
       };
@@ -478,9 +500,9 @@
   }
 
   function rowFrom(booking, extras, expenseRows, decision) {
-    var costs = costsOf(booking, expenseRows);
+    var costs = costsOf(booking, expenseRows, extras);
     var income = incomeOf(booking, extras);
-    var profit = profitOf(booking, costs, expenseRows);
+    var profit = profitOf(booking, costs, expenseRows, extras);
     var totalCost = totalCostOf(booking, income, costs, expenseRows, extras);
     var ownMoney = hasNonZeroMoney(booking, expenseRows);
     var includeInTotals = decision.role === 'unconfirmed'
