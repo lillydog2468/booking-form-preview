@@ -870,6 +870,25 @@
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
     }
     .tab-panel-header h2 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; margin: 0; }
+    .booking-id-tag {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 2px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(107, 114, 128, .08);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      line-height: 1.4;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .booking-id-tag[hidden] { display: none !important; }
+    [data-theme="dark"] .booking-id-tag { background: rgba(255,255,255,.06); }
+    .record-title .booking-id-tag { margin-left: 6px; }
 
     .welcome-panel {
       display: flex; flex-direction: column;
@@ -3536,6 +3555,24 @@
     updateHotelNightsHint(tabId);
   }
 
+  function bookingIdLabel(id) {
+    const n = Number(id);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    return '#' + Math.trunc(n);
+  }
+
+  function syncBookingIdTag(tabId) {
+    const tag = tEl(tabId, 'bookingIdTag');
+    if (!tag) return;
+    const tabData = tabs.get(tabId);
+    const raw = (tabData && tabData.bookingId != null && String(tabData.bookingId).trim() !== '')
+      ? tabData.bookingId
+      : (tEl(tabId, 'id') && tEl(tabId, 'id').value);
+    const label = bookingIdLabel(raw);
+    tag.textContent = label;
+    tag.hidden = !label;
+  }
+
   function syncTabHeader(tabId) {
     const tabData = tabs.get(tabId);
     const groupName = tEl(tabId, 'group_name')?.value?.trim() || '';
@@ -3555,6 +3592,7 @@
       if (delBtn) delBtn.style.display = 'none';
       updateTabTitle(tabId, 'New Booking');
     }
+    syncBookingIdTag(tabId);
     applyTabYearTint(tabId);
   }
 
@@ -4576,6 +4614,7 @@
     <div class="tab-panel-header" id="t${t}_formHeader">
       <div class="tab-panel-header-title">
         <h2 id="t${t}_formTitle">New Booking</h2>
+        <span class="booking-id-tag" id="t${t}_bookingIdTag" hidden></span>
         <span class="year-tint-badge" id="t${t}_yearBadge" hidden></span>
         <span class="cancelled-tag" id="t${t}_cancelledTag" hidden>Cancelled</span>
         <label class="delay-until" id="t${t}_delayUntilWrap" hidden>Delayed until <input type="text" id="t${t}_delay_until" inputmode="numeric" maxlength="4" placeholder="Year" autocomplete="off" title="Year this booking is delayed until"></label>
@@ -4719,6 +4758,7 @@
     <div class="tab-panel-header" id="t${t}_formHeader">
       <div class="tab-panel-header-title">
         <h2 id="t${t}_formTitle">New Booking</h2>
+        <span class="booking-id-tag" id="t${t}_bookingIdTag" hidden></span>
         <span class="year-tint-badge" id="t${t}_yearBadge" hidden></span>
         <span class="cancelled-tag" id="t${t}_cancelledTag" hidden>Cancelled</span>
         <label class="delay-until" id="t${t}_delayUntilWrap" hidden>Delayed until <input type="text" id="t${t}_delay_until" inputmode="numeric" maxlength="4" placeholder="Year" autocomplete="off" title="Year this booking is delayed until"></label>
@@ -9987,6 +10027,7 @@
     const title = record.group_name || (record.id ? 'Booking #' + record.id : 'New Booking');
     tEl(tabId, 'formTitle').textContent = record.id ? 'Edit: ' + title : title;
     updateTabTitle(tabId, record.id ? 'Edit: ' + title : title);
+    syncBookingIdTag(tabId);
     const deleteBtn = tEl(tabId, 'deleteBtn');
     if (deleteBtn) deleteBtn.style.display = record.id ? 'inline-flex' : 'none';
     fillCompanionSelect(tabId);
@@ -10093,6 +10134,7 @@
     tEl(tabId, 'id').value = '';
     tEl(tabId, 'formTitle').textContent = 'New Booking';
     updateTabTitle(tabId, 'New Booking');
+    syncBookingIdTag(tabId);
     const deleteBtn = tEl(tabId, 'deleteBtn');
     if (deleteBtn) deleteBtn.style.display = 'none';
     applyTabYearTint(tabId);
@@ -10363,12 +10405,14 @@
 	      }
 	      const cancelled = bookingIsCancelled(r);
 	      const recordName = escapeHtml(r.group_name || ('Booking #' + r.id));
+	      const idLabel = bookingIdLabel(r.id);
+	      const idTag = idLabel ? ' <span class="booking-id-tag">' + idLabel + '</span>' : '';
 	      const cancelledTag = cancelled ? ' <span class="cancelled-tag">Cancelled</span>' : '';
 	      const delayText = cancelled ? delayUntilLabel(r) : '';
 	      parts.push(`
 	      <div class="record-item year-band year-band-${band} ${cancelled ? 'cancelled' : ''} ${r.id === activeBookingId ? 'active' : ''}" onclick="openBookingInTab(${r.id})">
 	        ${cancelled ? cancelCrossHtml() : ''}
-	        <div class="record-title">${openIds.has(r.id) ? '<span style="color:var(--accent);margin-right:4px;">●</span>' : ''}${recordName}${cancelledTag}</div>
+	        <div class="record-title">${openIds.has(r.id) ? '<span style="color:var(--accent);margin-right:4px;">●</span>' : ''}${recordName}${idTag}${cancelledTag}</div>
 	        <div class="record-sub">${
 	          r.tour_arrival_date ? formatDateDMY(r.tour_arrival_date) : 'No date'
 	        } · ${r.no_people || '?'} people${
@@ -10766,6 +10810,7 @@
         const savedLabel = bookingData.group_name || 'Booking';
         tEl(tabId, 'formTitle').textContent = `Edit: ${savedLabel}`;
         updateTabTitle(tabId, `Edit: ${savedLabel}`);
+        syncBookingIdTag(tabId);
         const delBtn = tEl(tabId, 'deleteBtn');
         if (delBtn) delBtn.style.display = 'inline-flex';
         applyTabYearTint(tabId);
