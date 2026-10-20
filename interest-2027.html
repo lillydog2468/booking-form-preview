@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+  <script>
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>2027 interest</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="auth-gate.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7; --surface: #ffffff; --surface-alt: #f9fafb;
+      --border: #e2e4e9; --text: #1a1d26; --text-secondary: #6b7280;
+      --input-bg: #ffffff; --accent: #4f46e5; --accent-hover: #4338ca;
+      --danger: #dc2626; --danger-hover: #b91c1c; --success: #16a34a;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
+    [data-theme="dark"] {
+      --bg: #111318; --surface: #1a1d24; --surface-alt: #21242c;
+      --border: #2e3240; --text: #e4e6eb; --text-secondary: #8b8f9a;
+      --input-bg: #21242c; --accent: #6366f1; --accent-hover: #818cf8;
+      --danger: #ef4444; --danger-hover: #f87171; --success: #22c55e;
+      --shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.45; min-height: 100vh;
+    }
+    .topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; flex-wrap: wrap; position: sticky; top: 0; z-index: 20;
+    }
+    .topbar-left, .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 36px; padding: 8px 14px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+      text-decoration: none; touch-action: manipulation;
+    }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-outline:hover { background: var(--bg); }
+    .page { max-width: 1180px; margin: 0 auto; padding: 18px 16px 48px; }
+    .intro { color: var(--text-secondary); font-size: 14px; margin: 0 0 14px; max-width: 62ch; }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+      margin-bottom: 14px;
+    }
+    .toolbar label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+    select, input[type="text"], textarea {
+      font: inherit; font-size: 16px; color: var(--text);
+      background: var(--input-bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; width: 100%;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    .count { font-size: 13px; color: var(--text-secondary); padding-bottom: 8px; }
+    .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--text-secondary); padding: 8px 10px; border-bottom: 1px solid var(--border);
+      background: var(--surface-alt); position: sticky; top: 0;
+    }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr.group td {
+      background: var(--surface-alt); font-weight: 800; font-size: 13px;
+      border-bottom: 1px solid var(--border); padding: 10px;
+    }
+    .who { font-weight: 800; }
+    .muted { color: var(--text-secondary); font-size: 12px; margin-top: 2px; white-space: pre-wrap; }
+    .dnc-badge {
+      display: inline-flex; align-items: center; margin-left: 6px;
+      padding: 2px 7px; border-radius: 999px; background: #dc2626; color: #fff;
+      font-size: 10px; font-weight: 800; letter-spacing: .04em; vertical-align: middle;
+    }
+    tr.person.dnc td:first-child { box-shadow: inset 3px 0 0 #dc2626; }
+    .status {
+      display: inline-flex; padding: 2px 8px; border-radius: 999px;
+      background: var(--surface-alt); border: 1px solid var(--border);
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .status.placed { color: var(--success); }
+    .status.waiting { color: #b45309; }
+    .empty { padding: 28px 16px; text-align: center; color: var(--text-secondary); }
+    .blocked { max-width: 520px; margin: 48px auto; padding: 0 16px; color: var(--text-secondary); }
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45);
+      display: flex; align-items: flex-end; justify-content: center; padding: 12px;
+    }
+    .modal-overlay[hidden] { display: none !important; }
+    .modal {
+      width: min(560px, 100%); max-height: min(92vh, 820px); overflow: auto;
+      background: var(--surface); color: var(--text); border-radius: 14px;
+      border: 1px solid var(--border); padding: 16px; box-shadow: var(--shadow);
+    }
+    .modal h2 { font-size: 18px; margin-bottom: 12px; }
+    .modal p { margin-bottom: 14px; }
+    .grid { display: grid; gap: 10px; }
+    .check { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+    .check input { width: 18px; height: 18px; }
+    .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    .toast {
+      position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%;
+      transform: translateX(-50%); background: var(--text); color: var(--bg);
+      padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 700; z-index: 50;
+    }
+    @media (min-width: 701px) {
+      .modal-overlay { align-items: center; }
+    }
+    @media (max-width: 700px) {
+      .topbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+      .btn, select { min-height: 44px; }
+      .table-wrap { border: 0; background: transparent; overflow: visible; }
+      table, tbody { display: block; }
+      thead { display: none; }
+      tr.group { display: block; margin: 14px 0 6px; }
+      tr.group td { display: block; border-radius: 8px; }
+      tr.person {
+        display: block; margin: 0 0 10px; border: 1px solid var(--border);
+        border-radius: 12px; background: var(--surface); padding: 8px 12px 12px;
+      }
+      tr.person.dnc { border-color: #dc2626; background: #fef2f2; }
+      [data-theme="dark"] tr.person.dnc { background: rgba(220, 38, 38, .16); }
+      td { display: block; border: 0; padding: 6px 0; }
+      td[data-label]::before {
+        content: attr(data-label); display: block;
+        font-size: 11px; font-weight: 800; letter-spacing: .04em;
+        text-transform: uppercase; color: var(--text-secondary);
+      }
+      td.actions .btn { width: 100%; min-height: 44px; }
+      .modal { border-radius: 14px 14px 0 0; max-height: 94vh; }
+      .modal-actions .btn { min-height: 44px; flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <a class="btn btn-outline" href="booking-form.html">Bookings</a>
+      <a class="btn btn-outline" href="admin.html">Admin</a>
+      <h1>2027 interest</h1>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" class="btn btn-primary" id="addBtn">Add person</button>
+    </div>
+  </div>
+
+  <p class="blocked" id="blocked" hidden></p>
+
+  <main class="page" id="app" hidden>
+    <p class="intro">People who would like to come in 2027. Use it to build groups of five or six, or to slot a single person into another group. This page is private.</p>
+    <div class="toolbar">
+      <label>Status
+        <select id="statusFilter">
+          <option value="">All</option>
+          <option value="interested">Interested</option>
+          <option value="waiting for dates">Waiting for dates</option>
+          <option value="placed">Placed</option>
+        </select>
+      </label>
+      <p class="count" id="countLine"></p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Contact</th>
+            <th>Preferred when</th>
+            <th>Party</th>
+            <th>Possible group</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="listBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <div class="modal-overlay" id="editModal" hidden>
+    <form class="modal" id="editForm">
+      <h2 id="editTitle">Add person</h2>
+      <div class="grid">
+        <label>Name
+          <input type="text" id="fName" required autocomplete="name">
+        </label>
+        <label>Contact (email or Facebook)
+          <input type="text" id="fContact" autocomplete="off">
+        </label>
+        <label>Source
+          <input type="text" id="fSource" autocomplete="off">
+        </label>
+        <label>Preferred when
+          <input type="text" id="fWhen" autocomplete="off">
+        </label>
+        <label>Party size or companions
+          <input type="text" id="fParty" autocomplete="off">
+        </label>
+        <label>Notes
+          <textarea id="fNotes"></textarea>
+        </label>
+        <label>Status
+          <select id="fStatus">
+            <option value="interested">Interested</option>
+            <option value="waiting for dates">Waiting for dates</option>
+            <option value="placed">Placed</option>
+          </select>
+        </label>
+        <label>Possible group
+          <input type="text" id="fGroup" list="groupNames" autocomplete="off">
+        </label>
+        <datalist id="groupNames"></datalist>
+        <label class="check"><input type="checkbox" id="fDnc"> Do not contact</label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-danger" id="editDelete" hidden>Delete</button>
+        <button type="button" class="btn btn-outline" id="editCancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-overlay" id="confirmModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <h2 id="confirmTitle">Remove this person?</h2>
+      <p id="confirmText"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="confirmCancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+    const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const STATUS_LABEL = {
+      interested: 'Interested',
+      'waiting for dates': 'Waiting for dates',
+      placed: 'Placed'
+    };
+
+    let rows = [];
+    let editingId = null;
+    let pendingDelete = null;
+
+    window.interestStore = {
+      async list() {
+        const { data, error } = await sb.from('interest_2027').select('*').order('id', { ascending: true });
+        if (error) throw error;
+        return data || [];
+      },
+      async save(payload, id) {
+        if (id) {
+          const { error } = await sb.from('interest_2027').update(payload).eq('id', id);
+          if (error) throw error;
+          return;
+        }
+        const { error } = await sb.from('interest_2027').insert(payload);
+        if (error) throw error;
+      },
+      async remove(id) {
+        const { error } = await sb.from('interest_2027').delete().eq('id', id);
+        if (error) throw error;
+      }
+    };
+
+    function el(id) { return document.getElementById(id); }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function toast(message) {
+      const node = document.createElement('div');
+      node.className = 'toast';
+      node.textContent = message;
+      document.body.appendChild(node);
+      setTimeout(() => node.remove(), 3200);
+    }
+
+    function blankToNull(value) {
+      const text = String(value ?? '').trim();
+      return text ? text : null;
+    }
+
+    function statusClass(status) {
+      if (status === 'placed') return 'status placed';
+      if (status === 'waiting for dates') return 'status waiting';
+      return 'status';
+    }
+
+    function filteredRows() {
+      const status = el('statusFilter').value;
+      const list = status ? rows.filter(row => row.status === status) : rows.slice();
+      list.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      return list;
+    }
+
+    function grouped(list) {
+      const named = new Map();
+      const none = [];
+      list.forEach(row => {
+        const group = String(row.possible_group || '').trim();
+        if (!group) none.push(row);
+        else {
+          if (!named.has(group)) named.set(group, []);
+          named.get(group).push(row);
+        }
+      });
+      const sections = [...named.keys()]
+        .sort((a, b) => a.localeCompare(b, 'en-GB'))
+        .map(label => ({ label, people: named.get(label) }));
+      if (none.length) sections.push({ label: 'No group yet', people: none });
+      return sections;
+    }
+
+    function personCells(row) {
+      const dnc = row.do_not_contact
+        ? ' <span class="dnc-badge">DO NOT CONTACT</span>'
+        : '';
+      const notes = row.notes ? '<div class="muted">' + escapeHtml(row.notes) + '</div>' : '';
+      const source = row.source ? '<div class="muted">' + escapeHtml(row.source) + '</div>' : '';
+      const when = row.preferred_when ? escapeHtml(row.preferred_when) : '—';
+      const party = row.party_size ? escapeHtml(row.party_size) : '—';
+      const group = String(row.possible_group || '').trim();
+      const status = escapeHtml(STATUS_LABEL[row.status] || row.status || '');
+      return `
+        <td data-label="Name"><div class="who">${escapeHtml(row.name)}${dnc}</div>${notes}</td>
+        <td data-label="Contact">${row.contact ? escapeHtml(row.contact) : '—'}${source}</td>
+        <td data-label="Preferred when">${when}</td>
+        <td data-label="Party">${party}</td>
+        <td data-label="Possible group">${group ? escapeHtml(group) : '—'}</td>
+        <td data-label="Status"><span class="${statusClass(row.status)}">${status}</span></td>
+        <td class="actions" data-label="">
+          <button type="button" class="btn btn-outline" data-edit="${Number(row.id)}">Edit</button>
+        </td>`;
+    }
+
+    function render() {
+      const list = filteredRows();
+      const sections = grouped(list);
+      const body = el('listBody');
+      const noun = list.length === 1 ? '1 person' : list.length + ' people';
+      el('countLine').textContent = noun;
+      if (!list.length) {
+        body.innerHTML = '<tr><td class="empty" colspan="7">No one matches this status.</td></tr>';
+        return;
+      }
+      body.innerHTML = sections.map(section => {
+        const head = `<tr class="group"><td colspan="7">${escapeHtml(section.label)} · ${section.people.length}</td></tr>`;
+        const people = section.people.map(row => {
+          const flag = row.do_not_contact ? ' dnc' : '';
+          return `<tr class="person${flag}">${personCells(row)}</tr>`;
+        }).join('');
+        return head + people;
+      }).join('');
+      const names = [...new Set(rows.map(row => String(row.possible_group || '').trim()).filter(Boolean))];
+      el('groupNames').innerHTML = names.map(name => '<option value="' + escapeHtml(name) + '"></option>').join('');
+    }
+
+    function showInterestRows(list) {
+      rows = Array.isArray(list) ? list.slice() : [];
+      el('blocked').hidden = true;
+      el('app').hidden = false;
+      render();
+    }
+    window.showInterestRows = showInterestRows;
+
+    async function loadList() {
+      rows = await window.interestStore.list();
+      render();
+    }
+
+    function openEditor(row) {
+      editingId = row && row.id != null ? row.id : null;
+      el('editTitle').textContent = editingId ? 'Edit person' : 'Add person';
+      el('fName').value = row ? (row.name || '') : '';
+      el('fContact').value = row ? (row.contact || '') : '';
+      el('fSource').value = row ? (row.source || '') : '';
+      el('fWhen').value = row ? (row.preferred_when || '') : '';
+      el('fParty').value = row ? (row.party_size || '') : '';
+      el('fNotes').value = row ? (row.notes || '') : '';
+      el('fStatus').value = row && STATUS_LABEL[row.status] ? row.status : 'interested';
+      el('fGroup').value = row ? (row.possible_group || '') : '';
+      el('fDnc').checked = !!(row && row.do_not_contact);
+      el('editDelete').hidden = !editingId;
+      el('editModal').hidden = false;
+      el('fName').focus();
+    }
+
+    function closeEditor() {
+      el('editModal').hidden = true;
+      editingId = null;
+    }
+
+    function askDelete(row) {
+      pendingDelete = row;
+      el('confirmText').textContent = 'Remove ' + (row.name || 'this person') + ' from the 2027 interest list? This cannot be undone.';
+      el('confirmModal').hidden = false;
+    }
+
+    function readPayload() {
+      return {
+        name: el('fName').value.trim(),
+        contact: blankToNull(el('fContact').value),
+        source: blankToNull(el('fSource').value),
+        preferred_when: blankToNull(el('fWhen').value),
+        party_size: blankToNull(el('fParty').value),
+        notes: blankToNull(el('fNotes').value),
+        status: el('fStatus').value,
+        possible_group: blankToNull(el('fGroup').value),
+        do_not_contact: el('fDnc').checked
+      };
+    }
+
+    el('addBtn').addEventListener('click', () => openEditor(null));
+    el('editCancel').addEventListener('click', closeEditor);
+    el('editDelete').addEventListener('click', () => {
+      const row = rows.find(item => String(item.id) === String(editingId));
+      if (!row) return;
+      closeEditor();
+      askDelete(row);
+    });
+    el('confirmCancel').addEventListener('click', () => {
+      pendingDelete = null;
+      el('confirmModal').hidden = true;
+    });
+    el('statusFilter').addEventListener('change', render);
+    el('listBody').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-edit]');
+      if (!button) return;
+      const row = rows.find(item => String(item.id) === button.getAttribute('data-edit'));
+      if (row) openEditor(row);
+    });
+    el('editForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const payload = readPayload();
+      if (!payload.name) return;
+      const id = editingId;
+      try {
+        await window.interestStore.save(payload, id);
+        closeEditor();
+        await loadList();
+        toast(id ? 'Saved' : 'Person added');
+      } catch (err) {
+        toast('Save failed. ' + ((err && err.message) || ''));
+      }
+    });
+    el('confirmDelete').addEventListener('click', async () => {
+      const row = pendingDelete;
+      pendingDelete = null;
+      el('confirmModal').hidden = true;
+      if (!row) return;
+      try {
+        await window.interestStore.remove(row.id);
+        await loadList();
+        toast('Person removed');
+      } catch (err) {
+        toast('Delete failed. ' + ((err && err.message) || ''));
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (!el('confirmModal').hidden) {
+        pendingDelete = null;
+        el('confirmModal').hidden = true;
+        return;
+      }
+      if (!el('editModal').hidden) closeEditor();
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      const session = await AuthGate.require(sb, { title: '2027 interest' });
+      if (!session) {
+        el('blocked').hidden = false;
+        el('blocked').textContent = 'Sign in while online with an admin account to open the 2027 interest list.';
+        return;
+      }
+      const { data: allowed, error } = await sb.rpc('is_admin');
+      if (error || allowed !== true) {
+        window.location.href = 'booking-form.html';
+        return;
+      }
+      el('app').hidden = false;
+      try {
+        await loadList();
+      } catch (err) {
+        el('listBody').innerHTML = '<tr><td class="empty" colspan="7">The interest list could not be loaded.</td></tr>';
+        toast('The interest list could not be loaded.');
+      }
+    });
+  </script>
+</body>
+</html>
