@@ -102,6 +102,7 @@
       <a href="booking-form.html">Bookings</a>
       <a href="analytics.html">Analytics</a>
       <a href="admin.html">Admin</a>
+      <a href="interest-2027.html" id="interestNav" hidden>2027 interest</a>
       <a href="tax-summary.html" class="active">Tax summary</a>
     </nav>
     <div class="nav">
@@ -467,6 +468,8 @@
             setStatus('The tax summary is only available to an admin account.');
             return;
           }
+          const interestNav = document.getElementById('interestNav');
+          if (interestNav) interestNav.hidden = false;
           return loadBookings();
         }).catch(function (err) {
           console.error(err);
