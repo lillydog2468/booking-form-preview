@@ -623,6 +623,10 @@
               Admin
               <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">Open</span>
             </a>
+            <a class="user-menu-item" id="userMenuInterestLink" href="interest-2027.html" style="display:none;">
+              2027 interest
+              <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">Private</span>
+            </a>
             <a class="user-menu-item" href="tour-planner.html">
               Tour planner
               <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">WIP</span>
@@ -1728,7 +1732,9 @@
       const emailEl = document.getElementById('userMenuEmail');
       const roleEl = document.getElementById('userMenuRole');
       const adminLink = document.getElementById('userMenuAdminLink');
+      const interestLink = document.getElementById('userMenuInterestLink');
       if (adminLink) adminLink.style.display = 'none';
+      if (interestLink) interestLink.style.display = 'none';
       try {
         const { data: { session } } = await sb.auth.getSession();
         if (!session) return;
@@ -1740,7 +1746,9 @@
         menu.style.display = 'inline-flex';
         if (emailEl) emailEl.textContent = session.user.email || '—';
         if (roleEl) roleEl.textContent = profile?.role || 'user';
-        if (adminLink) adminLink.style.display = profile?.role === 'admin' ? 'flex' : 'none';
+        const showAdmin = profile?.role === 'admin';
+        if (adminLink) adminLink.style.display = showAdmin ? 'flex' : 'none';
+        if (interestLink) interestLink.style.display = showAdmin ? 'flex' : 'none';
       } catch {}
     }
 
