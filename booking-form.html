@@ -2945,6 +2945,10 @@
             Admin
             <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">Open</span>
           </a>
+          <a class="user-menu-item" id="userMenuInterestLink" href="interest-2027.html" style="display:none;">
+            2027 interest
+            <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">Private</span>
+          </a>
           <a class="user-menu-item" href="tour-planner.html">
             Tour planner
             <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">WIP</span>
@@ -3683,7 +3687,10 @@
 	    if (roleEl) roleEl.textContent = role ? String(role) : 'user';
 
     const adminLink = el('userMenuAdminLink');
-    if (adminLink) adminLink.style.display = String(role).toLowerCase() === 'admin' ? 'flex' : 'none';
+    const interestLink = el('userMenuInterestLink');
+    const isAdmin = String(role).toLowerCase() === 'admin';
+    if (adminLink) adminLink.style.display = isAdmin ? 'flex' : 'none';
+    if (interestLink) interestLink.style.display = isAdmin ? 'flex' : 'none';
   }
 
   function toggleUserMenu(e) {
