@@ -67,15 +67,11 @@
   }
 
   function parseISODateUTC(iso) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
-    if (!m) return null;
-    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    return root.BookingFormat.parseISODateUTC(iso);
   }
 
   function formatDMY(iso) {
-    var d = parseISODateUTC(iso);
-    if (!d) return '';
-    return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + d.getUTCFullYear();
+    return root.BookingFormat.formatDMY(iso);
   }
 
   function yearFromIso(iso) {
@@ -412,9 +408,11 @@
             year: yearFromIso(stay.arrivalDate) || yearFromIso(stay.departureDate),
             nights: nights,
             guests: guests,
+            guestPeople: guestPeople(stay),
             headcount: String(stay.headcount || '').trim(),
             otherHotelNights: stay.role === 'tour' ? String(stay.otherHotelNights || '').trim() : '',
             recordedAddress: String(stay.recordedAddress || '').trim(),
+            hotelName: displayName,
             booked: !!stay.booked,
             status: stayStatus(stay),
             href: stay.bookingId ? ('booking-form.html?booking=' + encodeURIComponent(String(stay.bookingId)) + '&layout=layout') : ''
@@ -543,6 +541,22 @@
     return parts.filter(Boolean).join(' · ');
   }
 
+  function statsHtml(hotel) {
+    if (!hotel.times || !hotel.years || !hotel.years.length) return esc(statsLine(hotel));
+    var parts = [esc(plural(hotel.times, 'time', 'times'))];
+    parts.push(hotel.years.map(function (year) {
+      return '<a href="' + esc(visitsHref(year, hotel.name)) + '">' + esc(String(year)) + '</a>';
+    }).join(', '));
+    parts.push(esc(plural(hotel.groupCount, 'group', 'groups')));
+    if (hotel.nightsMissing === hotel.times) parts.push(esc('Nights not recorded'));
+    else parts.push(esc(plural(hotel.nightsKnown, 'night', 'nights')));
+    if (hotel.nightsKnown > 0 && hotel.nightsMissing) parts.push(esc('Nights not recorded on ' + plural(hotel.nightsMissing, 'stay', 'stays')));
+    if (hotel.peopleCount) parts.push(esc(plural(hotel.peopleCount, 'person named', 'people named')));
+    else parts.push('No guest names recorded');
+    parts.push(esc('Booked on ' + hotel.bookedCount + ' of ' + hotel.times + ' ' + (hotel.times === 1 ? 'stay' : 'stays')));
+    return parts.filter(Boolean).join(' · ');
+  }
+
   function asideLine(hotel) {
     var bits = [];
     if (hotel.cancelled) bits.push(plural(hotel.cancelled, 'cancelled stay', 'cancelled stays'));
@@ -553,10 +567,58 @@
     return 'Also listed below, and not included in the times used: ' + bits.join(', ') + '.';
   }
 
+  function visitsHref(year, hotelName) {
+    var parts = ['tab=visits'];
+    if (year) parts.push('year=' + encodeURIComponent(String(year)));
+    if (hotelName) parts.push('hotel=' + encodeURIComponent(String(hotelName)));
+    return 'tour-planner.html?' + parts.join('&');
+  }
+
+  function plannerPlanHref(stay) {
+    var key = stay && (stay.bookingId || stay.bookingKey);
+    if (key == null || String(key).trim() === '') return '';
+    return 'tour-planner.html?booking=' + encodeURIComponent(String(key));
+  }
+
+  function personHref(personId) {
+    var id = String(personId || '').trim();
+    if (!id) return '';
+    return 'tour-planner.html?tab=people&person=' + encodeURIComponent(id);
+  }
+
+  function guestPeople(stay) {
+    var out = [];
+    var seen = {};
+    (stay && stay.guests || []).forEach(function (guest) {
+      var name = '';
+      var personId = '';
+      if (guest && typeof guest === 'object') {
+        name = String(guest.name || [guest.firstName, guest.lastName].filter(Boolean).join(' ') || '').trim();
+        personId = String(guest.personId || '').trim();
+      } else {
+        name = String(guest || '').trim();
+      }
+      if (!name && !personId) return;
+      var key = (personId || foldName(name));
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ name: name || 'Unnamed', personId: personId });
+    });
+    return out;
+  }
+
+  function guestsHtml(stay) {
+    var people = stay.guestPeople || [];
+    if (!people.length) return '<span class="muted">No guest names recorded</span>';
+    return people.map(function (person) {
+      var href = personHref(person.personId);
+      if (!href) return esc(person.name);
+      return '<a href="' + esc(href) + '">' + esc(person.name) + '</a>';
+    }).join(', ');
+  }
+
   function useHtml(stay, profileAddress) {
-    var guests = stay.guests.length
-      ? esc(stay.guests.join(', '))
-      : '<span class="muted">No guest names recorded</span>';
+    var guests = guestsHtml(stay);
     var nights = stay.nights == null
       ? '<span class="muted">Nights not recorded</span>'
       : esc(plural(stay.nights, 'night', 'nights'));
@@ -576,10 +638,17 @@
     var booked = stay.booked
       ? '<span class="booked-flag on">Booked</span>'
       : '<span class="booked-flag">Not booked yet</span>';
+    var planHref = plannerPlanHref(stay);
+    var groupHtml = planHref
+      ? '<a href="' + esc(planHref) + '">' + esc(stay.groupName) + '</a>'
+      : esc(stay.groupName);
+    var yearHtml = stay.year
+      ? ' · <a href="' + esc(visitsHref(stay.year, stay.hotelName || '')) + '">' + esc(String(stay.year)) + '</a>'
+      : '';
     var link = stay.href ? '<a href="' + esc(stay.href) + '">Open booking</a>' : '';
     return '<li class="use' + (stay.status === 'cancelled' ? ' is-cancelled' : '') + '">'
-      + '<div class="use-group">' + esc(stay.groupName) + '</div>'
-      + '<div class="use-when">' + esc(stay.whenLabel) + '</div>'
+      + '<div class="use-group">' + groupHtml + '</div>'
+      + '<div class="use-when">' + esc(stay.whenLabel) + yearHtml + '</div>'
       + '<div class="use-meta">' + esc(stay.roleLabel) + ' · ' + nights + ' · ' + booked + '</div>'
       + statusHtml
       + '<div class="who">Who stayed: ' + guests + '</div>'
@@ -635,7 +704,7 @@
       return '<article class="hotel-block" data-hotel-key="' + esc(hotel.key) + '">'
         + '<h3>' + esc(hotel.name) + '</h3>'
         + alias
-        + '<p class="hotel-stats">' + esc(statsLine(hotel)) + '</p>'
+        + '<p class="hotel-stats">' + statsHtml(hotel) + '</p>'
         + (aside ? '<p class="hint-empty">' + esc(aside) + '</p>' : '')
         + '<div class="profile-grid">'
         + '<div class="field"><label>Address</label>'
