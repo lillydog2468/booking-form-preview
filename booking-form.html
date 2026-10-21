@@ -16,6 +16,8 @@
   <title>Booking Form</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="booking-config.js"></script>
+  <script src="booking-format.js"></script>
   <script src="auth-gate.js"></script>
   <script src="place-categories.js"></script>
   <script src="global-search.js"></script>
@@ -2957,7 +2959,6 @@
           </a>
           <a class="user-menu-item" href="tour-planner.html">
             Tour planner
-            <span style="color:var(--text-secondary);font-weight:900;font-size:12px;">WIP</span>
           </a>
           <a class="user-menu-item" href="hotels.html">
             Hotels
@@ -3169,8 +3170,8 @@
   //  SUPABASE CONNECTION
   // ═══════════════════════════════════════════════════════════════
 
-  const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+  const SUPABASE_URL = BOOKING_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
   const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   let cloudReady = false;
 
@@ -3742,38 +3743,24 @@
 
   // ── Currency helper ──
 
-  const DEFAULT_CURRENCY = 'GBP';
+  const DEFAULT_CURRENCY = BookingFormat.DEFAULT_CURRENCY;
 
   function normalizeCurrency() {
-    return DEFAULT_CURRENCY;
+    return BookingFormat.normalizeCurrency();
   }
 
   function formatMoney(amount) {
-    const n = Number(amount);
-    const value = Number.isFinite(n) ? n : 0;
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
+    return BookingFormat.formatMoney(amount);
   }
 
   function currencyMarkHTML() {
-    return '<span class="currency-fixed" aria-hidden="true">£</span>';
+    return BookingFormat.currencyMarkHTML();
   }
 
   // ── Date helpers ──
 
   function parseISODateUTC(iso) {
-    if (!iso) return null;
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
-    if (!m) return null;
-    const y = Number(m[1]);
-    const mo = Number(m[2]);
-    const d = Number(m[3]);
-    if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
-    return new Date(Date.UTC(y, mo - 1, d));
+    return BookingFormat.parseISODateUTC(iso);
   }
 
   function utcStartOfToday() {
@@ -3829,12 +3816,7 @@
   }
 
   function formatDateDMY(iso) {
-    const d = parseISODateUTC(iso);
-    if (!d) return iso ? String(iso) : '';
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const yyyy = String(d.getUTCFullYear());
-    return `${dd}/${mm}/${yyyy}`;
+    return BookingFormat.formatDateDMY(iso);
   }
 
   // European date entry: UI shows DD/MM/YYYY; storage stays YYYY-MM-DD.
