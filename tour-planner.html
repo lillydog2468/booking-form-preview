@@ -17,10 +17,13 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="place-categories.js"></script>
   <script src="global-search.js"></script>
+  <script src="booking-config.js"></script>
+  <script src="booking-format.js"></script>
   <script src="auth-gate.js"></script>
   <script src="booking-extras.js"></script>
   <script src="hotel-directory.js"></script>
   <script src="handover-stops.js"></script>
+  <script src="place-visits.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -687,6 +690,31 @@
       font-size: 20px; font-weight: 800; color: var(--accent); letter-spacing: -0.01em;
     }
     .place-visit-banner .visit-hint { font-size: 12px; color: var(--text-secondary); }
+    .visit-year-btn, .visit-inline, .visit-person-btn, .visit-group-btn {
+      display: inline; margin: 0 4px 0 0; padding: 1px 6px;
+      border: 0; border-radius: 999px; background: transparent;
+      color: var(--accent); font: inherit; font-weight: 800; cursor: pointer;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .visit-year-btn:hover, .visit-inline:hover, .visit-person-btn:hover, .visit-group-btn:hover {
+      background: var(--accent-soft);
+    }
+    .visit-list { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+    .visit-card {
+      border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+      padding: 14px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .visit-card-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+    .visit-group-btn { font-size: 18px; padding: 0; border-radius: 6px; }
+    .visit-meta { display: grid; grid-template-columns: 140px 1fr; gap: 4px 10px; font-size: 14px; }
+    .visit-meta dt { color: var(--text-secondary); font-weight: 700; }
+    .visit-meta dd { margin: 0; }
+    .visit-day { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border); }
+    .visit-day h3 { font-size: 15px; margin-bottom: 4px; }
+    .visit-stops { list-style: none; padding: 0; margin: 4px 0 0; }
+    .visit-stops li { font-size: 14px; padding: 3px 0; }
+    .visit-query { font-weight: 700; margin: 8px 0 0; }
+    @media (max-width: 640px) { .visit-meta { grid-template-columns: 1fr; } }
     .travelled-with {
       margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
     }
@@ -2611,6 +2639,7 @@
         <div class="view-nav" role="group" aria-label="Planner view">
           <button type="button" id="btnLookView">Week</button>
           <button type="button" id="btnPhoneView">Phone</button>
+          <button type="button" id="btnSimplePlan" title="Big, read-only list of each day's places and times">Simple plan</button>
           <button type="button" id="btnDetailedView">Detailed</button>
         </div>
         <button type="button" class="btn btn-outline btn-sm" id="btnTheme">Theme</button>
@@ -2637,8 +2666,8 @@
   <div class="toast-wrap" id="toasts"></div>
 
 <script>
-  const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+  const SUPABASE_URL = BOOKING_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
   const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const STORAGE_KEY = 'keith_tour_planner_v1';
@@ -2694,9 +2723,11 @@
     })(),
     selectedPersonId: null,
     personDeepLink: '',
+    visitsQuery: { placeId: '', placeName: '', year: '', personId: '', hotelName: '' },
+    planViewOnly: false,
     mainTab: (function () {
       const t = localStorage.getItem('planner_main_tab');
-      return (t === 'places' || t === 'rough' || t === 'people' || t === 'issues' || t === 'hotels') ? t : 'planner';
+      return (t === 'places' || t === 'rough' || t === 'people' || t === 'issues' || t === 'hotels' || t === 'visits') ? t : 'planner';
     })(),
     roughTrayFilter: 'all',
     roughTraySearch: '',
@@ -2732,13 +2763,7 @@
     setTimeout(() => el.remove(), 2600);
   }
   function parseISODateUTC(iso) {
-    if (!iso) return null;
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
-    if (!m) return null;
-    const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
-    const dt = new Date(Date.UTC(y, mo - 1, d));
-    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
-    return dt;
+    return BookingFormat.parseISODateUTCPlanner(iso);
   }
   function toISODateUTC(dateUTC) {
     const yyyy = String(dateUTC.getUTCFullYear());
@@ -2747,12 +2772,7 @@
     return `${yyyy}-${mm}-${dd}`;
   }
   function formatDateDMY(iso) {
-    const d = parseISODateUTC(iso);
-    if (!d) return iso ? String(iso) : '—';
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const yyyy = String(d.getUTCFullYear());
-    return `${dd}/${mm}/${yyyy}`;
+    return BookingFormat.formatDateDMYPlanner(iso);
   }
   function weekdayName(iso) {
     const d = parseISODateUTC(iso);
@@ -3110,7 +3130,9 @@
     if (!state.plan || !Array.isArray(state.plan.days)) return false;
     let changed = false;
     state.plan.days.forEach(day => {
+      if (!day || typeof day !== 'object') return;
       (day.blocks || []).forEach(stop => {
+        if (!stop) return;
         const pid = stop.placeId || stop.place_id;
         if (placeIdFilter && pid !== placeIdFilter) return;
         if (hydrateStopAddressFromPlace(stop)) changed = true;
@@ -3387,6 +3409,79 @@
     }
     return p;
   }
+
+  /** A day with nothing on it is still a day. Never store null in plan.days. */
+  function emptyStoredDay(date) {
+    return { date: date ? String(date) : '', blocks: [] };
+  }
+
+  function storedPlanDay(day, dateFallback) {
+    const fallback = dateFallback ? String(dateFallback) : '';
+    if (!day || typeof day !== 'object' || Array.isArray(day)) return emptyStoredDay(fallback);
+    const date = day.date ? String(day.date) : fallback;
+    const blocks = Array.isArray(day.blocks)
+      ? day.blocks.filter(s => s && typeof s === 'object')
+      : [];
+    day.date = date;
+    day.blocks = blocks;
+    return day;
+  }
+
+  /**
+   * Turn null day slots into { date, blocks: [] } when the date can be known.
+   * That is the tour span lining up with the array, or a hole between two dated days
+   * whose gap is exactly those missing days (a weekend with no stops).
+   * A null with no date is left as null so normalizePlan can drop it.
+   */
+  function blankDayDate(list, index, span, aligned) {
+    if (aligned && span[index]) return span[index];
+    let prev = -1;
+    let prevDate = '';
+    for (let p = index - 1; p >= 0; p--) {
+      const day = list[p];
+      if (day && typeof day === 'object' && day.date) {
+        prev = p;
+        prevDate = String(day.date);
+        break;
+      }
+    }
+    let next = -1;
+    let nextDate = '';
+    for (let n = index + 1; n < list.length; n++) {
+      const day = list[n];
+      if (day && typeof day === 'object' && day.date) {
+        next = n;
+        nextDate = String(day.date);
+        break;
+      }
+    }
+    if (prev < 0 || next < 0) return '';
+    const between = enumerateDates(prevDate, nextDate);
+    if (between.length === (next - prev + 1)) return between[index - prev] || '';
+    return '';
+  }
+
+  function materializeBlankDays(days, plan) {
+    const list = Array.isArray(days) ? days : [];
+    const arrival = plan && plan.arrivalDate;
+    const departure = plan && (plan.departureDate || plan.arrivalDate);
+    const span = arrival ? enumerateDates(arrival, departure) : [];
+    const aligned = span.length > 0 && span.length === list.length;
+    return list.map((d, i) => {
+      if (d && typeof d === 'object' && !Array.isArray(d)) {
+        return storedPlanDay(d, d.date || (aligned ? span[i] : ''));
+      }
+      const date = blankDayDate(list, i, span, aligned);
+      if (!date) return d;
+      return emptyStoredDay(date);
+    });
+  }
+
+  /** Days written to local storage or the cloud: real day objects only, never null. */
+  function prepareDaysForSave(days, plan) {
+    return materializeBlankDays(days, plan).filter(d => d && typeof d === 'object' && !Array.isArray(d));
+  }
+
   function normalizePlan(plan) {
     if (!plan) return plan;
     if (plan.organiserPersonId == null) plan.organiserPersonId = '';
@@ -3440,13 +3535,19 @@
         };
       }).filter(Boolean);
     }
+    plan.days = materializeBlankDays(plan.days, plan);
+    plan.days = (Array.isArray(plan.days) ? plan.days : [])
+      .filter(d => d && typeof d === 'object')
+      .sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
     (plan.days || []).forEach((d, dayIndex) => {
+      if (!d || typeof d !== 'object') return;
       if (!Array.isArray(d.blocks)) d.blocks = [];
       // Drop default “Leave hotel at 09:00” skeletons on Day 2+ (kept only if Keith linked a place or wrote notes).
       if (dayIndex > 0) {
-        d.blocks = d.blocks.filter(s => !isDefaultLeaveHotelStop(s));
+        d.blocks = d.blocks.filter(s => s && !isDefaultLeaveHotelStop(s));
       }
       d.blocks.forEach(s => {
+        if (!s || typeof s !== 'object') return;
         // Stable id required so data-stop-time survives re-render mid-edit
         if (!s.id) s.id = uid('s');
         ensureStopTicks(s);
@@ -3825,10 +3926,10 @@
     const p = plan || state.plan;
     if (!p?.days?.length) return null;
     if (p.arrivalDate) {
-      const hit = p.days.find(d => d.date === p.arrivalDate);
+      const hit = p.days.find(d => d && d.date === p.arrivalDate);
       if (hit) return hit;
     }
-    return p.days[0];
+    return p.days.find(d => d && typeof d === 'object') || null;
   }
 
   /** Keep day-1 Prague hotel pick-up stop title/address in sync with the hotel card. */
@@ -3983,6 +4084,7 @@
     const day = arrivalDay(state.plan);
     if (!day || !Array.isArray(day.blocks)) return;
     day.blocks.forEach((s, i) => {
+      if (!s || typeof s !== 'object') return;
       ensureStopTicks(s);
       if (!isPragueBeadingTravel(day, i, s)) return;
       const stock = s.travelMinutes === PRAGUE_CLEAR_MIN || s.travelMinutes === PRAGUE_TRAFFIC_MIN || s.travelMinutes == null;
@@ -4182,13 +4284,17 @@
       day1OriginType: effectiveDay1OriginType(state.plan),
       hasAirport: hasAirportArrivalOption(state.plan),
     };
+    state.plan.days = prepareDaysForSave(state.plan.days, state.plan);
     const used = new Set();
     let filled = 0;
     let skippedBusy = 0;
     state.plan.days.forEach((day, i) => {
+      if (!day || typeof day !== 'object') return;
+      if (!Array.isArray(day.blocks)) day.blocks = [];
       if (dayLooksBusy(day) && !replaceBusy) {
         skippedBusy += 1;
         (day.blocks || []).forEach(s => {
+          if (!s) return;
           const pid = s.placeId || s.place_id;
           if (pid) used.add(pid);
         });
@@ -4217,6 +4323,7 @@
     }
     const busyIdx = [];
     state.plan.days.forEach((day, i) => {
+      if (!day || typeof day !== 'object') return;
       if (dayLooksBusy(day)) busyIdx.push(i + 1);
     });
     if (busyIdx.length) {
@@ -4291,6 +4398,7 @@
     const genericTitle = /^(breakfast|leave for tours|leave hotel( at \d{2}:\d{2})?|hotel pick-up|pick-up from prague hotel\s*\/?\s*airport)$/i;
     const genericNotes = /hotel unless noted|van ready at the hotel|confirm the meeting point the night before/i;
     days.forEach(d => {
+      if (!d || typeof d !== 'object') return;
       (d.blocks || []).forEach(b => {
         if (!b) return;
         score += 5;
@@ -4443,7 +4551,8 @@
         const sid = parts[1] || '';
         let stop = null;
         (plan.days || []).forEach(d => {
-          (d.blocks || []).forEach(s => { if (String(s.id) === sid) stop = s; });
+          if (!d || typeof d !== 'object') return;
+          (d.blocks || []).forEach(s => { if (s && String(s.id) === sid) stop = s; });
         });
         if (stop) {
           if (parts[2] === 'notes') filled = !notesAreFlagged(stop.notes);
@@ -4703,7 +4812,7 @@
         state.selectedDay = issue.dayIndex;
       } else if (issue.stopId && state.plan) {
         const idx = (state.plan.days || []).findIndex(d =>
-          (d.blocks || []).some(s => String(s.id) === String(issue.stopId))
+          d && (d.blocks || []).some(s => s && String(s.id) === String(issue.stopId))
         );
         if (idx >= 0) state.selectedDay = idx;
       }
@@ -4890,7 +4999,7 @@
       personIds: [...cloudDirty.personIds],
       placeIds: [...cloudDirty.placeIds],
       plan: planKey
-        ? ((state.plan && String(state.plan.bookingKey) === String(planKey)) ? state.plan : ((state.plans || {})[planKey] || null))
+        ? ((state.plan && !state.planViewOnly && String(state.plan.bookingKey) === String(planKey)) ? state.plan : ((state.plans || {})[planKey] || null))
         : null,
     };
     cloudDirty.planKey = '';
@@ -4916,12 +5025,24 @@
     // booking 21 cannot clobber a newer booking 20 written by another tab.
     Object.keys(memPlans).forEach(k => {
       if (state.plan && String(k) === String(state.plan.bookingKey)) return;
-      mergedPlans[k] = preferRicherPlan(memPlans[k], store.plans[k]) || memPlans[k] || store.plans[k];
+      const chosen = preferRicherPlan(memPlans[k], store.plans[k]) || memPlans[k] || store.plans[k];
+      if (chosen && typeof chosen === 'object') chosen.days = prepareDaysForSave(chosen.days, chosen);
+      mergedPlans[k] = chosen;
     });
     if (state.plan && state.plan.bookingKey != null && !legacyRow(state.plan.bookingKey, state.plan)) {
-      // A {booked:true} row with no hotelName is not a stay. Do not write it back.
-      state.plan.hotels = normalizePlanHotels(state.plan.hotels);
-      mergedPlans[state.plan.bookingKey] = state.plan;
+      if (state.planViewOnly) {
+        const kept = memPlans[String(state.plan.bookingKey)];
+        if (kept && typeof kept === 'object') {
+          const copy = JSON.parse(JSON.stringify(kept));
+          copy.days = prepareDaysForSave(copy.days, copy);
+          mergedPlans[state.plan.bookingKey] = copy;
+        }
+      } else {
+        // A {booked:true} row with no hotelName is not a stay. Do not write it back.
+        state.plan.hotels = normalizePlanHotels(state.plan.hotels);
+        state.plan.days = prepareDaysForSave(state.plan.days, state.plan);
+        mergedPlans[state.plan.bookingKey] = state.plan;
+      }
     }
     store.plans = omitLegacyPlans(mergedPlans);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
@@ -4967,7 +5088,13 @@
   }
 
   function scheduleAutoSave(scope) {
-    noteDirty(scope || inferDirtyScope());
+    const requested = scope || inferDirtyScope();
+    if (state.planViewOnly && requested && requested.plan && state.plan) {
+      state.planViewOnly = false;
+      const key = state.plan.bookingKey != null ? String(state.plan.bookingKey) : '';
+      if (key) state.plans[key] = state.plan;
+    }
+    noteDirty(requested);
     if (!autoSaveEnabled) {
       schedulePersist();
       return;
@@ -6340,6 +6467,7 @@
   async function savePlanMerged(plan, opts) {
     const force = !!(opts && opts.force);
     if (plan && Array.isArray(plan.hotels)) plan.hotels = normalizePlanHotels(plan.hotels);
+    if (plan) plan.days = prepareDaysForSave(plan.days, plan);
     if (!state.supabasePlanTable || !plan) return { ok: false, wrote: false };
     const key = String(plan.bookingKey || '');
     if (!key || legacyRow(key, plan)) return { ok: true, wrote: false };
@@ -6386,6 +6514,16 @@
         const patched = patchEdited(row.payload || {}, baseline, current);
         if (patched.value && Array.isArray(patched.value.hotels)) {
           patched.value.hotels = normalizePlanHotels(patched.value.hotels);
+        }
+        if (patched.value) {
+          patched.value.days = prepareDaysForSave(patched.value.days, patched.value);
+          const haveDates = new Set(patched.value.days.map(d => d && d.date).filter(Boolean));
+          prepareDaysForSave(current.days, current).forEach(d => {
+            if (d && d.date && !haveDates.has(d.date)) {
+              patched.value.days.push(d);
+              haveDates.add(d.date);
+            }
+          });
         }
         if (!patched.changed) {
           rememberPlanBaseline(plan);
@@ -6701,6 +6839,7 @@
       existing.guests = syncPlanGuestNames(existing.guests, b._members, noteExtras);
       syncBookingDetailGuestNames(existing, b._members, noteExtras);
       (existing.days || []).forEach(day => {
+        if (!day || typeof day !== 'object') return;
         (day.blocks || []).forEach(s => {
           if (s && s.type === 'handover') refreshHandoverTitle(s);
         });
@@ -6749,8 +6888,16 @@
 
   function mergeDays(existing, freshDays) {
     const byDate = {};
-    (existing.days || []).forEach(d => { if (d.date) byDate[d.date] = d; });
-    existing.days = freshDays.map((d, i) => byDate[d.date] || existing.days[i] || d);
+    (existing.days || []).forEach(d => { if (d && d.date) byDate[d.date] = storedPlanDay(d, d.date); });
+    const incoming = Array.isArray(freshDays) ? freshDays : [];
+    const prev = Array.isArray(existing.days) ? existing.days : [];
+    existing.days = incoming.map((d, i) => {
+      const date = (d && typeof d === 'object' && d.date) ? String(d.date) : '';
+      const kept = (date && byDate[date])
+        || (prev[i] && typeof prev[i] === 'object' ? prev[i] : null)
+        || (d && typeof d === 'object' ? d : null);
+      return storedPlanDay(kept, date);
+    });
   }
 
   function withTimeout(promise, ms, label) {
@@ -6832,7 +6979,7 @@
     state.plans[state.plan.bookingKey] = state.plan;
     try { absorbGuestsFromPlan(state.plan); } catch (err) { console.warn(err); }
     const today = todayISO();
-    const idx = state.plan.days.findIndex(d => d.date === today);
+    const idx = (state.plan.days || []).findIndex(d => d && d.date === today);
     state.selectedDay = idx >= 0 ? idx : 0;
     state.weekZoomDay = null;
     const url = new URL(location.href);
@@ -6954,7 +7101,10 @@
   }
 
   function currentDay() {
-    return state.plan?.days[state.selectedDay] || state.plan?.days[0];
+    const days = (state.plan && state.plan.days) || [];
+    const selected = days[state.selectedDay];
+    if (selected && typeof selected === 'object') return selected;
+    return days.find(d => d && typeof d === 'object') || null;
   }
 
   function addGuest() {
@@ -6971,8 +7121,9 @@
     render();
   }
   function addPlaceToDay(place, dayIndex, chosenTime) {
-    const day = state.plan.days[dayIndex];
-    if (!day || !place) return;
+    const day = state.plan && state.plan.days ? state.plan.days[dayIndex] : null;
+    if (!day || typeof day !== 'object' || !place) return;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
     const alreadyUsed = !!(place.id && placeUsedInWeek(place.id));
     const foodReuse = isLunchLikePlace(place);
     const rawChosen = String(chosenTime == null ? '' : chosenTime).trim();
@@ -7006,7 +7157,7 @@
       travelMinutes: null,
     });
     sortDayBlocks(day);
-    const idx = day.blocks.findIndex(b => b.title === place.name && b.time === time);
+    const idx = day.blocks.findIndex(b => b && b.title === place.name && b.time === time);
     seedTravelMinutes(day, idx >= 0 ? idx : day.blocks.length - 1);
     scheduleAutoSave();
     let extra = '';
@@ -7127,12 +7278,13 @@
 
   function dayContainingStop(stopId) {
     const sid = String(stopId);
-    return (state.plan && state.plan.days || []).find(d => (d.blocks || []).some(b => b && String(b.id) === sid)) || null;
+    return (state.plan && state.plan.days || []).find(d => d && (d.blocks || []).some(b => b && String(b.id) === sid)) || null;
   }
 
   function addHandoverStop() {
     const day = currentDay();
-    if (!day || !state.plan || !window.HandoverStops) return;
+    if (!day || typeof day !== 'object' || !state.plan || !window.HandoverStops) return;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
     const hotels = handoverHotelsForPlan();
     const first = hotels.find(h => h.group === 'this') || hotels[0] || null;
     const stop = ensureHandoverFields({
@@ -7423,7 +7575,8 @@
 
   function addBlankStop() {
     const day = currentDay();
-    if (!day) return;
+    if (!day || typeof day !== 'object') return;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
     const time = '';
     day.blocks.push({
       id: uid('s'), time, type: 'other', title: 'New stop', notes: '', address: '', period: periodForTime(time),
@@ -7440,7 +7593,7 @@
     (state.plan.days || []).forEach(day => {
       if (!day || !Array.isArray(day.blocks)) return;
       const before = day.blocks.length;
-      day.blocks = day.blocks.filter(s => s.id !== id);
+      day.blocks = day.blocks.filter(s => s && s.id !== id);
       if (day.blocks.length !== before) found = true;
     });
     if (!found) return;
@@ -7449,7 +7602,7 @@
   }
   function redistributeBlockTimes(day) {
     if (!day || !Array.isArray(day.blocks)) return;
-    const times = day.blocks.map(b => b.time);
+    const times = day.blocks.map(b => (b && b.time) || '');
     const sorted = times.slice().sort((a, b) => {
       const am = timeToMinutes(a), bm = timeToMinutes(b);
       if (am == null && bm == null) return 0;
@@ -7458,6 +7611,7 @@
       return am - bm;
     });
     day.blocks.forEach((b, i) => {
+      if (!b) return;
       b.time = sorted[i] || '';
       b.period = periodForTime(b.time);
     });
@@ -7478,8 +7632,8 @@
 
   function moveStop(id, dir) {
     const day = currentDay();
-    if (!day) return;
-    const i = day.blocks.findIndex(s => s.id === id);
+    if (!day || !Array.isArray(day.blocks)) return;
+    const i = day.blocks.findIndex(s => s && s.id === id);
     const j = i + dir;
     if (i < 0 || j < 0 || j >= day.blocks.length) return;
     if (!reorderDayBlocks(day, i, j)) return;
@@ -7547,8 +7701,8 @@
         const fromStop = titled[fromIdx];
         const toStop = titled[toIdx];
         if (!fromStop || !toStop) return;
-        const realFrom = day.blocks.findIndex(s => s.id === fromStop.id);
-        const realTo = day.blocks.findIndex(s => s.id === toStop.id);
+        const realFrom = day.blocks.findIndex(s => s && s.id === fromStop.id);
+        const realTo = day.blocks.findIndex(s => s && s.id === toStop.id);
         if (!reorderDayBlocks(day, realFrom, realTo)) return;
         scheduleAutoSave();
         render();
@@ -7557,13 +7711,15 @@
     });
   }
   function addManualDay() {
+    if (!state.plan) return;
+    state.plan.days = prepareDaysForSave(state.plan.days, state.plan);
     const last = state.plan.days[state.plan.days.length - 1];
     let nextDate = '';
     if (last?.date) {
       const d = parseISODateUTC(last.date);
       if (d) nextDate = toISODateUTC(new Date(d.getTime() + 86400000));
     }
-    state.plan.days.push({
+    state.plan.days.push(storedPlanDay({
       id: uid('d'),
       date: nextDate,
       blocks: defaultBlocks(state.plan.days.length, {
@@ -7574,7 +7730,7 @@
         day1OriginType: effectiveDay1OriginType(state.plan),
         hasAirport: hasAirportArrivalOption(state.plan),
       }),
-    });
+    }, nextDate));
     if (nextDate) state.plan.departureDate = nextDate;
     state.selectedDay = state.plan.days.length - 1;
     scheduleAutoSave();
@@ -7592,8 +7748,13 @@
       hasAirport: hasAirportArrivalOption(state.plan),
     };
     const byDate = {};
-    state.plan.days.forEach(d => { if (d.date) byDate[d.date] = d; });
-    state.plan.days = dates.map((date, i) => byDate[date] || { id: uid('d'), date, blocks: defaultBlocks(i, ctx) });
+    (state.plan.days || []).forEach(d => { if (d && d.date) byDate[d.date] = d; });
+    state.plan.days = dates.map((date, i) => {
+      const kept = byDate[date];
+      if (kept && typeof kept === 'object') return storedPlanDay(kept, date);
+      const blocks = defaultBlocks(i, ctx);
+      return storedPlanDay({ id: uid('d'), date, blocks: Array.isArray(blocks) ? blocks : [] }, date);
+    });
     state.selectedDay = Math.min(state.selectedDay, state.plan.days.length - 1);
     scheduleAutoSave();
     render();
@@ -7876,6 +8037,15 @@
     }
   }
 
+  function visitYearButtons(place) {
+    const years = (place && place.visitYears) || [];
+    if (!years.length) return 'Years: not recorded yet';
+    const buttons = years.map(year =>
+      `<button type="button" class="visit-year-btn" data-open-visit-year="${escapeHtml(String(year))}" data-visit-place="${escapeHtml(place.id)}" data-visit-place-name="${escapeHtml(place.name || '')}">${escapeHtml(String(year))}</button>`
+    ).join('');
+    return 'Years: ' + buttons;
+  }
+
   function renderCatalogue(opts) {
     const options = (opts && typeof opts === 'object') ? opts : { compact: !!opts };
     const compact = !!options.compact;
@@ -7919,9 +8089,7 @@
       const p = selected;
       const visitsN = Number(p.visitCount) || 0;
       const visitWord = visitsN === 1 ? 'time' : 'times';
-      const yearsLabel = (p.visitYears || []).length
-        ? ('Years: ' + p.visitYears.join(', '))
-        : 'Years: not recorded yet';
+      const yearsLabel = visitYearButtons(p);
       const firstLabel = p.firstVisited
         ? formatDateDMY(p.firstVisited)
         : 'Not recorded yet';
@@ -7936,7 +8104,7 @@
         </div>
         <div class="place-visit-banner" role="status">
           <div class="visit-big">Visited ${visitsN} ${visitWord}</div>
-          <div class="visit-hint">First visited: ${escapeHtml(firstLabel)} · ${escapeHtml(yearsLabel)}</div>
+          <div class="visit-hint">First visited: ${escapeHtml(firstLabel)} · ${yearsLabel}</div>
         </div>
         <div class="dir-grid">
           <div>
@@ -8246,6 +8414,7 @@
     const ids = new Set();
     if (!state.plan) return ids;
     (state.plan.days || []).forEach(day => {
+      if (!day || typeof day !== 'object') return;
       (day.blocks || []).forEach(s => {
         const pid = s && (s.placeId || s.place_id);
         if (pid) ids.add(pid);
@@ -8326,6 +8495,7 @@
     const unique = usedPlaceIdsInWeek().size;
     let placeStops = 0;
     days.forEach(day => {
+      if (!day || typeof day !== 'object') return;
       (day.blocks || []).forEach(s => {
         if (s && !isRoughSystemStop(s) && String(s.title || '').trim()) placeStops += 1;
       });
@@ -8360,6 +8530,7 @@
     let pickups = 0;
     let dropoffs = 0;
     ((state.plan && state.plan.days) || []).forEach(day => {
+      if (!day || typeof day !== 'object') return;
       (day.blocks || []).forEach(s => {
         if (!s || s.type !== 'handover') return;
         if (s.handoverKind === 'dropoff') dropoffs += 1;
@@ -8540,7 +8711,7 @@
       if (inp.tagName === 'INPUT') inp.value = s.time || '';
     });
     const dayIndex = (state.plan && state.plan.days || []).findIndex(
-      d => (d.blocks || []).some(b => b && String(b.id) === sid)
+      d => d && (d.blocks || []).some(b => b && String(b.id) === sid)
     );
     if (dayIndex >= 0) {
       sortDayBlocks(state.plan.days[dayIndex]);
@@ -8844,11 +9015,12 @@
     const closeBtn = document.getElementById('sheetClose');
     if (titleEl) titleEl.textContent = 'Return visit — which day?';
     if (closeBtn) closeBtn.textContent = 'Cancel';
-    const alreadyOn = (day) => (day.blocks || []).some(s => {
+    const alreadyOn = (day) => !!(day && (day.blocks || []).some(s => {
       const pid = s && (s.placeId || s.place_id);
       return pid && pid === placeId;
-    });
+    }));
     const rows = days.map((day, i) => {
+      if (!day || typeof day !== 'object') return '';
       const load = roughDayLoadLevel(day);
       const loadStops = load.count === 1 ? '1 place stop' : (load.count + ' place stops');
       const dateLine = day.date
@@ -8891,8 +9063,8 @@
 
   function moveRoughStop(dayIndex, stopId, dir) {
     const day = state.plan && state.plan.days ? state.plan.days[dayIndex] : null;
-    if (!day) return;
-    const i = day.blocks.findIndex(s => s.id === stopId);
+    if (!day || !Array.isArray(day.blocks)) return;
+    const i = day.blocks.findIndex(s => s && s.id === stopId);
     const j = i + dir;
     if (i < 0 || j < 0 || j >= day.blocks.length) return;
     if (!reorderDayBlocks(day, i, j)) return;
@@ -9380,6 +9552,7 @@
     const markEmpties = planShowsEmptyMarkers(state.plan);
     let html = '<div class="timeline">';
     blocks.forEach((s, i) => {
+      if (!s || typeof s !== 'object') return;
       ensureStopTicks(s);
       if (s.type === 'handover') ensureHandoverFields(s);
       // Fill blank stop address from Places catalogue when linked by placeId
@@ -9457,7 +9630,8 @@
 
 function renderDayTabs() {
     const today = todayISO();
-    return `<div class="day-tabs">${state.plan.days.map((d, i) => {
+    return `<div class="day-tabs">${(state.plan.days || []).map((d, i) => {
+      if (!d || typeof d !== 'object') return '';
       const isToday = d.date && d.date === today;
       return `<button type="button" class="day-tab ${i === state.selectedDay ? 'active' : ''} ${isToday ? 'today' : ''}" data-day="${i}">
         <div class="d-label">${isToday ? 'Today · ' : ''}Day ${i + 1}</div>
@@ -10346,14 +10520,22 @@ function renderDayTabs() {
       </button>`;
   }
 
-  function hotelsUsedPeopleText(people, hadStay) {
+  function hotelsUsedPeopleText(people, hadStay, year) {
     const named = (people || []).slice().sort((a, b) => a.localeCompare(b, 'en'));
-    if (named.length) return named.map(escapeHtml).join(', ');
+    if (named.length) {
+      return named.map(name => {
+        const person = uniquePersonByName(name);
+        if (!person) return escapeHtml(name);
+        return `<button type="button" class="visit-person-btn" data-open-visit-person="${escapeHtml(person.id)}">${escapeHtml(person.name || name)}</button>`;
+      }).join(', ');
+    }
     return hadStay ? 'No names saved' : 'No stay yet';
   }
 
-  function hotelsUsedCard(name, people, hadStay, marked) {
-    return `<li class="${marked ? 'is-this-booking' : ''}"><div class="hotels-used-name">${escapeHtml(name)}</div><div class="hotels-used-people">${hotelsUsedPeopleText(people, hadStay)}</div></li>`;
+  function hotelsUsedCard(name, people, hadStay, marked, year) {
+    const yearAttr = year ? ` data-open-visit-year="${escapeHtml(String(year))}"` : '';
+    const hotelBtn = `<button type="button" class="visit-inline hotels-used-name" data-visit-hotel="${escapeHtml(name)}"${yearAttr}>${escapeHtml(name)}</button>`;
+    return `<li class="${marked ? 'is-this-booking' : ''}"><div class="hotels-used-name">${hotelBtn}</div><div class="hotels-used-people">${hotelsUsedPeopleText(people, hadStay, year)}</div></li>`;
   }
 
   function thisBookingHotelKey() {
@@ -10365,7 +10547,11 @@ function renderDayTabs() {
 
   function hotelsUsedYearBlock(title, cards) {
     if (!cards) return '';
-    return `<section class="hotels-used-year"><h3>${escapeHtml(title)}</h3><ul class="hotels-used-list">${cards}</ul></section>`;
+    const year = /^\d{4}$/.test(String(title || '')) ? String(title) : '';
+    const heading = year
+      ? `<button type="button" class="visit-year-btn" data-open-visit-year="${escapeHtml(year)}">${escapeHtml(year)}</button>`
+      : escapeHtml(title);
+    return `<section class="hotels-used-year"><h3>${heading}</h3><ul class="hotels-used-list">${cards}</ul></section>`;
   }
 
   function renderHotelsUsedPanel() {
@@ -10406,7 +10592,7 @@ function renderDayTabs() {
         const cards = rows
           .filter(row => row.byYear.has(year))
           .sort((a, b) => a.name.localeCompare(b.name, 'en'))
-          .map(row => hotelsUsedCard(row.name, row.byYear.get(year), true, current.year === String(year) && hotelsUsedSameName(row.name, current.hotel)))
+          .map(row => hotelsUsedCard(row.name, row.byYear.get(year), true, current.year === String(year) && hotelsUsedSameName(row.name, current.hotel), year))
           .join('');
         if (cards) blocks.push(hotelsUsedYearBlock(year, cards));
       };
@@ -10466,7 +10652,7 @@ function renderDayTabs() {
       <button type="button" data-booking-link="people">Who: ${escapeHtml(people)}</button>
       <button type="button" data-booking-link="hotel">Hotel: ${escapeHtml(hotel)}</button>
       <button type="button" data-booking-link="place">Place: ${escapeHtml(place)}</button>
-      <button type="button" data-booking-link="year">Year: ${escapeHtml(year)}</button>
+      <button type="button" data-booking-link="year" data-open-visit-year="${escapeHtml(link.year || '')}">Year: ${escapeHtml(year)}</button>
       <a href="${escapeHtml(hotelsHref)}">Rooms: ${escapeHtml(rooms)}</a>
     </div>`;
   }
@@ -10567,6 +10753,7 @@ function renderDayTabs() {
       : '<p>Tap a time to change it. Detailed view is where stops are moved. Zoom out returns to the week.</p>');
     const today = todayISO();
     const sections = shown.map(([day, i]) => {
+      if (!day || typeof day !== 'object') return '';
       const dow = day.date ? weekdayName(day.date) : ('Day ' + (i + 1));
       const dateLine = day.date ? formatDateDMY(day.date) : 'Date not set';
       const isToday = !!(day.date && day.date === today);
@@ -10728,9 +10915,11 @@ function renderDayTabs() {
       }
       return;
     }
-    const live = state.liveBookings
+    const live = state.visitsFixture
+      ? `<span class="pill">Demo data — nothing is saved</span>`
+      : (state.liveBookings
       ? `<span class="pill">Live bookings loaded</span>`
-      : `<span class="pill warn">Bookings are not loaded. Check the connection.</span>`;
+      : `<span class="pill warn">Bookings are not loaded. Check the connection.</span>`);
     const auth = state.sessionEmail
       ? `<span class="pill">${escapeHtml(state.sessionEmail)}</span>`
       : '';
@@ -10743,6 +10932,7 @@ function renderDayTabs() {
         ${tab('planner', 'Planner')}
         ${tab('rough', 'Rough plan')}
         ${tab('places', 'Places')}
+        ${tab('visits', 'Visits')}
         ${tab('people', 'People')}
         ${hotelsUsedTabButton()}
         ${tab('issues', 'Issues')}
@@ -10771,6 +10961,8 @@ function renderDayTabs() {
         </div>`;
     } else if (state.mainTab === 'hotels') {
       body = renderHotelsUsedPanel();
+    } else if (state.mainTab === 'visits') {
+      body = renderVisitsPanel();
     }
     const app = document.getElementById('app');
     if (app) app.innerHTML = `<div class="status-row">${live}${auth}</div>${mainTabs}${body}`;
@@ -10791,7 +10983,7 @@ function renderDayTabs() {
     }
     ensureHotelsUsedStays();
     updateGroupHeading();
-    if (view === 'week') {
+    if (view === 'week' && state.mainTab !== 'visits') {
       const app = document.getElementById('app');
       if (app) app.innerHTML = renderWeekLook();
       bindWeekLook();
@@ -10815,7 +11007,7 @@ function renderDayTabs() {
     }
 
     const today = todayISO();
-    const todayIdx = state.plan.days.findIndex(d => d.date === today);
+    const todayIdx = (state.plan.days || []).findIndex(d => d && d.date === today);
     const day = currentDay();
     const live = state.liveBookings
       ? `<span class="pill">Live bookings loaded</span>`
@@ -10937,6 +11129,9 @@ function renderDayTabs() {
         <button type="button" class="main-tab ${state.mainTab === 'places' ? 'active' : ''}" data-main-tab="places" role="tab" aria-selected="${state.mainTab === 'places'}">
           Places
         </button>
+        <button type="button" class="main-tab ${state.mainTab === 'visits' ? 'active' : ''}" data-main-tab="visits" role="tab" aria-selected="${state.mainTab === 'visits'}">
+          Visits
+        </button>
         <button type="button" class="main-tab ${state.mainTab === 'people' ? 'active' : ''}" data-main-tab="people" role="tab" aria-selected="${state.mainTab === 'people'}">
           People
         </button>
@@ -11036,6 +11231,12 @@ function renderDayTabs() {
       ${renderHotelsUsedPanel()}
     `;
 
+    const visitsView = `
+      <div class="status-row">${live}${auth}</div>
+      ${mainTabs}
+      ${renderVisitsPanel()}
+    `;
+
     const app = document.getElementById('app');
     if (state.mainTab === 'places') {
       app.innerHTML = placesView;
@@ -11043,6 +11244,8 @@ function renderDayTabs() {
       app.innerHTML = peopleView;
     } else if (state.mainTab === 'hotels') {
       app.innerHTML = hotelsUsedView;
+    } else if (state.mainTab === 'visits') {
+      app.innerHTML = visitsView;
     } else if (state.mainTab === 'issues') {
       app.innerHTML = issuesView;
     } else if (state.mainTab === 'rough') {
@@ -11064,19 +11267,277 @@ function renderDayTabs() {
     }
   }
 
+  function visitNamesForPlace(placeId, placeName) {
+    const names = [];
+    const place = (state.catalogue || []).find(p => p && String(p.id) === String(placeId || ''));
+    const add = (value) => {
+      const clean = String(value || '').trim();
+      if (!clean) return;
+      if (!names.some(n => n.toLowerCase() === clean.toLowerCase())) names.push(clean);
+    };
+    add(placeName);
+    if (place) {
+      add(place.name);
+      add(place.nickname);
+    }
+    return names;
+  }
+
+  function plansForVisits() {
+    const out = {};
+    Object.keys(state.plans || {}).forEach(key => {
+      const plan = state.plans[key];
+      if (!plan || legacyRow(key, plan)) return;
+      out[key] = plan;
+    });
+    return out;
+  }
+
+  function personVisitButton(name, personId) {
+    const id = String(personId || '').trim();
+    const person = id ? findPersonById(id) : null;
+    if (!person) return escapeHtml(name || 'Unnamed');
+    return `<button type="button" class="visit-person-btn" data-open-visit-person="${escapeHtml(person.id)}">${escapeHtml(person.name || name || 'Unnamed')}</button>`;
+  }
+
+  function visitGuestLine(visit) {
+    const named = (visit.guests || []).map(g => personVisitButton(g.name, g.personId)).join(', ');
+    const count = Number(visit.guestCount) || 0;
+    const namedCount = (visit.guests || []).length;
+    let head = 'Guest numbers not recorded';
+    if (count && namedCount && count !== namedCount) head = count + ' guests, ' + namedCount + ' named';
+    else if (count || namedCount) {
+      const n = count || namedCount;
+      head = n + (n === 1 ? ' guest' : ' guests');
+    }
+    return named ? (head + ': ' + named) : head;
+  }
+
+  function visitDateLabel(iso) {
+    if (!iso) return 'Date not recorded';
+    const day = weekdayName(iso);
+    const shown = formatDateDMY(iso);
+    return day ? (day + ' ' + shown) : shown;
+  }
+
+  function visitSpanLabel(arrival, departure) {
+    if (!arrival && !departure) return 'Dates not recorded';
+    return (arrival ? formatDateDMY(arrival) : '—') + ' – ' + (departure ? formatDateDMY(departure) : '—');
+  }
+
+  function renderVisitsPanel() {
+    const q = state.visitsQuery || {};
+    const names = visitNamesForPlace(q.placeId, q.placeName);
+    const visits = window.PlaceVisits
+      ? PlaceVisits.collectPlaceVisits({
+          plans: plansForVisits(),
+          bookings: state.bookings || [],
+          placeId: q.placeId || '',
+          placeName: q.placeName || '',
+          names,
+          year: q.year || '',
+          personId: q.personId || '',
+          hotelName: q.hotelName || '',
+        })
+      : [];
+    const bits = [];
+    if (names[0]) bits.push(names[0]);
+    else if (q.hotelName) bits.push(q.hotelName);
+    if (q.year) bits.push(String(q.year));
+    if (q.personId) {
+      const person = findPersonById(q.personId);
+      if (person && person.name) bits.push(person.name);
+    }
+    const queryLabel = bits.length ? bits.join(' · ') : 'All saved visits';
+    const hasFilter = !!(q.year || q.placeId || q.placeName || q.personId || q.hotelName);
+    let body = '<p class="muted">Choose a year on a place, a hotel, or a person to see who visited.</p>';
+    if (hasFilter && !visits.length) {
+      body = '<p class="muted">No saved plans show a visit here for that year.</p>';
+    } else if (visits.length) {
+      body = `<div class="visit-list">${visits.map(visit => {
+        const days = (visit.days || []).map(day => {
+          const matches = (day.matches || []).map(stop =>
+            `<li><strong>${escapeHtml(stop.time || 'Time not recorded')}</strong> ${escapeHtml(stop.title || 'Untitled stop')}</li>`
+          ).join('');
+          const others = (day.otherStops || []).length
+            ? `<ul class="visit-stops">${day.otherStops.map(stop =>
+                `<li><strong>${escapeHtml(stop.time || 'Time not recorded')}</strong> ${escapeHtml(stop.title || 'Untitled stop')}</li>`
+              ).join('')}</ul>`
+            : '<p class="muted">No other stops this day.</p>';
+          return `<section class="visit-day">
+            <h3>${escapeHtml(visitDateLabel(day.date))}</h3>
+            <div class="field-label">Stop at this place</div>
+            <ul class="visit-stops">${matches}</ul>
+            <div class="field-label">Other stops that day</div>
+            ${others}
+          </section>`;
+        }).join('');
+        const organiser = (visit.organiserName || visit.organiserPersonId)
+          ? personVisitButton(visit.organiserName || 'Organiser', visit.organiserPersonId)
+          : 'Organiser not recorded';
+        const hotel = visit.hotelName
+          ? `<button type="button" class="visit-inline" data-open-visit-year="${escapeHtml(q.year || (visit.days[0] && visit.days[0].year) || '')}" data-visit-hotel="${escapeHtml(visit.hotelName)}">${escapeHtml(visit.hotelName)}</button>`
+          : 'Hotel not recorded';
+        const group = visit.bookingKey
+          ? `<button type="button" class="visit-group-btn" data-open-visit-group="${escapeHtml(visit.bookingKey)}">${escapeHtml(visit.groupName || ('Booking #' + visit.bookingKey))}</button>`
+          : escapeHtml(visit.groupName || 'Untitled group');
+        return `<article class="visit-card">
+          <div class="visit-card-head">
+            ${group}
+            <span>${escapeHtml(visitSpanLabel(visit.arrivalDate, visit.departureDate))}</span>
+          </div>
+          <dl class="visit-meta">
+            <dt>Organiser</dt><dd>${organiser}</dd>
+            <dt>Guests</dt><dd>${visitGuestLine(visit)}</dd>
+            <dt>Hotel</dt><dd>${hotel}</dd>
+          </dl>
+          ${days}
+        </article>`;
+      }).join('')}</div>`;
+    }
+    const backLabel = q.placeId ? 'Back to Places' : 'Back to Planner';
+    return `
+      <div class="card">
+        <div class="row-between">
+          <h2>Visits</h2>
+          <button type="button" class="btn btn-outline btn-sm" id="btnVisitsBack">${backLabel}</button>
+        </div>
+        <p class="visit-query">${escapeHtml(queryLabel)}</p>
+        ${pageHelp('<p>This list is read-only. It does not change bookings or plans. Choose a year to see every group that visited. Open a group for its plan, or a person in People.</p>')}
+        ${body}
+      </div>`;
+  }
+
+  function setVisitParams(url, query) {
+    const q = query || {};
+    const set = (key, value) => {
+      const clean = value == null ? '' : String(value);
+      if (clean) url.searchParams.set(key, clean);
+      else url.searchParams.delete(key);
+    };
+    set('year', q.year);
+    set('place', q.placeId);
+    set('placeName', q.placeName);
+    set('person', q.personId);
+    set('hotel', q.hotelName);
+  }
+
+  function openVisits(query) {
+    const q = query || {};
+    state.visitsQuery = {
+      placeId: q.placeId != null ? String(q.placeId) : '',
+      placeName: q.placeName != null ? String(q.placeName) : '',
+      year: q.year != null ? String(q.year) : '',
+      personId: q.personId != null ? String(q.personId) : '',
+      hotelName: q.hotelName != null ? String(q.hotelName) : '',
+    };
+    state.mainTab = 'visits';
+    try { localStorage.setItem('planner_main_tab', 'visits'); } catch (_) { /* ignore */ }
+    const url = new URL(location.href);
+    url.searchParams.set('tab', 'visits');
+    setVisitParams(url, state.visitsQuery);
+    history.replaceState(null, '', url);
+    render({ resetScroll: true });
+  }
+
+  function visitQueryFromButton(btn) {
+    return {
+      year: btn.getAttribute('data-open-visit-year') || '',
+      placeId: btn.getAttribute('data-visit-place') || '',
+      placeName: btn.getAttribute('data-visit-place-name') || '',
+      personId: btn.getAttribute('data-visit-person') || '',
+      hotelName: btn.getAttribute('data-visit-hotel') || '',
+    };
+  }
+
+  function bindVisitLinks() {
+    document.getElementById('btnVisitsBack')?.addEventListener('click', () => {
+      if (state.visitsQuery && state.visitsQuery.placeId) setMainTab('places');
+      else setMainTab('planner');
+    });
+    document.querySelectorAll('[data-open-visit-person]').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        openPersonInPeopleTab(btn.getAttribute('data-open-visit-person'));
+      });
+    });
+    document.querySelectorAll('[data-open-visit-group]').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        openPlanFromVisit(btn.getAttribute('data-open-visit-group'));
+      });
+    });
+    document.querySelectorAll('[data-open-visit-year]').forEach(btn => {
+      if (btn.hasAttribute('data-open-visit-person') || btn.hasAttribute('data-open-visit-group') || btn.hasAttribute('data-booking-link')) return;
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        openVisits(visitQueryFromButton(btn));
+      });
+    });
+  }
+
+  async function openPlanFromVisit(key) {
+    if (!key || legacyRow(key)) {
+      toast('That tour was not found');
+      return;
+    }
+    const savedPlans = state.plans || {};
+    const localPlan = savedPlans[key] && !legacyRow(key, savedPlans[key]) ? savedPlans[key] : null;
+    let cloudPlan = null;
+    try { cloudPlan = await loadPlanFromSupabase(key); } catch (err) { console.warn(err); }
+    const chosen = preferRicherPlan(localPlan, cloudPlan) || localPlan || cloudPlan;
+    if (!chosen || legacyRow(key, chosen)) {
+      toast('That tour was not found');
+      return;
+    }
+    const clone = JSON.parse(JSON.stringify(chosen));
+    clone.bookingKey = String(clone.bookingKey || key);
+    const booking = (state.bookings || []).find(row => String(row.id) === String(key));
+    if (booking) {
+      try { await enrichBooking(booking); } catch (err) { console.warn(err); }
+    }
+    let display = clone;
+    if (booking) {
+      const scratch = Object.assign({}, savedPlans);
+      scratch[String(key)] = clone;
+      state.plans = scratch;
+      try {
+        display = planFromBooking(booking);
+      } finally {
+        state.plans = savedPlans;
+      }
+    } else {
+      display = normalizePlan(clone);
+    }
+    state.bookingKey = String(key);
+    state.plan = display;
+    state.planViewOnly = true;
+    const url = new URL(location.href);
+    url.searchParams.set('booking', String(key));
+    history.replaceState({}, '', url);
+    setMainTab('planner');
+    fillGroupSelect();
+  }
+
   function setMainTab(tab) {
     if (tab === 'places') state.mainTab = 'places';
     else if (tab === 'people') state.mainTab = 'people';
     else if (tab === 'issues') state.mainTab = 'issues';
     else if (tab === 'rough') state.mainTab = 'rough';
     else if (tab === 'hotels') state.mainTab = 'hotels';
+    else if (tab === 'visits') state.mainTab = 'visits';
     else state.mainTab = 'planner';
     localStorage.setItem('planner_main_tab', state.mainTab);
     const url = new URL(location.href);
     if (state.mainTab === 'planner') url.searchParams.delete('tab');
     else url.searchParams.set('tab', state.mainTab);
-    if (state.mainTab !== 'people') url.searchParams.delete('person');
-    if (state.mainTab !== 'places') url.searchParams.delete('place');
+    if (state.mainTab !== 'people' && state.mainTab !== 'visits') url.searchParams.delete('person');
+    if (state.mainTab !== 'places' && state.mainTab !== 'visits') url.searchParams.delete('place');
+    if (state.mainTab !== 'visits') {
+      url.searchParams.delete('placeName');
+      url.searchParams.delete('hotel');
+    }
+    if (state.mainTab !== 'visits' && state.mainTab !== 'hotels') url.searchParams.delete('year');
     history.replaceState(null, '', url);
     render({ resetScroll: true });
   }
@@ -11268,7 +11729,8 @@ function renderDayTabs() {
         const which = btn.getAttribute('data-booking-link');
         if (which === 'people') openBookingPerson();
         else if (which === 'place') openBookingPlace();
-        else if (which === 'hotel' || which === 'year') openBookingHotels();
+        else if (which === 'hotel') openBookingHotels();
+        else if (which === 'year') openVisits({ year: btn.getAttribute('data-open-visit-year') || '' });
       });
     });
     q('#hotelsUsedYear')?.addEventListener('change', e => {
@@ -11278,6 +11740,7 @@ function renderDayTabs() {
     document.querySelectorAll('[data-main-tab]').forEach(btn => {
       btn.addEventListener('click', () => setMainTab(btn.getAttribute('data-main-tab')));
     });
+    bindVisitLinks();
     document.querySelectorAll('[data-guest-name]').forEach(inp => {
       inp.addEventListener('input', () => {
         const g = state.plan.guests.find(x => x.id === inp.getAttribute('data-guest-name'));
@@ -11821,6 +12284,12 @@ function renderDayTabs() {
       return ba - bb;
     });
   }
+  function yearFromVisitDate(value) {
+    const match = /(\d{4})/.exec(String(value || ''));
+    if (!match) return '';
+    const year = Number(match[1]);
+    return (year >= 1990 && year <= 2100) ? String(year) : '';
+  }
   function renderVisitHistoryList(person) {
     const refs = sortVisitRefs(person.visitRefs || []);
     if (!refs.length) {
@@ -11828,10 +12297,16 @@ function renderDayTabs() {
     }
     return `<ul class="people-visit-list">${refs.map((r, idx) => {
       const bits = [];
-      if (r.date) bits.push(`<strong>${escapeHtml(String(r.date))}</strong>`);
-      if (r.label) bits.push(escapeHtml(r.label));
+      const year = yearFromVisitDate(r.date);
+      if (r.date) bits.push(`<strong>${escapeHtml(formatDateDMY(r.date) || String(r.date))}</strong>`);
+      if (year) {
+        bits.push(`<button type="button" class="visit-year-btn" data-open-visit-year="${escapeHtml(year)}" data-visit-person="${escapeHtml(person.id)}">${escapeHtml(year)}</button>`);
+      }
       if (r.booking_id != null) {
-        bits.push(`<a href="?booking=${encodeURIComponent(String(r.booking_id))}" title="Open this booking in the planner">Booking #${escapeHtml(String(r.booking_id))}</a>`);
+        const label = r.label || ('Booking #' + r.booking_id);
+        bits.push(`<button type="button" class="visit-inline" data-open-visit-group="${escapeHtml(String(r.booking_id))}">${escapeHtml(label)}</button>`);
+      } else if (r.label) {
+        bits.push(escapeHtml(r.label));
       }
       const line = bits.join(' <span class="muted">·</span> ') || 'Visit';
       return `<li>
@@ -11885,6 +12360,7 @@ function renderDayTabs() {
           <div class="visit-big">Visited ${visitsN} ${visitWord}</div>
           <div class="visit-hint">Tour / group names are visit labels — keep one People row per person.</div>
         </div>
+        ${renderSimplePlanLinks(p)}
         ${renderTravelledWith(p)}
         ${renderPersonAlbums(p)}
         <div class="dir-grid">
@@ -12384,6 +12860,7 @@ function renderDayTabs() {
     if (!state.plan || !Array.isArray(state.plan.days)) return null;
     const sid = String(id);
     for (const day of state.plan.days) {
+      if (!day || typeof day !== 'object') continue;
       const s = (day.blocks || []).find(b => b && String(b.id) === sid);
       if (s) return s;
     }
@@ -12735,7 +13212,7 @@ function renderDayTabs() {
     const viewParam = params.get('view');
     if (viewParam === 'phone' || viewParam === 'detailed' || viewParam === 'week') state.viewPref = viewParam;
     const tabParam = (params.get('tab') || '').toLowerCase();
-    if (tabParam === 'people' || tabParam === 'places' || tabParam === 'issues' || tabParam === 'rough' || tabParam === 'planner' || tabParam === 'hotels') {
+    if (tabParam === 'people' || tabParam === 'places' || tabParam === 'issues' || tabParam === 'rough' || tabParam === 'planner' || tabParam === 'hotels' || tabParam === 'visits') {
       state.mainTab = tabParam;
       localStorage.setItem('planner_main_tab', state.mainTab);
     }
@@ -12743,16 +13220,25 @@ function renderDayTabs() {
     if (yearParam === 'all' || yearParam === 'none' || (yearParam && /^\d{4}$/.test(yearParam))) {
       hotelsUsedYear = yearParam;
     }
+    if (tabParam === 'visits') {
+      state.visitsQuery = {
+        year: yearParam && /^\d{4}$/.test(yearParam) ? yearParam : '',
+        placeId: params.get('place') || '',
+        placeName: params.get('placeName') || '',
+        personId: params.get('person') || '',
+        hotelName: params.get('hotel') || '',
+      };
+    }
     const personParam = params.get('person');
     const placeParam = params.get('place');
-    if (personParam) {
+    if (personParam && tabParam !== 'visits') {
       state.mainTab = 'people';
       state.selectedPersonId = String(personParam);
       state.personDeepLink = String(personParam);
       state.personSearch = '';
       localStorage.setItem('planner_main_tab', 'people');
     }
-    if (placeParam) {
+    if (placeParam && tabParam !== 'visits') {
       state.mainTab = 'places';
       state.selectedCatalogueIndex = null;
       state.selectedPlaceId = String(placeParam);
@@ -12841,7 +13327,7 @@ function renderDayTabs() {
     }
     if (wantsTour && state.plan && !personParam && state.mainTab === 'people') openBookingPerson();
     if (wantsTour && state.plan && !placeParam && state.mainTab === 'places') openBookingPlace();
-    if (personParam) {
+    if (personParam && tabParam !== 'visits') {
       state.personDeepLink = String(personParam);
       state.mainTab = 'people';
       applyPersonDeepLink();
@@ -12872,6 +13358,81 @@ function renderDayTabs() {
   document.getElementById('btnExportPlan').addEventListener('click', () => exportPlanJson());
   document.getElementById('btnLookView').addEventListener('click', () => setViewPref('week'));
   document.getElementById('btnPhoneView').addEventListener('click', () => setViewPref('phone'));
+  // ---- Simple plan: read-only, big-text list of each day's places and times ----
+  function simplePlanStopTime(st) {
+    const t = String((st && st.time) || '').trim();
+    return /^\d{1,2}:\d{2}/.test(t) ? t.slice(0, 5).padStart(5, '0') : '';
+  }
+  function simplePlanDayHeading(d, i) {
+    let label = 'Day ' + (i + 1);
+    if (d && d.date) {
+      try {
+        const dt = parseISODateUTC(d.date);
+        label += ' · ' + dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+      } catch (_) { label += ' · ' + formatDateDMY(d.date); }
+    }
+    return label;
+  }
+  function openSimplePlan() {
+    const plan = state.plan;
+    let ov = document.getElementById('simplePlanOverlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'simplePlanOverlay';
+      ov.setAttribute('role', 'dialog');
+      ov.setAttribute('aria-label', 'Simple plan');
+      document.body.appendChild(ov);
+      ov.addEventListener('click', e => { if (e.target.closest('[data-sp-close]')) closeSimplePlan(); });
+    }
+    const title = plan ? (plan.groupName || (plan.bookingKey ? ('Booking #' + plan.bookingKey) : 'Tour')) : 'Simple plan';
+    let body = '';
+    if (!plan || !Array.isArray(plan.days) || !plan.days.length) {
+      body = '<p class="sp-empty">Open a tour first (choose it from the tour list), then tap Simple plan.</p>';
+    } else {
+      body = plan.days.map((d, i) => {
+        const stops = (d && Array.isArray(d.blocks) ? d.blocks : []).slice().sort((a, b) => {
+          const ta = simplePlanStopTime(a), tb = simplePlanStopTime(b);
+          if (!ta && !tb) return 0; if (!ta) return 1; if (!tb) return -1;
+          return ta < tb ? -1 : ta > tb ? 1 : 0;
+        }).filter(st => st && String(st.title || '').trim());
+        const rows = stops.length
+          ? stops.map(st => '<div class="sp-row"><span class="sp-time">' + escapeHtml(simplePlanStopTime(st) || '—') + '</span><span>' + escapeHtml(String(st.title).trim()) + '</span></div>').join('')
+          : '<p class="sp-empty">Nothing planned yet.</p>';
+        return '<section class="sp-card"><h2>' + escapeHtml(simplePlanDayHeading(d, i)) + '</h2>' + rows + '</section>';
+      }).join('');
+    }
+    ov.innerHTML = '<div class="sp-bar"><h1>' + escapeHtml(title) + '</h1><button type="button" class="sp-close" data-sp-close>Close</button></div>'
+      + '<div class="sp-wrap"><p class="sp-sub">Read-only. Times are approximate where shown as —.</p>' + body + '</div>';
+    ov.hidden = false;
+    ov.scrollTop = 0;
+    document.documentElement.style.overflow = 'hidden';
+  }
+  function closeSimplePlan() {
+    const ov = document.getElementById('simplePlanOverlay');
+    if (ov) ov.hidden = true;
+    document.documentElement.style.overflow = '';
+  }
+  function renderSimplePlanLinks(p) {
+    const refs = (p && Array.isArray(p.visitRefs) ? p.visitRefs : []).filter(r => r && r.booking_id != null);
+    if (!refs.length) return '';
+    return '<div class="people-simple-plans"><span class="field-label">Simple plan</span><div>'
+      + refs.map(r => '<button type="button" class="btn btn-outline btn-sm" data-simple-plan-booking="' + escapeHtml(String(r.booking_id)) + '">Simple plan: '
+        + escapeHtml(String(r.label || ('Booking #' + r.booking_id))) + (r.date ? ' (' + escapeHtml(formatDateDMY(r.date)) + ')' : '') + '</button>').join('')
+      + '</div></div>';
+  }
+  document.getElementById('btnSimplePlan').addEventListener('click', openSimplePlan);
+  document.addEventListener('click', async e => {
+    const btn = e.target.closest && e.target.closest('[data-simple-plan-booking]');
+    if (!btn) return;
+    e.preventDefault();
+    const key = btn.getAttribute('data-simple-plan-booking');
+    try {
+      await openPlanFromVisit(key);
+    } catch (err) { console.warn('Simple plan: could not open booking', err); }
+    openSimplePlan();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSimplePlan(); });
+  try { if (/[?&]simple=1\b/.test(location.search)) setTimeout(() => { if (state.plan) openSimplePlan(); }, 1500); } catch (_) {}
   document.getElementById('btnDetailedView').addEventListener('click', () => setViewPref('detailed'));
   document.getElementById('btnTheme').addEventListener('click', () => {
     const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -12917,12 +13478,129 @@ function renderDayTabs() {
       render,
     };
   }
+  function installVisitsFixture() {
+    state.catalogue = [{
+      id: 'ks01',
+      name: 'Antik shop beads',
+      nickname: 'Antik Zdeněk',
+      visitYears: [2024, 2025],
+      visitCount: 2,
+      type: 'shop',
+      types: ['shop'],
+      address: 'Jablonec nad Nisou',
+      notes: 'Made-up fixture for the visits view.',
+      contactMethod: '',
+      contactDetail: '',
+      icon: '',
+      firstVisited: '2024-05-15',
+    }];
+    state.people = [
+      { id: 'person_ada', name: 'Ada Organiser', email: 'ada@example.com', notes: '', visitCount: 1, visitRefs: [] },
+      { id: 'person_bea', name: 'Bea Guest', email: 'bea@example.com', notes: '', visitCount: 1, visitRefs: [] },
+      { id: 'person_cleo', name: 'Cleo Guest', email: '', notes: '', visitCount: 1, visitRefs: [] },
+      { id: 'person_ned', name: 'Ned Organiser', email: 'ned@example.com', notes: '', visitCount: 1, visitRefs: [] },
+    ].map(p => ensurePerson(p));
+    state.bookings = [{
+      id: 501,
+      group_name: 'Beading week demo',
+      tour_arrival_date: '2024-05-13',
+      departure_date: '2024-05-17',
+      hotel_name: 'Park Hotel Demo',
+      no_people: 8,
+    }, {
+      id: 502,
+      group_name: 'Second demo group',
+      tour_arrival_date: '2024-09-02',
+      departure_date: '2024-09-06',
+      hotel_name: 'Lion Hotel Demo',
+      no_people: 4,
+    }];
+    state.plans = {
+      '501': {
+        bookingKey: '501',
+        groupName: 'Beading week demo',
+        organiserName: 'Ada Organiser',
+        organiserPersonId: 'person_ada',
+        arrivalDate: '2024-05-13',
+        departureDate: '2024-05-17',
+        tourHotelName: 'Park Hotel Demo',
+        guests: [
+          { id: 'g1', name: 'Bea Guest', personId: 'person_bea', email: 'bea@example.com' },
+          { id: 'g2', name: 'Cleo Guest', personId: 'person_cleo', email: '' },
+        ],
+        days: [
+          { date: '2024-05-13', blocks: [{ id: 's1', time: '16:00', title: 'Park Hotel Demo', type: 'hotel' }] },
+          null,
+          {
+            date: '2024-05-15',
+            blocks: [
+              null,
+              { id: 's2', time: '09:30', title: 'Matubo', type: 'factory', placeId: 'kf02' },
+              { id: 's3', time: '15:00', title: 'Antik Zdeněk', type: 'shop', placeId: 'ks01' },
+              { id: 's4', time: '17:00', title: 'Drive back to the hotel', type: 'travel' },
+            ],
+          },
+        ],
+      },
+      '502': {
+        bookingKey: '502',
+        groupName: 'Second demo group',
+        organiserName: 'Ned Organiser',
+        organiserPersonId: 'person_ned',
+        arrivalDate: '2024-09-02',
+        departureDate: '2024-09-06',
+        tourHotelName: 'Lion Hotel Demo',
+        guests: [{ id: 'g3', name: 'Bea Guest', personId: 'person_bea', email: 'bea@example.com' }],
+        days: [{
+          date: '2024-09-03',
+          blocks: [
+            { id: 's5', time: '11:00', title: 'Antik shop beads', type: 'shop', placeId: 'ks01' },
+            { id: 's6', time: '14:30', title: 'Glass museum', type: 'museum' },
+          ],
+        }],
+      },
+    };
+    state.plan = null;
+    state.planViewOnly = true;
+    state.bookingKey = '';
+    state.liveBookings = false;
+    state.visitsFixture = true;
+    state.visitsQuery = {
+      placeId: 'ks01',
+      placeName: 'Antik shop beads',
+      year: '2024',
+      personId: '',
+      hotelName: '',
+    };
+    state.mainTab = 'visits';
+  }
   state.cloudAllowed = false;
-  AuthGate.require(sb, { title: 'Tour planner' }).then(session => {
-    state.cloudAllowed = !!session;
-    if (!session) AuthGate.useLocalData(sb);
-    init();
-  });
+  if (/(?:\?|&)visitsFixture=1(?:&|$)/.test(location.search)) {
+    installVisitsFixture();
+    render();
+  } else {
+    AuthGate.require(sb, { title: 'Tour planner' }).then(session => {
+      state.cloudAllowed = !!session;
+      if (!session) AuthGate.useLocalData(sb);
+      init();
+    });
+  }
 </script>
+<style id="simplePlanCss">
+  #simplePlanOverlay{position:fixed;inset:0;z-index:9999;background:#f6f4ef;color:#1d1d1f;overflow-y:auto;-webkit-overflow-scrolling:touch;font-family:-apple-system,system-ui,"Segoe UI",sans-serif}
+  #simplePlanOverlay[hidden]{display:none}
+  .sp-bar{position:sticky;top:0;display:flex;align-items:center;gap:10px;padding:12px 16px;background:#1f3a5f;color:#fff}
+  .sp-bar h1{flex:1;font-size:20px;margin:0;line-height:1.2}
+  .sp-close{font-size:18px;font-weight:700;padding:10px 16px;border-radius:10px;border:0;background:#fff;color:#1f3a5f}
+  .sp-wrap{max-width:640px;margin:0 auto;padding:12px 14px 40px}
+  .sp-card{background:#fff;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.12);padding:14px 16px;margin:0 0 14px}
+  .sp-card h2{font-size:22px;margin:0 0 8px;color:#1f3a5f}
+  .sp-row{display:flex;gap:14px;font-size:20px;line-height:1.35;padding:8px 0;border-top:1px solid #eee}
+  .sp-row:first-of-type{border-top:0}
+  .sp-time{flex:0 0 64px;font-weight:800;font-variant-numeric:tabular-nums}
+  .sp-empty{font-size:18px;color:#666}
+  .sp-sub{font-size:16px;color:#555;margin:0 0 12px}
+  .people-simple-plans{margin:10px 0}.people-simple-plans .btn{margin:4px 6px 4px 0}
+</style>
 </body>
 </html>
