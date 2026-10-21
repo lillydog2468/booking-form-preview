@@ -1,47 +1,101 @@
 <!DOCTYPE html>
-<html lang="en-GB">
+<html lang="en-GB" data-theme="light">
 <head>
+  <script>
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Tax summary</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="booking-config.js"></script>
   <script src="auth-gate.js"></script>
   <script src="booking-extras.js"></script>
   <script src="tax-summary.js"></script>
   <style>
-    * { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; }
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7; --surface: #ffffff; --surface-alt: #f9fafb;
+      --border: #e2e4e9; --text: #1a1d26; --text-secondary: #6b7280;
+      --input-bg: #ffffff; --accent: #4f46e5; --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
+    [data-theme="dark"] {
+      --bg: #111318; --surface: #1a1d24; --surface-alt: #21242c;
+      --border: #2e3240; --text: #e4e6eb; --text-secondary: #8b8f9a;
+      --input-bg: #21242c; --accent: #6366f1;
+      --shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
     body {
       margin: 0;
-      font-family: Georgia, "Times New Roman", serif;
-      color: #1a1a1a;
-      background: #f7f7f5;
-      line-height: 1.35;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.4;
+      min-height: 100vh;
     }
     a { color: inherit; }
     .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .topbar-inner {
+      padding: 14px 24px;
       display: flex;
+      align-items: center;
       justify-content: space-between;
       gap: 12px;
-      align-items: center;
-      padding: 12px 20px;
-      background: #fff;
-      border-bottom: 1px solid #ddd;
+      flex-wrap: wrap;
     }
-    .nav { display: flex; flex-wrap: wrap; gap: 8px; }
-    .nav a, button {
-      font-family: system-ui, sans-serif;
-      font-size: 14px;
-      background: #fff;
-      border: 1px solid #ccc;
+    .topbar-left, .topbar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -.2px; margin: 0; }
+    .view-nav {
+      display: flex;
+      gap: 4px;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 3px;
+      flex-wrap: wrap;
+    }
+    .view-nav a {
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 7px 12px;
       border-radius: 6px;
-      padding: 6px 10px;
       text-decoration: none;
+    }
+    .view-nav a.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+    .view-nav a:hover:not(.active) { color: var(--text); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
       cursor: pointer;
     }
-    .nav a.active { font-weight: 700; border-color: #333; }
-    main { max-width: 1100px; margin: 0 auto; padding: 20px; }
-    h1 { font-size: 22px; margin: 0 0 4px; }
-    .period { margin: 0 0 14px; font-size: 16px; }
+    .btn:hover { background: var(--bg); }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 48px; }
+    .print-title { display: none; margin: 0 0 4px; font-size: 18px; }
+    .period { margin: 0 0 14px; font-size: 16px; font-weight: 700; }
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -49,47 +103,72 @@
       align-items: end;
       margin-bottom: 12px;
     }
-    label { font-family: system-ui, sans-serif; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
-    select { font: inherit; padding: 6px 8px; }
-    .meta { font-family: system-ui, sans-serif; font-size: 13px; color: #333; margin: 0 0 10px; }
-    .table-scroll { overflow: auto; max-height: calc(100vh - 240px); background: #fff; border: 1px solid #ddd; }
+    label { font-size: 12px; font-weight: 700; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px; }
+    select {
+      font: inherit;
+      font-size: 15px;
+      color: var(--text);
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      min-height: 40px;
+    }
+    .meta { font-size: 13px; color: var(--text-secondary); margin: 0 0 10px; }
+    .table-scroll {
+      overflow: auto;
+      max-height: calc(100vh - 240px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     thead th {
       position: sticky;
       top: 0;
       z-index: 1;
-      background: #fff;
+      background: var(--surface-alt);
       text-align: left;
-      font-size: 12px;
-      letter-spacing: .02em;
-      border-bottom: 2px solid #222;
-      padding: 8px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 10px;
     }
-    td { border-bottom: 1px solid #e4e4e4; padding: 8px; vertical-align: top; }
-    .num { text-align: right; white-space: nowrap; }
+    td { border-bottom: 1px solid var(--border); padding: 8px 10px; vertical-align: top; }
+    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .missing, .incomplete { color: #7a4b00; }
     .flag { display: block; margin-top: 4px; font-size: 12px; color: #7a4b00; }
     tr.grey td { color: #6b7280; background: #f3f4f6; }
+    [data-theme="dark"] tr.grey td { color: var(--text-secondary); background: rgba(255,255,255,.06); }
+    [data-theme="dark"] .missing, [data-theme="dark"] .incomplete, [data-theme="dark"] .flag { color: #fbbf24; }
     tr.companion td:first-child { padding-left: 22px; }
     .badge { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 700; }
-    .excluded-box { margin: 0 0 12px; font-family: system-ui, sans-serif; font-size: 13px; }
+    .excluded-box { margin: 0 0 12px; font-size: 13px; }
     .excluded-box summary { cursor: pointer; }
-    .excluded-box table { margin-top: 8px; background: #fff; }
+    .excluded-box table { margin-top: 8px; background: var(--surface); }
     .excluded-box th, .excluded-box td { font-size: 13px; }
-    .sub { display: block; font-size: 12px; color: #444; }
-    .totals { margin-top: 16px; background: #fff; border: 1px solid #ddd; padding: 12px 14px; }
+    .sub { display: block; font-size: 12px; color: var(--text-secondary); }
+    .totals { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
     .totals h2 { font-size: 16px; margin: 0 0 8px; }
     .totals h3 { font-size: 14px; margin: 12px 0 4px; }
-    .note { font-family: system-ui, sans-serif; font-size: 13px; color: #333; }
-    .status { font-family: system-ui, sans-serif; font-size: 14px; }
-
+    .note { font-size: 13px; color: var(--text-secondary); }
+    .status { font-size: 14px; color: var(--text-secondary); }
+    @media (max-width: 700px) {
+      .topbar-inner { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+      .btn, select { min-height: 44px; }
+      main { padding-left: 12px; padding-right: 12px; }
+    }
     @media print {
       @page { size: A4 portrait; margin: 12mm; }
-      body { background: #fff; }
+      body { background: #fff; color: #111; }
       .no-print { display: none !important; }
+      .print-title { display: block; }
       main { max-width: none; padding: 0; }
       .table-scroll { overflow: visible; max-height: none; border: none; }
-      thead th { position: static; }
+      thead th { position: static; color: #111; background: #fff; }
       table { font-size: 11px; }
       tr, .totals { break-inside: avoid; }
       a { text-decoration: none; }
@@ -98,21 +177,26 @@
 </head>
 <body>
   <header class="topbar no-print">
-    <nav class="nav" aria-label="Main">
-      <a href="booking-form.html">Bookings</a>
-      <a href="analytics.html">Analytics</a>
-      <a href="admin.html">Admin</a>
-      <a href="interest-2027.html" id="interestNav" hidden>2027 interest</a>
-      <a href="tax-summary.html" class="active">Tax summary</a>
-    </nav>
-    <div class="nav">
-      <button type="button" id="printBtn">Print / Save as PDF</button>
-      <button type="button" id="csvBtn">Download CSV</button>
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <h1>Tax summary</h1>
+        <nav class="view-nav" aria-label="Main">
+          <a href="booking-form.html">Bookings</a>
+          <a href="analytics.html">Analytics</a>
+          <a href="admin.html">Admin</a>
+          <a href="interest-2027.html" id="interestNav" hidden>2027 interest</a>
+          <a href="tax-summary.html" class="active">Tax summary</a>
+        </nav>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" class="btn" id="printBtn">Print / Save as PDF</button>
+        <button type="button" class="btn" id="csvBtn">Download CSV</button>
+      </div>
     </div>
   </header>
 
   <main>
-    <h1>Tax summary</h1>
+    <h1 class="print-title">Tax summary</h1>
     <p class="period" id="periodLabel"></p>
 
     <div class="controls no-print">
@@ -153,8 +237,8 @@
   </main>
 
   <script>
-    const SUPABASE_URL = 'https://ojulhplswtcmheonsnlv.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdWxocGxzd3RjbWhlb25zbmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTk3MDUsImV4cCI6MjA4ODk5NTcwNX0.n45cEd4soEC4gLDs2KSnBBvPs4nivDcSoj4GsG6u8IU';
+    const SUPABASE_URL = BOOKING_SUPABASE_URL;
+    const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
     const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let allBookings = [];
