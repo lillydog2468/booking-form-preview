@@ -963,6 +963,47 @@
     };
   }
 
+  function roundMoney(n) {
+    return Math.round(Number(n) * 100) / 100;
+  }
+
+  /**
+   * null when the booking is still one shared price and one way of paying.
+   * Otherwise each guest's price (or the booking price per person) minus
+   * their deposit and final payment, and the sum of those amounts.
+   */
+  function guestLeftToPay(guests, pricePerPerson) {
+    var list = Array.isArray(guests) ? guests.filter(isObj) : [];
+    if (!list.length) return null;
+    var fallback = Number(pricePerPerson);
+    var hasFallback = Number.isFinite(fallback);
+    var methods = [];
+    var anyPayment = false;
+    var rows = list.map(function (guest) {
+      var raw = str(guest.price).trim();
+      var price = null;
+      if (raw !== '' && Number.isFinite(Number(raw))) price = Number(raw);
+      else if (hasFallback) price = fallback;
+      var method = normalisePayMethod(guest.payMethod);
+      if (method && methods.indexOf(method) === -1) methods.push(method);
+      var finalRaw = guest.finalPayment != null ? guest.finalPayment : guest.final_payment;
+      if (str(guest.deposit).trim() !== '' || str(finalRaw).trim() !== '') anyPayment = true;
+      var deposit = num(guest.deposit);
+      var finalPayment = num(finalRaw);
+      var left = price == null ? null : roundMoney(price - deposit - finalPayment);
+      var name = str(guest.firstName).trim() || guestDisplayName(guest) || 'Guest';
+      return { name: name, left: left, price: price };
+    });
+    var knownPrices = rows.map(function (row) { return row.price; }).filter(function (price) { return price != null; });
+    var pricesDiffer = knownPrices.length >= 2 && !knownPrices.every(function (price) {
+      return Math.abs(price - knownPrices[0]) < 0.009;
+    });
+    if (!pricesDiffer && methods.length < 2 && !anyPayment) return null;
+    if (rows.some(function (row) { return row.left == null; })) return null;
+    var left = roundMoney(rows.reduce(function (sum, row) { return sum + row.left; }, 0));
+    return { rows: rows, left: left };
+  }
+
   function roomSummary(rooms) {
     if (!isObj(rooms)) return '';
     var parts = [];
@@ -1429,6 +1470,7 @@
     roomsLabelForHotel: roomsLabelForHotel,
     payMethodSummary: payMethodSummary,
     perGuestMoney: perGuestMoney,
+    guestLeftToPay: guestLeftToPay,
     roomSummary: roomSummary,
     mergeTravelIntoFlights: mergeTravelIntoFlights,
     hotelUsedKey: hotelUsedKey,

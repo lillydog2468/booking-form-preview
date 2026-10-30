@@ -1531,6 +1531,10 @@
     .member-row[data-guest-tone] .member-share-tag {
       color: #243044;
     }
+    .member-balance.is-clear { color: #15803d; }
+    .member-balance.is-over { color: #b91c1c; }
+    .member-row[data-guest-tone] .member-balance.is-clear { color: #15803d; }
+    .member-row[data-guest-tone] .member-balance.is-over { color: #b91c1c; }
     .member-albums {
       flex: 1 0 100%;
       font-size: 13px;
@@ -2233,7 +2237,7 @@
       padding: 2px 10px 2px 8px;
     }
     .hotel-who-guest input { width: 16px; height: 16px; }
-    .member-balance { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+    .member-balance { font-size: 13px; font-weight: 800; color: #243044; }
     .member-balance[hidden] { display: none !important; }
     .member-pay-method-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--text-secondary); }
     p.hint.hotel-nights-mismatch,
@@ -6014,6 +6018,19 @@
     });
   }
 
+  function guestPounds(amount) {
+    const n = Math.round(Number(amount) * 100) / 100;
+    const abs = Math.abs(n);
+    const body = Number.isInteger(abs) ? String(abs) : abs.toFixed(2);
+    return (n < 0 ? '−£' : '£') + body;
+  }
+
+  function guestLeftLabel(left) {
+    if (Math.abs(left) <= 0.009) return { text: 'Paid in full', state: 'clear' };
+    if (left < 0) return { text: 'Overpaid ' + guestPounds(Math.abs(left)), state: 'over' };
+    return { text: 'Left to pay ' + guestPounds(left), state: '' };
+  }
+
   function parseMemberAmount(value) {
     const s = String(value ?? '').trim();
     if (!s) return null;
@@ -6122,27 +6139,26 @@
     const pricePerPerson = (tEl(tabId, 'price_per_person')?.value || '').trim();
     const guestRows = perGuestRowsFromDom(tabId);
     const guestMoney = window.BookingExtras ? BookingExtras.perGuestMoney(guestRows, pricePerPerson) : null;
+    const guestSplit = window.BookingExtras ? BookingExtras.guestLeftToPay(guestRows, pricePerPerson) : null;
+    let splitIndex = -1;
     entries.forEach(entry => {
       const priceInput = entry.row.querySelector('.member-price');
       if (priceInput) priceInput.placeholder = pricePerPerson || 'Price per person';
       const balance = entry.row.querySelector('.member-balance');
-      const rawPrice = entry.row.querySelector('.member-price')?.value.trim() || '';
       if (!balance) return;
-      if (!entry.saved || !rawPrice) {
+      if (entry.saved) splitIndex += 1;
+      const figure = guestSplit && entry.saved ? guestSplit.rows[splitIndex] : null;
+      if (!figure) {
         balance.hidden = true;
         balance.textContent = '';
+        balance.classList.remove('is-clear', 'is-over');
         return;
       }
-      const price = Number(rawPrice);
-      const deposit = parseMemberAmount(entry.row.querySelector('.member-deposit')?.value.trim() || '') || 0;
-      const paid = parseMemberAmount(entry.row.querySelector('.member-paid')?.value.trim() || '') || 0;
-      if (!Number.isFinite(price)) {
-        balance.hidden = true;
-        return;
-      }
-      const left = Math.round((price - deposit - paid) * 100) / 100;
+      const label = guestLeftLabel(figure.left);
       balance.hidden = false;
-      balance.textContent = 'Balance ' + formatMoney(left, 'GBP');
+      balance.textContent = label.text;
+      balance.classList.toggle('is-clear', label.state === 'clear');
+      balance.classList.toggle('is-over', label.state === 'over');
     });
     const methodLine = window.BookingExtras ? BookingExtras.payMethodSummary(guestRows) : '';
 
@@ -6166,6 +6182,9 @@
       bits.push('Outstanding ' + formatMoney(guestMoney.left, 'GBP'));
     } else if (rowsWithAmount > 0 && amountsComplete && tourPrice != null && Number.isFinite(tourPrice)) {
       bits.push('Outstanding ' + formatMoney(Math.round((tourPrice - sum) * 100) / 100, 'GBP'));
+    }
+    if (guestSplit) {
+      bits.push(guestSplit.rows.map(row => row.name + ' ' + guestPounds(row.left)).join(' · '));
     }
     if (methodLine) bits.push(methodLine);
     if (sumsEl) sumsEl.textContent = bits.join(' · ');
@@ -10180,10 +10199,10 @@
     const totalExpenses = hotelExpenses + additionalExpenses + fuelCost;
     const totalPayments = tNum(tabId, 'depositmade') + tNum(tabId, 'finalpayment');
     const totalCost = tNum(tabId, 'beading_tour_price') + totalExpenses;
-    const guestLeft = window.BookingExtras
-      ? BookingExtras.perGuestMoney(perGuestRowsFromDom(tabId), tEl(tabId, 'price_per_person')?.value || '')
+    const guestSplit = window.BookingExtras
+      ? BookingExtras.guestLeftToPay(perGuestRowsFromDom(tabId), tEl(tabId, 'price_per_person')?.value || '')
       : null;
-    const leftToPay = guestLeft ? guestLeft.left : (tNum(tabId, 'beading_tour_price') - totalPayments);
+    const leftToPay = guestSplit ? guestSplit.left : (tNum(tabId, 'beading_tour_price') - totalPayments);
     const profit = totalPayments - totalExpenses;
     const profitForecast = tNum(tabId, 'beading_tour_price') - totalExpenses;
 
@@ -10273,10 +10292,10 @@
     const totalPayments = (data.depositmade || 0) + (data.finalpayment || 0);
     data.totalexpenses = totalExpenses;
     data.totalcost = (data.beading_tour_price || 0) + totalExpenses;
-    const guestLeft = window.BookingExtras
-      ? BookingExtras.perGuestMoney(perGuestRowsFromDom(tabId), data.price_per_person)
+    const guestSplit = window.BookingExtras
+      ? BookingExtras.guestLeftToPay(perGuestRowsFromDom(tabId), data.price_per_person)
       : null;
-    data.left_to_pay = guestLeft ? guestLeft.left : ((data.beading_tour_price || 0) - totalPayments);
+    data.left_to_pay = guestSplit ? guestSplit.left : ((data.beading_tour_price || 0) - totalPayments);
     data.totalprofit = totalPayments - totalExpenses;
     data.leader_half_price = checkVal(tabId, 'leader_half_price');
 
