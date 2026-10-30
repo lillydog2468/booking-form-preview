@@ -117,7 +117,8 @@
       dayTrip: null,
       tourPlace: '',
       leaderHalfPrice: false,
-      organiserBooksHotels: false
+      organiserBooksHotels: false,
+      groupPrice: null
     };
   }
 
@@ -159,6 +160,7 @@
     var stored = finiteOrNull(b.beading_tour_price);
     if (stored == null && extras && extras.money) stored = finiteOrNull(extras.money.total);
     if (stored != null) {
+      if (extras && extras.groupPrice === true) return Math.round(stored * 100) / 100;
       if (half && price != null && people != null) {
         var full = tourFare(people, price, false);
         if (full != null && Math.abs(stored - full) < 0.02) return tourFare(people, price, true);
@@ -309,6 +311,8 @@
     base.tourPlace = src.tourPlace === 'other' ? 'other' : (src.tourPlace === 'beading' ? 'beading' : '');
     base.leaderHalfPrice = src.leaderHalfPrice === true;
     base.organiserBooksHotels = src.organiserBooksHotels === true;
+    base.groupPrice = src.groupPrice === true ? true : (src.groupPrice === false ? false : null);
+    if (base.groupPrice == null) delete base.groupPrice;
     return base;
   }
 
@@ -339,6 +343,7 @@
     if (x.tourPlace === 'beading' || x.tourPlace === 'other') return true;
     if (x.leaderHalfPrice === true) return true;
     if (x.organiserBooksHotels === true) return true;
+    if (x.groupPrice === true) return true;
     return false;
   }
 
@@ -972,11 +977,12 @@
    * Otherwise each guest's price (or the booking price per person) minus
    * their deposit and final payment, and the sum of those amounts.
    */
-  function guestLeftToPay(guests, pricePerPerson) {
+  function guestLeftToPay(guests, pricePerPerson, opts) {
     var list = Array.isArray(guests) ? guests.filter(isObj) : [];
     if (!list.length) return null;
+    var groupPrice = !!(opts && opts.groupPrice);
     var fallback = Number(pricePerPerson);
-    var hasFallback = Number.isFinite(fallback);
+    var hasFallback = Number.isFinite(fallback) && !groupPrice;
     var methods = [];
     var anyPayment = false;
     var rows = list.map(function (guest) {
@@ -1002,6 +1008,121 @@
     if (rows.some(function (row) { return row.left == null; })) return null;
     var left = roundMoney(rows.reduce(function (sum, row) { return sum + row.left; }, 0));
     return { rows: rows, left: left };
+  }
+
+  function sameMoney(a, b) {
+    return a != null && b != null && Math.abs(Number(a) - Number(b)) < 0.02;
+  }
+
+  function dorrisGroupName(name) {
+    return /dorr?is/i.test(str(name));
+  }
+
+  /**
+   * A saved tick is kept, including an explicit off.
+   * Dorris is ticked only when the stored total is not headcount times the
+   * price per person. Anything else stays as it was saved.
+   */
+  function inferGroupPrice(booking, extras) {
+    var x = isObj(extras) ? extras : {};
+    if (x.groupPrice === true) return true;
+    if (x.groupPrice === false) return false;
+    var b = isObj(booking) ? booking : {};
+    if (!dorrisGroupName(b.group_name || b.groupName)) return false;
+    var stored = finiteOrNull(b.beading_tour_price);
+    if (stored == null && isObj(x.money)) stored = finiteOrNull(x.money.total);
+    if (stored == null) return false;
+    var people = finiteOrNull(b.no_people);
+    if (people == null) people = finiteOrNull(x.headcount);
+    var price = finiteOrNull(b.price_per_person);
+    if (price == null && isObj(x.money)) price = finiteOrNull(x.money.pricePerPerson);
+    if (people == null || price == null) return false;
+    if (sameMoney(stored, tourFare(people, price, false))) return false;
+    if (sameMoney(stored, tourFare(people, price, true))) return false;
+    return true;
+  }
+
+  function guestAmountEntered(guest, keys) {
+    var row = isObj(guest) ? guest : {};
+    for (var i = 0; i < keys.length; i++) {
+      if (row[keys[i]] != null && str(row[keys[i]]).trim() !== '') return row[keys[i]];
+    }
+    return '';
+  }
+
+  /**
+   * Sum of the deposits and final payments typed on guests.
+   * anyPayment is true when at least one of those boxes has been filled in.
+   */
+  function guestPaymentTotals(guests) {
+    var list = Array.isArray(guests) ? guests.filter(isObj) : [];
+    var deposit = 0;
+    var finalPayment = 0;
+    var anyDeposit = false;
+    var anyFinal = false;
+    list.forEach(function (guest) {
+      var depositRaw = guestAmountEntered(guest, ['deposit']);
+      var finalRaw = guestAmountEntered(guest, ['finalPayment', 'final_payment', 'paid']);
+      if (str(depositRaw).trim() !== '') {
+        anyDeposit = true;
+        deposit += num(depositRaw);
+      }
+      if (str(finalRaw).trim() !== '') {
+        anyFinal = true;
+        finalPayment += num(finalRaw);
+      }
+    });
+    return {
+      anyPayment: anyDeposit || anyFinal,
+      anyDeposit: anyDeposit,
+      anyFinal: anyFinal,
+      deposit: roundMoney(deposit),
+      finalPayment: roundMoney(finalPayment)
+    };
+  }
+
+  /**
+   * One method comes back as its code (wise, bank) so a dropdown can show it.
+   * Several methods come back in first-seen order, e.g. "Wise / bank transfer".
+   */
+  function combinedPayMethod(guests) {
+    var list = Array.isArray(guests) ? guests.filter(isObj) : [];
+    var methods = [];
+    list.forEach(function (guest) {
+      var method = normalisePayMethod(guest.payMethod);
+      if (method && methods.indexOf(method) === -1) methods.push(method);
+    });
+    if (!methods.length) return '';
+    if (methods.length === 1) return methods[0];
+    return methods.map(function (method, i) {
+      var label = methodLabel(method);
+      return i === 0 ? label : label.toLowerCase();
+    }).join(' / ');
+  }
+
+  /**
+   * A method Keith has chosen stays.
+   * A blank main method is filled from the guests.
+   * A blank result keeps a method already stored, so a save cannot clear it.
+   * source "typed" is a choice on the booking. source "guests" follows the guests.
+   */
+  function resolvePayMethod(selectValue, guestLabel, storedMethod, source) {
+    var selected = str(selectValue).trim();
+    var guests = str(guestLabel).trim();
+    var stored = str(storedMethod).trim();
+    if (source === 'typed' && selected) return selected;
+    if (source === 'guests' || !stored) {
+      if (guests) return guests;
+    }
+    if (stored) return stored;
+    if (selected) return selected;
+    return '';
+  }
+
+  function payMethodText(value) {
+    var label = methodLabel(value);
+    if (label) return label;
+    return str(value).trim();
   }
 
   function roomSummary(rooms) {
@@ -1471,6 +1592,11 @@
     payMethodSummary: payMethodSummary,
     perGuestMoney: perGuestMoney,
     guestLeftToPay: guestLeftToPay,
+    inferGroupPrice: inferGroupPrice,
+    guestPaymentTotals: guestPaymentTotals,
+    combinedPayMethod: combinedPayMethod,
+    resolvePayMethod: resolvePayMethod,
+    payMethodText: payMethodText,
     roomSummary: roomSummary,
     mergeTravelIntoFlights: mergeTravelIntoFlights,
     hotelUsedKey: hotelUsedKey,

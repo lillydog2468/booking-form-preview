@@ -1795,6 +1795,12 @@
     }
     .field label.req::after { content: " *"; color: var(--danger); }
     .hint { font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px; line-height: 1.4; }
+    .pay-auto-tag { font-size: 11px; font-weight: 750; color: var(--text-secondary); }
+    input.is-auto-money {
+      background: var(--surface-alt);
+      color: var(--text);
+      cursor: default;
+    }
     .park-hotel-cost { margin: 2px 0 8px; }
     .park-hotel-cost[hidden] { display: none !important; }
     .page-help { margin: 0 0 8px; }
@@ -2096,6 +2102,15 @@
     }
     .tour-fare-block > .tour-fare-name { flex: 1.4 1 140px; max-width: 220px; }
     .tour-fare-block > .tour-fare-total { flex: 1.15 1 128px; max-width: 180px; }
+    .tour-fare-block > .tour-fare-total.is-group-price { flex: 1.4 1 220px; max-width: 280px; }
+    .tour-fare-total.is-group-price .field label { font-size: 11px; line-height: 1.25; white-space: normal; }
+    .tour-fare-block > .group-price-toggle {
+      flex: 0 1 auto;
+      margin: 0 0 4px;
+      max-width: 100%;
+      min-height: 28px;
+      font-size: 13px;
+    }
     .tour-fare-block .field label,
     .tab-panel.layout-mode .tour-fare-block .field label {
       font-size: 10px;
@@ -2787,6 +2802,8 @@
         height: 32px;
         font-size: 15px;
       }
+      .tour-fare-block > .group-price-toggle { min-height: 44px; font-size: 15px; }
+      .tour-fare-block > .group-price-toggle input { width: 22px; height: 22px; }
       .year-tour-year.full-year .year-tour-months { grid-template-columns: 1fr; }
       .year-profit-figures { padding: 10px 12px 0; }
       .year-profit-figure { font-size: 17px; padding: 12px 14px; line-height: 1.35; }
@@ -3630,7 +3647,7 @@
     if (restoredPrice) restoredPrice.dataset.priceSource = state.priceSource || '';
     const restoredTourPrice = tEl(tabId, 'beading_tour_price');
     if (restoredTourPrice) {
-      if (state.tourPriceSource === 'typed' || state.tourPriceSource === 'computed') restoredTourPrice.dataset.tourPriceSource = state.tourPriceSource;
+      if (state.tourPriceSource === 'typed' || state.tourPriceSource === 'computed' || state.tourPriceSource === 'group') restoredTourPrice.dataset.tourPriceSource = state.tourPriceSource;
       else noteLoadedTourPrice(tabId);
     }
 
@@ -4663,6 +4680,7 @@
         <div class="field tour-fare-name"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label" title="The group name is the tour label, not the person’s name"></div>
         <div class="field-with-currency tour-fare-price"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
         <div class="field tour-fare-head"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
+        <label class="day-trip-toggle group-price-toggle"><input type="checkbox" id="t${t}_group_price"> One price for the whole group</label>
         <div class="field-with-currency tour-fare-total"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to follow the price per person. Leader half price takes a half off that organiser only."></div>${currencyMarkHTML()}</div>
         <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
         <p class="hint price-hint" id="t${t}_price_hint"></p>
@@ -6213,6 +6231,103 @@
     setMemberPayOpen(tabId, open, true);
   }
 
+  function setAutoTag(control, on) {
+    const field = control && control.closest ? control.closest('.field') : null;
+    const label = field && field.querySelector('label');
+    if (!label) return;
+    let tag = label.querySelector('.pay-auto-tag');
+    if (on) {
+      if (!tag) {
+        tag = document.createElement('span');
+        tag.className = 'pay-auto-tag';
+        tag.textContent = 'from guests';
+        label.appendChild(document.createTextNode(' '));
+        label.appendChild(tag);
+      }
+      tag.hidden = false;
+    } else if (tag) tag.hidden = true;
+  }
+
+  function setAutoMoneyField(input, locked, amount) {
+    if (!input) return;
+    if (locked) {
+      const next = (Math.round(Number(amount) * 100) / 100).toFixed(2);
+      if (input.value !== next) input.value = next;
+      input.readOnly = true;
+      input.classList.add('is-auto-money');
+      input.setAttribute('aria-readonly', 'true');
+      input.title = 'Added up from each guest';
+    } else if (input.classList.contains('is-auto-money')) {
+      input.readOnly = false;
+      input.classList.remove('is-auto-money');
+      input.removeAttribute('aria-readonly');
+      if (input.title === 'Added up from each guest') input.title = '';
+    }
+    setAutoTag(input, locked);
+  }
+
+  function showResolvedPayMethod(select, resolved) {
+    select.querySelectorAll('option[data-auto-method]').forEach(opt => opt.remove());
+    const code = window.BookingExtras.normalisePayMethod(resolved);
+    if (resolved && code === resolved) {
+      select.value = code;
+      return;
+    }
+    if (!resolved) {
+      select.value = '';
+      return;
+    }
+    const opt = document.createElement('option');
+    opt.value = resolved;
+    opt.dataset.autoMethod = '1';
+    opt.textContent = resolved;
+    select.appendChild(opt);
+    select.value = resolved;
+  }
+
+  function syncPayMethodFromGuests(tabId, rows) {
+    const sel = tEl(tabId, 'pay_method');
+    if (!sel || !window.BookingExtras || !BookingExtras.resolvePayMethod) return;
+    const tab = tabs.get(tabId);
+    const stored = tab && tab.paymentMethod ? String(tab.paymentMethod).trim() : '';
+    const source = sel.dataset.methodSource || '';
+    const guests = BookingExtras.combinedPayMethod(rows);
+    const resolved = BookingExtras.resolvePayMethod(sel.value, guests, stored, source) || '';
+    if (source !== 'typed') {
+      showResolvedPayMethod(sel, resolved);
+      if (!stored && guests && resolved === guests) sel.dataset.methodSource = 'guests';
+      else if (!guests && !resolved) sel.dataset.methodSource = '';
+    }
+    sel.dataset.resolvedMethod = resolved;
+    const fromGuests = sel.dataset.methodSource === 'guests';
+    setAutoTag(sel, fromGuests);
+    let hint = document.getElementById(`t${tabId}_payMethodHint`);
+    if (!hint) {
+      const depositHint = document.getElementById(`t${tabId}_depositHint`);
+      if (depositHint) {
+        hint = document.createElement('p');
+        hint.className = 'hint';
+        hint.id = `t${tabId}_payMethodHint`;
+        depositHint.insertAdjacentElement('afterend', hint);
+      }
+    }
+    const phrase = resolved ? (BookingExtras.payMethodText(resolved) || resolved) : '';
+    const showPhrase = !!(phrase && (fromGuests || !BookingExtras.normalisePayMethod(resolved)));
+    if (hint) {
+      hint.hidden = !showPhrase;
+      hint.textContent = showPhrase ? ('Payment method: ' + phrase) : '';
+    }
+  }
+
+  function syncMainPaymentsFromGuests(tabId) {
+    if (!window.BookingExtras || !BookingExtras.guestPaymentTotals) return;
+    const rows = perGuestRowsFromDom(tabId);
+    const totals = BookingExtras.guestPaymentTotals(rows);
+    setAutoMoneyField(tEl(tabId, 'depositmade'), totals.anyPayment, totals.deposit);
+    setAutoMoneyField(tEl(tabId, 'finalpayment'), totals.anyPayment, totals.finalPayment);
+    syncPayMethodFromGuests(tabId, rows);
+  }
+
   function refreshMemberPayments(tabId) {
     const entries = memberPayEntries(tabId);
     const saved = entries.filter(entry => entry.saved);
@@ -6270,8 +6385,9 @@
 
     const pricePerPerson = (tEl(tabId, 'price_per_person')?.value || '').trim();
     const guestRows = perGuestRowsFromDom(tabId);
-    const guestMoney = window.BookingExtras ? BookingExtras.perGuestMoney(guestRows, pricePerPerson) : null;
-    const guestSplit = window.BookingExtras ? BookingExtras.guestLeftToPay(guestRows, pricePerPerson) : null;
+    const groupPrice = groupPriceOn(tabId);
+    const guestMoney = !groupPrice && window.BookingExtras ? BookingExtras.perGuestMoney(guestRows, pricePerPerson) : null;
+    const guestSplit = !groupPrice && window.BookingExtras ? BookingExtras.guestLeftToPay(guestRows, pricePerPerson) : null;
     let splitIndex = -1;
     entries.forEach(entry => {
       const priceInput = entry.row.querySelector('.member-price');
@@ -6302,7 +6418,7 @@
     const headRaw = (tEl(tabId, 'no_people')?.value || '').trim();
     let tourPrice = null;
     if (tourRaw !== '' && Number.isFinite(Number(tourRaw))) tourPrice = Number(tourRaw);
-    else if (perRaw !== '' && headRaw !== '' && Number.isFinite(Number(perRaw)) && Number.isFinite(Number(headRaw))) {
+    else if (!groupPrice && perRaw !== '' && headRaw !== '' && Number.isFinite(Number(perRaw)) && Number.isFinite(Number(headRaw))) {
       tourPrice = tourFareAmount(Number(headRaw), Number(perRaw), leaderHalfPriceOn(tabId));
     }
     const amountsComplete = countedRows > 0 && rowsWithAmount === countedRows;
@@ -6320,6 +6436,7 @@
     }
     if (methodLine) bits.push(methodLine);
     if (sumsEl) sumsEl.textContent = bits.join(' · ');
+    syncMainPaymentsFromGuests(tabId);
 
     const flagEl = document.getElementById(`t${tabId}_pay_flag`);
     if (!flagEl) return;
@@ -6354,6 +6471,10 @@
       } else {
         flagEl.textContent = '';
       }
+      return;
+    }
+    if (tEl(tabId, 'finalpayment')?.classList.contains('is-auto-money')) {
+      flagEl.textContent = '';
       return;
     }
     const finalRaw = (tEl(tabId, 'finalpayment')?.value || '').trim();
@@ -6794,6 +6915,7 @@
     const BE = window.BookingExtras;
     const x = BE ? BE.empty() : {};
     if (!BE) return x;
+    syncMainPaymentsFromGuests(tabId);
     x.organiser.firstName = fieldVal(tabId, 'org_first');
     x.organiser.lastName = fieldVal(tabId, 'org_last');
     x.organiser.email = fieldVal(tabId, 'org_email');
@@ -6838,11 +6960,17 @@
     x.money.total = fieldVal(tabId, 'beading_tour_price');
     x.money.depositAmount = fieldVal(tabId, 'depositmade');
     x.money.depositDate = toStorageISO(fieldVal(tabId, 'deposit_paid_date')) || '';
-    x.money.method = tEl(tabId, 'pay_method')?.value || '';
+    const methodSel = tEl(tabId, 'pay_method');
+    x.money.method = (methodSel && methodSel.dataset.resolvedMethod) || methodSel?.value || '';
     x.money.balanceDueDate = toStorageISO(fieldVal(tabId, 'balance_due')) || '';
     x.money.fxNote = fieldVal(tabId, 'fx_note');
     x.leaderHalfPrice = checkVal(tabId, 'leader_half_price');
     x.organiserBooksHotels = checkVal(tabId, 'organiser_books_hotels');
+    const groupBox = tEl(tabId, 'group_price');
+    const groupOn = !!(groupBox && groupBox.checked);
+    const groupLoaded = groupBox ? (groupBox.dataset.loadedGroupPrice || '') : '';
+    if (groupOn) x.groupPrice = true;
+    else if (groupLoaded === 'true' || groupLoaded === 'false' || groupLoaded === 'inferred') x.groupPrice = false;
     x.hotelStayers = collectHotelStayers(tabId);
     const people = Number(x.headcount) || 0;
     const price = Number(x.money.pricePerPerson) || 0;
@@ -6852,7 +6980,7 @@
     const tourNum = tourRaw === '' ? null : Number(tourRaw);
     let fare = null;
     if (tourNum != null && Number.isFinite(tourNum)) fare = tourNum;
-    else if (people && price) fare = tourFareAmount(people, price, x.leaderHalfPrice);
+    else if (!x.groupPrice && people && price) fare = tourFareAmount(people, price, x.leaderHalfPrice);
     if (fare != null) x.money.balance = String(Math.round((fare - deposit - finalPay) * 100) / 100);
     x.companion.joining = checkVal(tabId, 'companion_joining');
     x.companion.otherBookingId = tEl(tabId, 'companion_id')?.value || '';
@@ -6927,6 +7055,7 @@
     const dayBox = tEl(tabId, 'day_trip');
     if (dayBox && (x.dayTrip === true || x.dayTrip === false)) dayBox.checked = x.dayTrip === true;
     setCheck(tabId, 'leader_half_price', x.leaderHalfPrice === true);
+    applyGroupPriceTick(tabId, raw);
     setCheck(tabId, 'organiser_books_hotels', x.organiserBooksHotels === true);
     const placeSel = tEl(tabId, 'tour_place');
     if (placeSel && (x.tourPlace === 'beading' || x.tourPlace === 'other')) placeSel.value = x.tourPlace;
@@ -7371,6 +7500,10 @@
       return;
     }
     const input = tEl(tabId, 'depositmade');
+    if (input && input.readOnly) {
+      toast('Deposit is added up from each guest', 'success');
+      return;
+    }
     if (input) input.value = suggested.toFixed(2);
     onTabInput(tabId, input ? input.id : '');
     toast('Deposit set to £' + suggested.toFixed(2) + ' (£200 × ' + people + ')', 'success');
@@ -7382,7 +7515,8 @@
     b._human_notes = split.notes;
     b._extras = split.extras;
     b.organiser_display = BookingExtras.organiserFullName(split.extras) || '';
-    b.payment_method_display = BookingExtras.methodLabel(split.extras.money && split.extras.money.method) || '';
+    const methodRaw = (split.extras.money && split.extras.money.method) || b.payment_method || '';
+    b.payment_method_display = BookingExtras.payMethodText(methodRaw) || '';
     b.room_plan_display = BookingExtras.roomSummary(split.extras.rooms) || '';
     return b;
   }
@@ -9175,7 +9309,7 @@
       // The tour total was only headcount times this list price. Drop it with the price.
       // A total Keith typed stays.
       const tour = tEl(tabId, 'beading_tour_price');
-      if (tour && tour.dataset.tourPriceSource !== 'typed') {
+      if (tour && tour.dataset.tourPriceSource !== 'typed' && tour.dataset.tourPriceSource !== 'group' && !groupPriceOn(tabId)) {
         tour.value = '';
         tour.dataset.tourPriceSource = '';
       }
@@ -9216,9 +9350,52 @@
     return Math.round(count * x * 100) / 100;
   }
 
+  function groupPriceOn(tabId) {
+    return !!tEl(tabId, 'group_price')?.checked;
+  }
+
+  function syncGroupPriceChrome(tabId) {
+    const on = groupPriceOn(tabId);
+    const total = tEl(tabId, 'beading_tour_price');
+    const wrap = total && total.closest('.tour-fare-total');
+    if (wrap) wrap.classList.toggle('is-group-price', on);
+    const label = total && total.closest('.field') && total.closest('.field').querySelector('label');
+    if (label) label.textContent = on ? 'Group price — fixed for any number' : 'Beading tour price (£)';
+    if (!total) return;
+    if (on) {
+      total.dataset.tourPriceSource = 'group';
+      total.title = 'One price for the whole group. Headcount does not change it.';
+      return;
+    }
+    total.title = 'Type a tour price, or leave it to follow the price per person. Leader half price takes a half off that organiser only.';
+    if (total.dataset.tourPriceSource === 'group') {
+      total.dataset.tourPriceSource = '';
+      noteLoadedTourPrice(tabId);
+    }
+  }
+
+  function applyGroupPriceTick(tabId, extras) {
+    const box = tEl(tabId, 'group_price');
+    if (!box || !window.BookingExtras || !BookingExtras.inferGroupPrice) return;
+    const on = BookingExtras.inferGroupPrice({
+      group_name: fieldVal(tabId, 'group_name'),
+      no_people: fieldVal(tabId, 'no_people'),
+      price_per_person: fieldVal(tabId, 'price_per_person'),
+      beading_tour_price: fieldVal(tabId, 'beading_tour_price'),
+    }, extras || null);
+    box.checked = on === true;
+    const rawFlag = extras && extras.groupPrice;
+    box.dataset.loadedGroupPrice = rawFlag === true ? 'true' : (rawFlag === false ? 'false' : (on ? 'inferred' : ''));
+    syncGroupPriceChrome(tabId);
+  }
+
   function noteLoadedTourPrice(tabId) {
     const total = tEl(tabId, 'beading_tour_price');
     if (!total) return;
+    if (typeof groupPriceOn === 'function' && groupPriceOn(tabId)) {
+      total.dataset.tourPriceSource = 'group';
+      return;
+    }
     const stored = String(total.value || '').trim();
     if (!stored) {
       total.dataset.tourPriceSource = '';
@@ -10136,11 +10313,24 @@
       const hotelCostInput = document.getElementById(changedId);
       if (hotelCostInput) hotelCostInput.dataset.hotelCostSource = String(hotelCostInput.value || '').trim() ? 'typed' : '';
     }
+    if (changedId.endsWith('_pay_method')) {
+      const sel = tEl(tabId, 'pay_method');
+      const payTab = tabs.get(tabId);
+      if (sel) {
+        const opt = sel.selectedOptions && sel.selectedOptions[0];
+        const auto = !!(opt && opt.dataset.autoMethod === '1');
+        if (!String(sel.value || '').trim()) sel.dataset.methodSource = '';
+        else if (!auto) {
+          sel.dataset.methodSource = 'typed';
+          if (payTab) payTab.paymentMethod = String(sel.value).trim();
+        }
+      }
+    }
     if (changedId.endsWith('_leader_half_price')) {
       const total = tEl(tabId, 'beading_tour_price');
       const people = parseFloat(String(tEl(tabId, 'no_people')?.value || '').trim());
       const price = parseFloat(String(tEl(tabId, 'price_per_person')?.value || '').trim());
-      if (total && total.dataset.tourPriceSource === 'typed' && Number.isFinite(people) && Number.isFinite(price)) {
+      if (total && !groupPriceOn(tabId) && total.dataset.tourPriceSource === 'typed' && Number.isFinite(people) && Number.isFinite(price)) {
         const other = tourFareAmount(people, price, !leaderHalfPriceOn(tabId));
         const current = parseFloat(String(total.value || '').trim());
         if (other != null && Number.isFinite(current) && current.toFixed(2) === other.toFixed(2)) {
@@ -10294,6 +10484,7 @@
     const pricePerPersonInput = tEl(tabId, 'price_per_person');
     const beadingTourPriceInput = tEl(tabId, 'beading_tour_price');
     if (beadingTourPriceInput && peopleInput && pricePerPersonInput) {
+      syncGroupPriceChrome(tabId);
       const peopleRaw = peopleInput.value.trim();
       const priceRaw = pricePerPersonInput.value.trim();
       const people = peopleRaw ? parseFloat(peopleRaw) : 0;
@@ -10302,12 +10493,16 @@
       // A stored tour price stays until both inputs are filled. Clearing it here
       // would wipe the price, the amount left to pay, and the profit on save.
       // A tour price Keith has typed stays too, including a flat price with headcount 1.
-      const guestMoney = window.BookingExtras
+      const fixedGroup = groupPriceOn(tabId);
+      const guestMoney = !fixedGroup && window.BookingExtras
         ? BookingExtras.perGuestMoney(perGuestRowsFromDom(tabId), priceRaw)
         : null;
-      const canCompute = peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(pricePerPerson);
+      const canCompute = !fixedGroup && peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(pricePerPerson);
       const half = leaderHalfPriceOn(tabId);
-      if (guestMoney) {
+      if (fixedGroup) {
+        beadingTourPriceInput.dataset.tourPriceSource = 'group';
+        beadingTourPriceInput.dataset.guestPriceTotal = '';
+      } else if (guestMoney) {
         const nextVal = guestMoney.total.toFixed(2);
         if (beadingTourPriceInput.value !== nextVal) beadingTourPriceInput.value = nextVal;
         beadingTourPriceInput.dataset.tourPriceSource = 'computed';
@@ -10323,13 +10518,14 @@
       }
     }
 
+    syncMainPaymentsFromGuests(tabId);
     const hotelExpenses = getExpensesTotalCost(tabId);
     const additionalExpenses = getAdditionalExpensesTotalCost(tabId);
     const fuelCost = tNum(tabId, 'fuelcost');
     const totalExpenses = hotelExpenses + additionalExpenses + fuelCost;
     const totalPayments = tNum(tabId, 'depositmade') + tNum(tabId, 'finalpayment');
     const totalCost = tNum(tabId, 'beading_tour_price') + totalExpenses;
-    const guestSplit = window.BookingExtras
+    const guestSplit = !groupPriceOn(tabId) && window.BookingExtras
       ? BookingExtras.guestLeftToPay(perGuestRowsFromDom(tabId), tEl(tabId, 'price_per_person')?.value || '')
       : null;
     const leftToPay = guestSplit ? guestSplit.left : (tNum(tabId, 'beading_tour_price') - totalPayments);
@@ -10376,6 +10572,7 @@
   }
 
   async function getTabFormData(tabId) {
+    syncMainPaymentsFromGuests(tabId);
     // A blank price is filled from the list before the row is saved.
     // A price Keith typed is left as it is.
     applySuggestedPrice(tabId);
@@ -10422,7 +10619,7 @@
     const totalPayments = (data.depositmade || 0) + (data.finalpayment || 0);
     data.totalexpenses = totalExpenses;
     data.totalcost = (data.beading_tour_price || 0) + totalExpenses;
-    const guestSplit = window.BookingExtras
+    const guestSplit = !groupPriceOn(tabId) && window.BookingExtras
       ? BookingExtras.guestLeftToPay(perGuestRowsFromDom(tabId), data.price_per_person)
       : null;
     data.left_to_pay = guestSplit ? guestSplit.left : ((data.beading_tour_price || 0) - totalPayments);
@@ -10548,6 +10745,8 @@
       tabData.status = bookingIsCancelled(record) ? 'cancelled' : null;
       tabData.delayUntilYear = delayUntilYearOf(record);
       tabData.rescheduledFromId = rescheduledFromIdOf(record);
+      const extrasMethod = splitNotes.extras && splitNotes.extras.money && splitNotes.extras.money.method;
+      tabData.paymentMethod = String(record.payment_method || extrasMethod || '').trim();
     }
     tEl(tabId, 'id').value = record.id || '';
     const title = record.group_name || (record.id ? 'Booking #' + record.id : 'New Booking');
@@ -10563,6 +10762,8 @@
         ? splitNotes.rawExtras
         : splitNotes.extras;
       applyBookingExtras(tabId, roomRaw, record.keith_own_room);
+    } else {
+      applyGroupPriceTick(tabId, null);
     }
     noteLoadedRooms(tabId, roomRaw, record.keith_own_room);
     if (record.leader_half_price === true) setCheck(tabId, 'leader_half_price', true);
@@ -11175,10 +11376,11 @@
 
   // Optional real columns from sql/19_2027_booking_fields.sql. The JSON block in
   // extra_notes is still written; if a database lacks these columns we retry without them.
-  function bookingColumnsFromExtras(extras) {
+  function bookingColumnsFromExtras(extras, existing) {
     const x = extras || {};
     const o = x.organiser || {}, r = x.rooms || {}, m = x.money || {};
     const int = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
+    const method = (m.method && String(m.method).trim()) || (existing && existing.payment_method) || null;
     return {
       organiser_first_name: o.firstName || null,
       organiser_last_name: o.lastName || null,
@@ -11187,7 +11389,7 @@
       room_twins: int(r.twins),
       room_doubles: int(r.doubles),
       keith_own_room: r.keithRoom === true ? true : (r.keithRoom === false ? false : null),
-      payment_method: m.method || null,
+      payment_method: method,
       currency_note: m.fxNote || null,
       leader_half_price: x.leaderHalfPrice === true,
     };
@@ -11196,7 +11398,8 @@
     return !!err && (err.code === 'PGRST204' || err.code === '42703');
   }
   async function saveBookingRow(bookingData, extras, bid) {
-    const optional = bookingColumnsFromExtras(extras);
+    const existing = bid ? (allBookings || []).find(b => String(b.id) === String(bid)) : null;
+    const optional = bookingColumnsFromExtras(extras, existing);
     const optionalKeys = Object.keys(optional);
     let row = { ...bookingData, ...optional };
     const run = payload => bid
