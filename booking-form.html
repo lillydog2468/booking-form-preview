@@ -1173,8 +1173,10 @@
     }
     .month-pill {
       display: inline-flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 2px;
       padding: 5px 8px;
       border-radius: 999px;
       border: 1px solid var(--layout-panel-border);
@@ -1185,7 +1187,17 @@
       cursor: pointer;
       user-select: none;
       min-width: 34px;
+      position: relative;
     }
+    .tour-month-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #c2410c;
+      box-shadow: 0 0 0 1.5px #fff;
+      flex: 0 0 auto;
+    }
+    .tour-month-dot[hidden] { display: none !important; }
     [data-theme="dark"] .month-pill { background: rgba(255,255,255,.06); }
     .month-pill.active {
       background: rgba(79,70,229,.24);
@@ -4658,18 +4670,18 @@
       <div class="year-cal-filters" id="t${t}_monthFilters">
         <button type="button" class="month-pill action" data-month-mode="all" aria-pressed="false" onclick="setTabCalendarMonths('${t}', 'all')" title="Show all months">All</button>
         <button type="button" class="month-pill action" data-month-mode="none" aria-pressed="false" onclick="setTabCalendarMonths('${t}', 'none')" title="Hide all months">None</button>
-        <button type="button" class="month-pill" id="t${t}_m0" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 0)">Jan</button>
-        <button type="button" class="month-pill" id="t${t}_m1" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 1)">Feb</button>
-        <button type="button" class="month-pill" id="t${t}_m2" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 2)">Mar</button>
-        <button type="button" class="month-pill" id="t${t}_m3" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 3)">Apr</button>
-        <button type="button" class="month-pill" id="t${t}_m4" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 4)">May</button>
-        <button type="button" class="month-pill" id="t${t}_m5" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 5)">Jun</button>
-        <button type="button" class="month-pill" id="t${t}_m6" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 6)">Jul</button>
-        <button type="button" class="month-pill" id="t${t}_m7" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 7)">Aug</button>
-        <button type="button" class="month-pill" id="t${t}_m8" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 8)">Sep</button>
-        <button type="button" class="month-pill" id="t${t}_m9" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 9)">Oct</button>
-        <button type="button" class="month-pill" id="t${t}_m10" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 10)">Nov</button>
-        <button type="button" class="month-pill" id="t${t}_m11" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 11)">Dec</button>
+        <button type="button" class="month-pill" id="t${t}_m0" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 0)"><span class="month-pill-name">Jan</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m1" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 1)"><span class="month-pill-name">Feb</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m2" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 2)"><span class="month-pill-name">Mar</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m3" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 3)"><span class="month-pill-name">Apr</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m4" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 4)"><span class="month-pill-name">May</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m5" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 5)"><span class="month-pill-name">Jun</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m6" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 6)"><span class="month-pill-name">Jul</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m7" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 7)"><span class="month-pill-name">Aug</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m8" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 8)"><span class="month-pill-name">Sep</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m9" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 9)"><span class="month-pill-name">Oct</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m10" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 10)"><span class="month-pill-name">Nov</span><span class="tour-month-dot" hidden></span></button>
+        <button type="button" class="month-pill" id="t${t}_m11" aria-pressed="false" onclick="toggleTabCalendarMonth('${t}', 11)"><span class="month-pill-name">Dec</span><span class="tour-month-dot" hidden></span></button>
       </div>
       <div class="year-cal-months" id="t${t}_yearCalendar"></div>
     </div>
@@ -5114,12 +5126,16 @@
 
   function syncTabCalendarMonthFilterUI(tabId) {
     const mask = getTabCalendarMonthsMask(tabId) & 0xFFF;
+    const range = getTabTourRangeUTC(tabId);
+    const tourMask = range ? monthsMaskForRangeInYearUTC(range, getTabCalendarYear(tabId)) : 0;
     for (let mi = 0; mi < 12; mi++) {
       const btn = tEl(tabId, 'm' + mi);
       if (!btn) continue;
       const on = (mask & (1 << mi)) !== 0;
       btn.classList.toggle('active', on);
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const dot = btn.querySelector('.tour-month-dot');
+      if (dot) dot.hidden = (tourMask & (1 << mi)) === 0;
     }
     const filters = tEl(tabId, 'monthFilters');
     if (!filters) return;
@@ -5135,6 +5151,18 @@
       noneBtn.classList.toggle('active', on);
       noneBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
+  }
+
+  function focusCalendarOnArrival(tabId) {
+    const td = tabs.get(tabId);
+    if (!td) return;
+    const arrival = parseFlexibleDateUTC(tEl(tabId, 'tour_arrival_date')?.value || '');
+    const today = utcStartOfToday();
+    const when = arrival || today;
+    td.calendarYear = clampYear(when.getUTCFullYear());
+    td.calendarYearPinned = true;
+    td.calendarMonthsMask = (1 << when.getUTCMonth()) & 0xFFF;
+    td.calendarMonthsPinned = true;
   }
 
   function changeTabCalendarYear(tabId, delta) {
@@ -5552,19 +5580,17 @@
     const currentBookingId = tabData?.bookingId || null;
     const currentRange = getTabTourRangeUTC(tabId);
     const todayUTC = utcStartOfToday();
-    if (tabData) {
+    if (tabData && !tabData.calendarMonthsPinned) {
       const savedMonths = savedCalendarMonths();
       if (savedMonths != null) {
         tabData.calendarMonthsMask = savedMonths;
         tabData.calendarMonthsPinned = true;
-      } else if (!tabData.calendarMonthsPinned) {
-        if (!currentRange && tabData.startedNew) {
-          const today = utcStartOfToday();
-          const month = year === today.getUTCFullYear() ? today.getUTCMonth() : 0;
-          tabData.calendarMonthsMask = 1 << month;
-        } else {
-          tabData.calendarMonthsMask = monthsMaskForRangeInYearUTC(currentRange, year);
-        }
+      } else if (!currentRange && tabData.startedNew) {
+        const today = utcStartOfToday();
+        const month = year === today.getUTCFullYear() ? today.getUTCMonth() : 0;
+        tabData.calendarMonthsMask = 1 << month;
+      } else {
+        tabData.calendarMonthsMask = monthsMaskForRangeInYearUTC(currentRange, year);
       }
     }
     syncTabCalendarMonthFilterUI(tabId);
@@ -9862,6 +9888,7 @@
     applyLayoutZoomToOpenTabs();
     paintEmptyFields(panel);
     refreshBookingLink(tabId);
+    focusCalendarOnArrival(tabId);
     switchToTab(tabId);
 
     if (window.innerWidth <= 600) {
@@ -10024,10 +10051,6 @@
       const prefix = tabData && tabData.bookingId ? 'Edit: ' : '';
       updateTabTitle(tabId, prefix + groupInput.value.trim());
 	    }
-	    if (changedId.endsWith('_tour_arrival_date') && tabData && !tabData.calendarYearPinned) {
-	      const start = parseFlexibleDateUTC(tEl(tabId, 'tour_arrival_date')?.value || '');
-	      if (start) tabData.calendarYear = start.getUTCFullYear();
-	    }
 	    if (changedId.endsWith('_tour_arrival_date')) {
 	      const arrEl = tEl(tabId, 'tour_arrival_date');
 	      const depEl = tEl(tabId, 'departure_date');
@@ -10043,6 +10066,7 @@
           else if (dep) depEl.value = formatDateDMY(toISODateUTC(dep));
         }
       }
+      if (start || !(arrEl && String(arrEl.value || '').trim())) focusCalendarOnArrival(tabId);
 	    }
 	    if (changedId.endsWith('_departure_date') || changedId.endsWith('_deposit_paid_date') || changedId.endsWith('_final_payment_date') || changedId.endsWith('_balance_due')) {
 	      const elChanged = changedId ? document.getElementById(changedId) : null;
