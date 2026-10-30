@@ -91,7 +91,7 @@
     table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
     th {
       text-align: left; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
-      color: var(--text-secondary); padding: 8px 10px; border-bottom: 1px solid var(--border);
+      color: var(--text-secondary); padding: 0; border-bottom: 1px solid var(--border);
       background: var(--surface-alt);
       position: -webkit-sticky;
       position: sticky;
@@ -99,6 +99,15 @@
       z-index: 12;
       box-shadow: 0 1px 0 var(--border);
     }
+    .sort-btn {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      width: 100%; margin: 0; padding: 8px 10px; border: 0; background: transparent;
+      color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit;
+      text-align: left; cursor: pointer; touch-action: manipulation;
+    }
+    .sort-arrow { display: inline-block; width: 1em; text-align: center; font-size: 10px; }
+    .sort-tools { display: none; align-items: flex-end; gap: 8px; }
+    .sort-tools .btn { min-width: 44px; padding-left: 10px; padding-right: 10px; }
     td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
     tr.group td {
       background: var(--surface-alt); font-weight: 800; font-size: 13px;
@@ -148,6 +157,7 @@
     @media (max-width: 700px) {
       .topbar, .toolbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
       .btn, select { min-height: 44px; }
+      .sort-tools { display: flex; }
       .table-wrap { border: 0; background: transparent; overflow: visible; }
       table, tbody { display: block; }
       thead { display: none; }
@@ -193,6 +203,19 @@
         </select>
       </label>
       <p class="count" id="countLine"></p>
+      <div class="sort-tools">
+        <label>Sort by
+          <select id="sortColumn">
+            <option value="name">Name</option>
+            <option value="contact">Contact</option>
+            <option value="when">Preferred when</option>
+            <option value="party">Party</option>
+            <option value="group">Possible group</option>
+            <option value="status">Status</option>
+          </select>
+        </label>
+        <button type="button" class="btn btn-outline" id="sortDir" aria-label="Sorted ascending. Reverse">▲</button>
+      </div>
     </div>
   </header>
 
@@ -204,12 +227,12 @@
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Contact</th>
-            <th>Preferred when</th>
-            <th>Party</th>
-            <th>Possible group</th>
-            <th>Status</th>
+            <th data-sort="name" aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Name<span class="sort-arrow" aria-hidden="true"></span></button></th>
+            <th data-sort="contact" aria-sort="none"><button type="button" class="sort-btn" data-sort="contact">Contact<span class="sort-arrow" aria-hidden="true"></span></button></th>
+            <th data-sort="when" aria-sort="none"><button type="button" class="sort-btn" data-sort="when">Preferred when<span class="sort-arrow" aria-hidden="true"></span></button></th>
+            <th data-sort="party" aria-sort="none"><button type="button" class="sort-btn" data-sort="party">Party<span class="sort-arrow" aria-hidden="true"></span></button></th>
+            <th data-sort="group" aria-sort="none"><button type="button" class="sort-btn" data-sort="group">Possible group<span class="sort-arrow" aria-hidden="true"></span></button></th>
+            <th data-sort="status" aria-sort="none"><button type="button" class="sort-btn" data-sort="status">Status<span class="sort-arrow" aria-hidden="true"></span></button></th>
             <th></th>
           </tr>
         </thead>
@@ -362,28 +385,107 @@
       return 'status';
     }
 
-    function filteredRows() {
-      const status = el('statusFilter').value;
-      const list = status ? rows.filter(row => row.status === status) : rows.slice();
-      list.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-      return list;
+    const INTEREST_SORT_KEY = 'interest_2027_sort';
+    const INTEREST_SORTS = ['name', 'contact', 'when', 'party', 'group', 'status'];
+    function loadInterestSort() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(INTEREST_SORT_KEY) || '');
+        if (raw && INTEREST_SORTS.indexOf(raw.column) >= 0 && (raw.direction === 'asc' || raw.direction === 'desc')) {
+          return { column: raw.column, direction: raw.direction };
+        }
+      } catch (err) { /* keep the original order */ }
+      return { column: 'group', direction: 'asc' };
     }
 
-    function grouped(list) {
-      const named = new Map();
-      const none = [];
+    let interestSort = loadInterestSort();
+
+    function interestDateValue(text) {
+      const months = {
+        jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+        may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+        sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
+      };
+      const s = String(text || '');
+      let match = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+      if (match) return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      match = s.match(/\b(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})\b/);
+      if (match) return Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+      match = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})\b/);
+      if (match && months[match[2].toLowerCase()] != null) {
+        return Date.UTC(Number(match[3]), months[match[2].toLowerCase()], Number(match[1]));
+      }
+      match = s.match(/\b([A-Za-z]+)\s+(\d{4})\b/);
+      if (match && months[match[1].toLowerCase()] != null) {
+        return Date.UTC(Number(match[2]), months[match[1].toLowerCase()], 1);
+      }
+      const year = s.match(/\b(20\d{2})\b/);
+      match = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\b/);
+      if (year && match && months[match[2].toLowerCase()] != null) {
+        return Date.UTC(Number(year[1]), months[match[2].toLowerCase()], Number(match[1]));
+      }
+      return null;
+    }
+
+    function interestNumber(text) {
+      const s = String(text || '').trim().replace(/,/g, '');
+      return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+    }
+
+    function interestSortValue(row, column) {
+      const fields = {
+        name: row && row.name,
+        contact: row && row.contact,
+        when: row && row.preferred_when,
+        party: row && row.party_size,
+        group: row && row.possible_group,
+        status: row && row.status
+      };
+      const text = String(fields[column] == null ? '' : fields[column]).trim();
+      if (!text) return { empty: true, kind: 'text', value: '', text: '' };
+      if (column === 'when') {
+        const date = interestDateValue(text);
+        if (date != null) return { empty: false, kind: 'date', value: date, text: text };
+      }
+      if (column === 'party') {
+        const number = interestNumber(text);
+        if (number != null) return { empty: false, kind: 'number', value: number, text: text };
+      }
+      return { empty: false, kind: 'text', value: text, text: text };
+    }
+
+    function compareInterestRows(a, b, column, direction) {
+      const ka = interestSortValue(a, column);
+      const kb = interestSortValue(b, column);
+      const idCmp = (Number(a && a.id) || 0) - (Number(b && b.id) || 0);
+      if (ka.empty && kb.empty) return idCmp;
+      if (ka.empty) return 1;
+      if (kb.empty) return -1;
+      const rank = { date: 0, number: 1, text: 2 };
+      let cmp = rank[ka.kind] - rank[kb.kind];
+      if (cmp === 0 && ka.kind === 'text') cmp = ka.text.localeCompare(kb.text, 'en-GB', { sensitivity: 'base' });
+      if (cmp === 0 && ka.kind !== 'text') cmp = ka.value < kb.value ? -1 : (ka.value > kb.value ? 1 : 0);
+      if (cmp === 0) cmp = ka.text.localeCompare(kb.text, 'en-GB', { sensitivity: 'base' });
+      if (cmp === 0) cmp = idCmp;
+      return direction === 'desc' ? -cmp : cmp;
+    }
+
+    function sortInterestRows(list, column, direction) {
+      return (Array.isArray(list) ? list.slice() : []).sort((a, b) => compareInterestRows(a, b, column, direction));
+    }
+
+    function filteredRows() {
+      const status = el('statusFilter').value;
+      return status ? rows.filter(row => row.status === status) : rows.slice();
+    }
+
+    function sectionsInOrder(list) {
+      const sections = [];
       list.forEach(row => {
-        const group = String(row.possible_group || '').trim();
-        if (!group) none.push(row);
-        else {
-          if (!named.has(group)) named.set(group, []);
-          named.get(group).push(row);
-        }
+        const label = String(row.possible_group || '').trim() || 'No group yet';
+        const last = sections[sections.length - 1];
+        if (!last || last.label !== label) sections.push({ label: label, people: [row] });
+        else last.people.push(row);
       });
-      const sections = [...named.keys()]
-        .sort((a, b) => a.localeCompare(b, 'en-GB'))
-        .map(label => ({ label, people: named.get(label) }));
-      if (none.length) sections.push({ label: 'No group yet', people: none });
       return sections;
     }
 
@@ -409,26 +511,58 @@
         </td>`;
     }
 
+    function personRow(row) {
+      const flag = row.do_not_contact ? ' dnc' : '';
+      return `<tr class="person${flag}">${personCells(row)}</tr>`;
+    }
+
+    function paintSortControls() {
+      const arrow = interestSort.direction === 'asc' ? '▲' : '▼';
+      document.querySelectorAll('th[data-sort]').forEach(th => {
+        const on = th.getAttribute('data-sort') === interestSort.column;
+        th.setAttribute('aria-sort', on ? (interestSort.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+        const mark = th.querySelector('.sort-arrow');
+        if (mark) mark.textContent = on ? arrow : '';
+      });
+      const select = el('sortColumn');
+      if (select) select.value = interestSort.column;
+      const dir = el('sortDir');
+      if (dir) {
+        dir.textContent = arrow;
+        dir.setAttribute('aria-label', interestSort.direction === 'asc' ? 'Sorted ascending. Reverse' : 'Sorted descending. Reverse');
+      }
+    }
+
+    function chooseInterestSort(column, toggle) {
+      if (INTEREST_SORTS.indexOf(column) < 0) return;
+      if (toggle && interestSort.column === column) {
+        interestSort.direction = interestSort.direction === 'asc' ? 'desc' : 'asc';
+      } else if (interestSort.column !== column) {
+        interestSort.column = column;
+        interestSort.direction = 'asc';
+      }
+      try { localStorage.setItem(INTEREST_SORT_KEY, JSON.stringify(interestSort)); } catch (err) { /* the list still sorts this visit */ }
+      render();
+    }
+
     function render() {
-      const list = filteredRows();
-      const sections = grouped(list);
+      const list = sortInterestRows(filteredRows(), interestSort.column, interestSort.direction);
       const body = el('listBody');
       const noun = list.length === 1 ? '1 person' : list.length + ' people';
       el('countLine').textContent = noun;
       if (!list.length) {
         body.innerHTML = '<tr><td class="empty" colspan="7">No one matches this status.</td></tr>';
-        return;
-      }
-      body.innerHTML = sections.map(section => {
-        const head = `<tr class="group"><td colspan="7">${escapeHtml(section.label)} · ${section.people.length}</td></tr>`;
-        const people = section.people.map(row => {
-          const flag = row.do_not_contact ? ' dnc' : '';
-          return `<tr class="person${flag}">${personCells(row)}</tr>`;
+      } else if (interestSort.column === 'group') {
+        body.innerHTML = sectionsInOrder(list).map(section => {
+          const head = `<tr class="group"><td colspan="7">${escapeHtml(section.label)} · ${section.people.length}</td></tr>`;
+          return head + section.people.map(personRow).join('');
         }).join('');
-        return head + people;
-      }).join('');
+      } else {
+        body.innerHTML = list.map(personRow).join('');
+      }
       const names = [...new Set(rows.map(row => String(row.possible_group || '').trim()).filter(Boolean))];
       el('groupNames').innerHTML = names.map(name => '<option value="' + escapeHtml(name) + '"></option>').join('');
+      paintSortControls();
     }
 
     function showInterestRows(list) {
@@ -498,6 +632,13 @@
       el('confirmModal').hidden = true;
     });
     el('statusFilter').addEventListener('change', render);
+    document.querySelector('thead').addEventListener('click', (event) => {
+      const button = event.target.closest('th[data-sort]');
+      if (!button) return;
+      chooseInterestSort(button.getAttribute('data-sort'), true);
+    });
+    el('sortColumn').addEventListener('change', () => chooseInterestSort(el('sortColumn').value, false));
+    el('sortDir').addEventListener('click', () => chooseInterestSort(interestSort.column, true));
     el('listBody').addEventListener('click', (event) => {
       const button = event.target.closest('[data-edit]');
       if (!button) return;
