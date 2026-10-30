@@ -40,10 +40,22 @@
       background: var(--bg); color: var(--text);
       line-height: 1.45; min-height: 100vh;
     }
+    .page-sticky {
+      position: -webkit-sticky;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background: var(--surface);
+      padding-top: env(safe-area-inset-top, 0px);
+      box-shadow: 0 1px 0 var(--border), 0 6px 14px rgba(0,0,0,.07);
+    }
+    [data-theme="dark"] .page-sticky {
+      box-shadow: 0 1px 0 var(--border), 0 6px 14px rgba(0,0,0,.4);
+    }
     .topbar {
       background: var(--surface); border-bottom: 1px solid var(--border);
       padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;
-      gap: 10px; flex-wrap: wrap; position: sticky; top: 0; z-index: 20;
+      gap: 10px; flex-wrap: wrap;
     }
     .topbar-left, .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
@@ -63,8 +75,10 @@
     .intro { color: var(--text-secondary); font-size: 14px; margin: 0 0 14px; max-width: 62ch; }
     .toolbar {
       display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
-      margin-bottom: 14px;
+      margin: 0; padding: 10px 20px 12px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
     }
+    .toolbar[hidden] { display: none !important; }
     .toolbar label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--text-secondary); }
     select, input[type="text"], textarea {
       font: inherit; font-size: 16px; color: var(--text);
@@ -73,12 +87,17 @@
     }
     textarea { min-height: 72px; resize: vertical; }
     .count { font-size: 13px; color: var(--text-secondary); padding-bottom: 8px; }
-    .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table-wrap { overflow: visible; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
     th {
       text-align: left; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
       color: var(--text-secondary); padding: 8px 10px; border-bottom: 1px solid var(--border);
-      background: var(--surface-alt); position: sticky; top: 0;
+      background: var(--surface-alt);
+      position: -webkit-sticky;
+      position: sticky;
+      top: var(--interest-head, 0px);
+      z-index: 12;
+      box-shadow: 0 1px 0 var(--border);
     }
     td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
     tr.group td {
@@ -127,7 +146,7 @@
       .modal-overlay { align-items: center; }
     }
     @media (max-width: 700px) {
-      .topbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+      .topbar, .toolbar { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
       .btn, select { min-height: 44px; }
       .table-wrap { border: 0; background: transparent; overflow: visible; }
       table, tbody { display: block; }
@@ -153,22 +172,18 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="topbar-left">
-      <a class="btn btn-outline" href="booking-form.html">Back to booking form</a>
-      <a class="btn btn-outline" href="admin.html">Admin</a>
-      <h1>2027 interest</h1>
+  <header class="page-sticky">
+    <div class="topbar">
+      <div class="topbar-left">
+        <a class="btn btn-outline" href="booking-form.html">Back to booking form</a>
+        <a class="btn btn-outline" href="admin.html">Admin</a>
+        <h1>2027 interest</h1>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" class="btn btn-primary" id="addBtn">Add person</button>
+      </div>
     </div>
-    <div class="topbar-actions">
-      <button type="button" class="btn btn-primary" id="addBtn">Add person</button>
-    </div>
-  </div>
-
-  <p class="blocked" id="blocked" hidden></p>
-
-  <main class="page" id="app" hidden>
-    <p class="intro">People who would like to come in 2027. Use it to build groups of five or six, or to slot a single person into another group. This page is private.</p>
-    <div class="toolbar">
+    <div class="toolbar" id="toolbar" hidden>
       <label>Status
         <select id="statusFilter">
           <option value="">All</option>
@@ -179,6 +194,12 @@
       </label>
       <p class="count" id="countLine"></p>
     </div>
+  </header>
+
+  <p class="blocked" id="blocked" hidden></p>
+
+  <main class="page" id="app" hidden>
+    <p class="intro">People who would like to come in 2027. Use it to build groups of five or six, or to slot a single person into another group. This page is private.</p>
     <div class="table-wrap">
       <table>
         <thead>
@@ -289,6 +310,30 @@
 
     function el(id) { return document.getElementById(id); }
 
+    function pinInterestHead() {
+      const head = document.querySelector('.page-sticky');
+      if (!head) return;
+      document.documentElement.style.setProperty('--interest-head', head.offsetHeight + 'px');
+    }
+
+    function watchInterestHead() {
+      pinInterestHead();
+      const head = document.querySelector('.page-sticky');
+      if (head && typeof ResizeObserver === 'function') {
+        const watcher = new ResizeObserver(pinInterestHead);
+        watcher.observe(head);
+      }
+      window.addEventListener('resize', pinInterestHead);
+    }
+
+    function revealInterest() {
+      el('blocked').hidden = true;
+      el('app').hidden = false;
+      const toolbar = el('toolbar');
+      if (toolbar) toolbar.hidden = false;
+      pinInterestHead();
+    }
+
     function escapeHtml(value) {
       return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -388,8 +433,7 @@
 
     function showInterestRows(list) {
       rows = Array.isArray(list) ? list.slice() : [];
-      el('blocked').hidden = true;
-      el('app').hidden = false;
+      revealInterest();
       render();
     }
     window.showInterestRows = showInterestRows;
@@ -498,6 +542,7 @@
     });
 
     document.addEventListener('DOMContentLoaded', async () => {
+      watchInterestHead();
       const session = await AuthGate.require(sb, { title: '2027 interest' });
       if (!session) {
         el('blocked').hidden = false;
@@ -509,7 +554,7 @@
         window.location.href = 'booking-form.html';
         return;
       }
-      el('app').hidden = false;
+      revealInterest();
       try {
         await loadList();
       } catch (err) {
