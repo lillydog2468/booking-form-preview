@@ -951,7 +951,92 @@
       background: color-mix(in srgb, #cbd5e1 18%, var(--input-bg));
     }
     .field select { cursor: pointer; }
-    .field textarea { resize: vertical; min-height: 64px; }
+    .field textarea { resize: vertical; min-height: 64px; width: 100%; }
+
+    /* Short boxes sit beside each other. Notes and addresses stay on their own line. */
+    .grid,
+    .grid-2,
+    .grid-3,
+    .grid-4,
+    .grid-5 {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 10px 12px;
+    }
+    .grid > .field,
+    .grid > .field-with-currency {
+      flex: 0 1 auto;
+      width: auto;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .grid > .field:has(textarea),
+    .grid > .field:has(.flight-comments),
+    .field:has(textarea) {
+      flex: 1 1 100%;
+      width: 100%;
+      max-width: 100%;
+    }
+    .field input[type="number"],
+    .member-pay-amt input[type="number"] {
+      width: calc(8ch + 1.5em);
+      max-width: 100%;
+    }
+    .field input[type="time"] {
+      width: calc(8ch + 2.2em);
+      max-width: 100%;
+    }
+    .field input[type="text"],
+    .field input[type="search"],
+    .field input:not([type]) {
+      width: calc(12ch + 1.6em);
+      max-width: 100%;
+    }
+    .field input[type="email"],
+    .member-email {
+      width: calc(22ch + 1.6em);
+      max-width: 100%;
+    }
+    .field select {
+      width: calc(14ch + 2.2em);
+      max-width: 100%;
+    }
+    .field select[id$="_what_hotel"],
+    .hotel-stay-select,
+    .field input[id$="_group_name"],
+    .field input[id$="_other_hotel_name"],
+    .field input.hotel-stay-other,
+    .field input[id$="_pickup_place"],
+    .field input[id$="_prague_hotel"],
+    .field input[id$="_airport_hotel"],
+    .field input[id$="_day_pickup"],
+    .field input[id$="_hotel_paid_by"],
+    .field input[id$="_companion_name"],
+    .field input.flight-comments {
+      width: min(28ch, 100%);
+    }
+    .field input[id$="_hotel_nights"],
+    .field input[id$="_hotel_rooms"],
+    .field input.hotel-stay-nights,
+    .field input.flight-number,
+    .field input[id$="_arrival_flight"],
+    .field input[id$="_departure_flight"] {
+      width: calc(10ch + 1.5em);
+      max-width: 100%;
+    }
+    .member-row > input.member-first,
+    .member-row > input.member-last {
+      width: calc(12ch + 1.4em);
+      flex: 0 1 calc(12ch + 1.4em);
+      max-width: 100%;
+    }
+    .date-field-row { width: max-content; max-width: 100%; }
+    .date-field-row input.date-dmy {
+      width: calc(10ch + 1.2em);
+      flex: 0 0 auto;
+      max-width: calc(100% - 48px);
+    }
 
     /* ═══════════════════════════════════════
        LAYOUT VIEW (dashboard)
@@ -1497,6 +1582,10 @@
     .field-with-currency { display: flex; gap: 6px; align-items: flex-end; min-width: 0; }
     .field-with-currency .field { flex: 1; min-width: 0; }
     .field-with-currency .field input { min-width: 0; width: 100%; }
+    .field-with-currency .field input[type="number"] {
+      width: calc(8ch + 1.5em);
+      max-width: 100%;
+    }
     .fuel-cost-slot { min-width: 0; }
     .fuel-cost-slot:empty,
     .fuel-cost-slot[hidden] { display: none; }
@@ -2639,8 +2728,25 @@
       .tab-panel-header-title { width: 100%; }
       .tab-panel-header h2 { font-size: 17px; }
 
-      .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
+      .grid-2, .grid-3, .grid-4, .grid-5 {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+      }
       .grid { gap: 12px; }
+      .member-row > input.member-first,
+      .member-row > input.member-last {
+        flex: 0 1 calc(12ch + 1.2em);
+        width: calc(12ch + 1.2em);
+        max-width: calc(50% - 4px);
+        min-height: 44px;
+      }
+      .member-row > input.member-email {
+        flex: 1 1 16ch;
+        width: auto;
+        min-width: 12ch;
+        max-width: 100%;
+      }
 
       .section { padding: 16px 14px; margin-bottom: 14px; border-radius: 10px; }
       .section-title { font-size: 12px; margin-bottom: 14px; padding-bottom: 8px; }
@@ -2666,7 +2772,7 @@
       /* Keep 16px so iOS does not zoom. The fare row wraps onto two lines. */
       .tour-fare-block { gap: 4px 6px; }
       .tour-fare-block > .field,
-      .tour-fare-block > .field-with-currency { flex-basis: 46%; max-width: none; }
+      .tour-fare-block > .field-with-currency { flex: 0 1 auto; max-width: 100%; }
       .tour-fare-block .field input,
       .tab-panel.layout-mode .tour-fare-block .field input {
         padding: 2px 8px;
@@ -2717,7 +2823,7 @@
       .member-pay-payer select {
         font-size: 16px; min-height: 44px;
       }
-      .member-pay-amt input[type="number"] { flex-basis: 110px; width: 110px; }
+      .member-pay-amt input[type="number"] { flex-basis: auto; width: calc(8ch + 1.4em); max-width: 100%; }
       .member-pay .date-popup-btn { width: 44px; height: 44px; }
       .member-row .member-email { flex: 1 1 100%; }
       .member-share { flex: 1 0 100%; }
