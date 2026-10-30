@@ -581,6 +581,8 @@
       if (existing) {
         if (!existing.recordedAddress && stay.recordedAddress) existing.recordedAddress = String(stay.recordedAddress);
         if (!existing.explicitNights && stay.explicitNights) existing.explicitNights = String(stay.explicitNights);
+        if (!existing.staySlot && stay.staySlot) existing.staySlot = stay.staySlot;
+        if (!existing.stayHotelId && stay.stayHotelId) existing.stayHotelId = stay.stayHotelId;
         return;
       }
       list.push({
@@ -602,6 +604,10 @@
         explicitNights: stay.explicitNights || '',
         otherHotelNights: stay.otherHotelNights || '',
         headcount: stay.headcount || '',
+        keithRoom: stay.keithRoom,
+        extraNotes: stay.extraNotes || '',
+        staySlot: stay.staySlot || '',
+        stayHotelId: stay.stayHotelId || '',
         recordedAddress: stay.recordedAddress || '',
         organiserBooksHotels: !!stay.organiserBooksHotels,
         roomsNeededLabel: (stay.dayTrip || stay.organiserBooksHotels) ? '' : String(stay.roomsNeededLabel || ''),
@@ -609,6 +615,37 @@
         people: Array.isArray(stay.people) ? stay.people : [],
         hotelsUsedHref: stay.hotelsUsedHref || '',
       });
+    }
+
+    function applyHotelStayersToStay(stay, membersByBooking) {
+      if (!stay || !stay.staySlot || !window.BookingExtras || stay.dayTrip || stay.organiserBooksHotels) return;
+      const splitSource = stay.extraNotes;
+      if (!splitSource) return;
+      const split = BookingExtras.splitNotesAndExtras(splitSource);
+      const saved = BookingExtras.normaliseHotelStayers(split.extras && split.extras.hotelStayers);
+      let row = saved.find(item => item.slot === stay.staySlot && item.guests.length);
+      if (!row && stay.stayHotelId) {
+        row = saved.find(item => item.hotelId != null && String(item.hotelId) === String(stay.stayHotelId) && item.guests.length);
+      }
+      if (!row) return;
+      const members = membersByBooking.get(String(stay.bookingId)) || [];
+      if (!members.length) return;
+      const guestRows = members.map((member, index) => {
+        const extra = (split.extras.guests || [])[index] || {};
+        const name = [member.first_name, member.last_name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
+        return {
+          id: member.id,
+          personId: extra.personId || '',
+          firstName: member.first_name || '',
+          lastName: member.last_name || '',
+          name: name,
+        };
+      }).filter(guest => guest.name);
+      const staying = BookingExtras.guestsForHotel(guestRows, [row], row.slot);
+      stay.guests = staying.map(guest => guest.name);
+      stay.people = staying.map(guest => ({ name: guest.name, personId: guest.personId || '' }));
+      stay.peopleLabel = staying.map(guest => guest.name).join(', ');
+      stay.roomsNeededLabel = BookingExtras.roomsLabelForHotel(split.rawExtras, stay.keithRoom, staying.length, stay.headcount);
     }
 
     function applyOverlay(stay, planHotels, meta) {
@@ -675,7 +712,7 @@
 
       if (bookings.length) {
         try {
-          const { data, error } = await sb.from('members').select('booking_id, first_name, last_name').limit(2000);
+          const { data, error } = await sb.from('members').select('id, booking_id, first_name, last_name').limit(2000);
           if (!error) {
             const byId = {};
             (data || []).forEach(m => {
@@ -707,11 +744,12 @@
       directoryCatalogue = [];
       directoryPlaces = [];
       const guestsByBooking = new Map();
+      const membersByBooking = new Map();
       try {
         const [hotelRes, placeRes, memberRes] = await Promise.all([
           sb.from('hotels').select('id, name').order('name').limit(300),
           sb.from('planner_places').select('client_id, name, place_type, place_types, address, notes, contact_method, contact_detail').limit(500),
-          sb.from('members').select('booking_id, first_name, last_name').limit(2000),
+          sb.from('members').select('id, booking_id, first_name, last_name').limit(2000),
         ]);
         if (!hotelRes.error) directoryCatalogue = hotelRes.data || [];
         if (!placeRes.error) directoryPlaces = placeRes.data || [];
@@ -723,6 +761,9 @@
             const arr = guestsByBooking.get(id) || [];
             if (!arr.some(existing => existing.toLowerCase() === name.toLowerCase())) arr.push(name);
             guestsByBooking.set(id, arr);
+            const people = membersByBooking.get(id) || [];
+            people.push(m);
+            membersByBooking.set(id, people);
           });
         }
       } catch (err) { console.warn(err); }
@@ -763,18 +804,27 @@
           arrivalDate: arrival, departureDate: departure, hasCloudPlan: cloudPlans.has(key),
           bookingStatus, dayTrip, organiserBooksHotels,
           headcount: b.no_people || '',
+          keithRoom: b.keith_own_room,
+          extraNotes: b.extra_notes || '',
           otherHotelNights: b.other_hotel_nights || '',
           roomsNeededLabel: roomBits,
           peopleLabel: (link.people || []).join(', '),
           people: stayPeople(plan),
           hotelsUsedHref: 'tour-planner.html?booking=' + encodeURIComponent(String(b.id)) + '&tab=hotels' + (year ? '&year=' + encodeURIComponent(year) : ''),
         };
-        addStay(list, Object.assign({}, base, { hotelName: tourName, role: 'tour' }));
+        addStay(list, Object.assign({}, base, { hotelName: tourName, role: 'tour', staySlot: 'primary' }));
         const extras = extraByBooking.get(b.id) || [];
-        extras.forEach(s => {
+        extras.forEach((s, index) => {
           const name = (s.hotels && s.hotels.name) || s.custom_hotel_name || '';
           const role = isPragueName(name) ? 'prague' : 'extra';
-          addStay(list, Object.assign({}, base, { hotelName: name, role, explicitNights: s.nights || '' }));
+          const hotelId = s.hotel_id || '';
+          addStay(list, Object.assign({}, base, {
+            hotelName: name,
+            role,
+            explicitNights: s.nights || '',
+            staySlot: hotelId ? ('hotel:' + hotelId + '#' + index) : ('extra:' + index),
+            stayHotelId: hotelId,
+          }));
         });
         const pragueName = (plan.pragueHotel && plan.pragueHotel.name) || '';
         const pragueAddress = (plan.pragueHotel && plan.pragueHotel.address) || '';
@@ -835,6 +885,7 @@
         const plan = cloudPlans.get(String(s.bookingKey)) || localPlans[String(s.bookingKey)] || {};
         s.guests = guestNamesFromPlan(plan);
       });
+      list.forEach(s => applyHotelStayersToStay(s, membersByBooking));
 
       const listed = list.filter(s => !omitHotelStay(s, planHotelsByKey[String(s.bookingKey)]));
       stays = listed.sort(compareHotelStaysNewest);

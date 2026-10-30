@@ -83,6 +83,7 @@
       organiser: { firstName: '', lastName: '', email: '', personId: '' },
       headcount: '',
       guests: [],
+      hotelStayers: [],
       rooms: { singles: '', twins: '', doubles: '', keithRoom: null },
       travel: {
         arrivalTime: '',
@@ -242,12 +243,15 @@
         email: str(row.email).trim(),
         personId: str(row.personId).trim(),
         paidBy: normalisePayRef(row.paidBy),
+        payMethod: normalisePayMethod(row.payMethod),
+        price: normaliseGuestPrice(row.price),
         sharesWith: sharesWith,
         roomType: normaliseRoomType(row.roomType, sharesWith)
       };
     }).filter(function (g) {
       return g.firstName || g.lastName || g.email || g.personId;
     }) : [];
+    base.hotelStayers = normaliseHotelStayers(src.hotelStayers);
     if (isObj(src.rooms)) {
       base.rooms.singles = str(src.rooms.singles).trim();
       base.rooms.twins = str(src.rooms.twins).trim();
@@ -327,7 +331,8 @@
     if (x.needs.dietary || x.needs.mobility) return true;
     if (x.consent.futureOffers || x.consent.contactMethod) return true;
     if (x.payments.group || x.payments.payer) return true;
-    if (x.guests.some(function (g) { return !!g.paidBy; })) return true;
+    if (x.guests.some(function (g) { return !!g.paidBy || !!g.payMethod || !!g.price; })) return true;
+    if (x.hotelStayers.some(function (row) { return row.guests && row.guests.length; })) return true;
     if (x.delayUntilYear) return true;
     if (x.rescheduledFromId) return true;
     if (x.dayTrip === true || x.dayTrip === false) return true;
@@ -372,6 +377,7 @@
     }
     if (present(item.booking_id)) return 'booking:' + String(item.booking_id).trim();
     if (present(item.date)) return 'date:' + String(item.date).trim();
+    if (present(item.slot) && Array.isArray(item.guests)) return 'slot:' + String(item.slot).trim();
     if (present(item.firstName) || present(item.lastName)) {
       return 'guest:' + String(item.firstName || '').trim().toLowerCase() + '|' + String(item.lastName || '').trim().toLowerCase();
     }
@@ -449,7 +455,8 @@
   }
 
   function arrayIsPrimitive(list) {
-    return list.some(function (item) { return !isObj(item); });
+    // A null hole in an object list (an empty plan day) is not a primitive array.
+    return list.some(function (item) { return item != null && !isObj(item); });
   }
 
   function applyArrayPatch(serverArr, baselineArr, currentArr) {
@@ -512,20 +519,29 @@
       }
       if (!found) found = sList.find(function (s) { return !s.used && s.index === entry.index; });
       if (found) found.used = true;
-      return found ? found.item : null;
+      if (found && found.item == null) return { item: null, nullSlot: true };
+      return { item: found ? found.item : null, nullSlot: false };
     }
 
     var out = [];
     cList.forEach(function (cEntry) {
       var pair = paired.find(function (p) { return p.c === cEntry; });
       if (!pair) return;
-      var sItem = takeServer(pair.b);
-      if (!sItem) sItem = takeServer(pair.c);
-      if (!sItem && sameJson(pair.b.item, pair.c.item)) return;
+      var first = takeServer(pair.b);
+      var second = { item: null, nullSlot: false };
+      if (!first.item) second = takeServer(pair.c);
+      var sItem = first.item || second.item;
+      var nullSlot = !!(first.nullSlot || second.nullSlot);
+      if (!sItem && sameJson(pair.b.item, pair.c.item)) {
+        // Server stored null for this day. Keep the real empty day from the editor.
+        if (nullSlot && isObj(pair.c.item)) out.push(cloneJson(pair.c.item));
+        return;
+      }
       out.push(applyObjectPatch(sItem ? cloneJson(sItem) : {}, pair.b.item, pair.c.item));
     });
     added.forEach(function (cEntry) {
-      var sItem = takeServer(cEntry);
+      var taken = takeServer(cEntry);
+      var sItem = taken.item;
       out.push(overlayKnown(sItem ? cloneJson(sItem) : {}, cEntry.item));
     });
     var deletedB = bList.filter(function (b) { return !usedB[b.key]; });
@@ -774,9 +790,177 @@
     return [o.firstName, o.lastName].map(function (s) { return str(s).trim(); }).filter(Boolean).join(' ');
   }
 
+  var PAY_METHODS = { cash: 'Cash', bank: 'Bank transfer', paypal: 'PayPal', wise: 'Wise' };
+
+  function normalisePayMethod(value) {
+    var s = str(value).trim().toLowerCase();
+    if (s === 'bacs' || s === 'bank transfer' || s === 'transfer') s = 'bank';
+    return Object.prototype.hasOwnProperty.call(PAY_METHODS, s) ? s : '';
+  }
+
+  function normaliseGuestPrice(value) {
+    if (value == null) return '';
+    var s = str(value).trim().replace(/,/g, '').replace(/^£\s*/, '');
+    if (!s) return '';
+    var n = Number(s);
+    if (!Number.isFinite(n) || n < 0) return '';
+    return String(Math.round(n * 100) / 100);
+  }
+
   function methodLabel(method) {
-    var map = { cash: 'Cash', bank: 'Bank transfer', paypal: 'PayPal', wise: 'Wise' };
-    return map[method] || '';
+    return PAY_METHODS[normalisePayMethod(method)] || '';
+  }
+
+  function guestDisplayName(guest) {
+    var g = isObj(guest) ? guest : {};
+    return str(g.name || [g.firstName, g.lastName].filter(Boolean).join(' ')).trim();
+  }
+
+  /** personId, otherwise member id, otherwise the guest's name. */
+  function guestStayKey(guest) {
+    var g = isObj(guest) ? guest : {};
+    var personId = str(g.personId).trim();
+    if (personId) return personId;
+    var memberId = g.memberId != null && str(g.memberId).trim() !== '' ? g.memberId : g.id;
+    if (memberId != null && str(memberId).trim() !== '') return 'member:' + str(memberId).trim();
+    return guestDisplayName(g);
+  }
+
+  function normaliseHotelStayers(list) {
+    if (!Array.isArray(list)) return [];
+    var out = [];
+    list.forEach(function (row) {
+      if (!isObj(row)) return;
+      var slot = str(row.slot).trim();
+      if (!slot) return;
+      var guests = [];
+      (Array.isArray(row.guests) ? row.guests : []).forEach(function (key) {
+        var clean = str(key).trim();
+        if (clean && guests.indexOf(clean) === -1) guests.push(clean);
+      });
+      var hotelId = row.hotelId == null || row.hotelId === '' ? null : Number(row.hotelId);
+      if (!Number.isFinite(hotelId)) hotelId = null;
+      out.push({
+        slot: slot,
+        hotelId: hotelId,
+        name: str(row.name).trim(),
+        guests: guests
+      });
+    });
+    return out;
+  }
+
+  /** null means everybody. An empty or missing list is everybody. */
+  function stayerKeysForSlot(hotelStayers, slot) {
+    var rows = normaliseHotelStayers(hotelStayers);
+    var found = null;
+    rows.forEach(function (row) {
+      if (row.slot === slot) found = row;
+    });
+    if (!found || !found.guests.length) return null;
+    return found.guests.slice();
+  }
+
+  function guestMatchesStayKey(guest, key) {
+    var k = str(key).trim();
+    if (!k) return false;
+    var g = isObj(guest) ? guest : {};
+    if (str(g.personId).trim() && str(g.personId).trim() === k) return true;
+    var memberId = g.memberId != null && str(g.memberId).trim() !== '' ? g.memberId : g.id;
+    if (memberId != null && str(memberId).trim() !== '') {
+      if (k === 'member:' + str(memberId).trim() || k === str(memberId).trim()) return true;
+    }
+    var name = guestDisplayName(g);
+    return !!(name && name.toLowerCase() === k.toLowerCase());
+  }
+
+  function guestsForHotel(guests, hotelStayers, slot) {
+    var list = Array.isArray(guests) ? guests.filter(isObj) : [];
+    var keys = stayerKeysForSlot(hotelStayers, slot);
+    if (!keys) return list.slice();
+    return list.filter(function (guest) {
+      return keys.some(function (key) { return guestMatchesStayKey(guest, key); });
+    });
+  }
+
+  function stayerBrief(names, total) {
+    var list = (Array.isArray(names) ? names : []).map(function (name) { return str(name).trim(); }).filter(Boolean);
+    var count = Number(total);
+    if (!Number.isFinite(count) || count <= 0 || list.length === count) return '';
+    return list.join(', ') + ' (' + list.length + ' of ' + count + ')';
+  }
+
+  /**
+   * Auto rooms are one single per guest plus Keith's room.
+   * A saved twins/doubles plan, or singles that are not the group headcount, stays as entered.
+   * tickedCount null means the whole group.
+   */
+  function roomsLabelForHotel(source, columnValue, tickedCount, headcount) {
+    if (tickedCount == null) return roomsNeededLabel(source, columnValue);
+    var rooms = roomsOf(source) || {};
+    var head = num(headcount);
+    var twinsBlank = !str(rooms.twins).trim();
+    var doublesBlank = !str(rooms.doubles).trim();
+    var singlesBlank = !str(rooms.singles).trim();
+    var singles = num(rooms.singles);
+    var auto = twinsBlank && doublesBlank && (singlesBlank || singles === head);
+    if (!auto) return roomsNeededLabel(source, columnValue);
+    var n = Number(tickedCount) + (keithRoomIsOn(source, columnValue) ? 1 : 0);
+    if (!Number.isFinite(n) || n < 0) n = 0;
+    return n === 1 ? '1 room needed' : (n + ' rooms needed');
+  }
+
+  function payMethodSummary(guests) {
+    var list = Array.isArray(guests) ? guests.filter(isObj) : [];
+    var methods = [];
+    list.forEach(function (guest) {
+      var method = normalisePayMethod(guest.payMethod);
+      if (method && methods.indexOf(method) === -1) methods.push(method);
+    });
+    if (methods.length < 2) return '';
+    return list.map(function (guest) {
+      var method = normalisePayMethod(guest.payMethod);
+      if (!method) return '';
+      var name = guestDisplayName(guest) || 'Guest';
+      return name + ' ' + methodLabel(method);
+    }).filter(Boolean).join(', ');
+  }
+
+  /**
+   * null when every guest is on the same price, including when nobody has typed one.
+   * Otherwise the booking total and the amount left are the sums across guests.
+   * A blank guest price uses the booking price per person.
+   */
+  function perGuestMoney(guests, pricePerPerson) {
+    var list = Array.isArray(guests) ? guests.filter(isObj) : [];
+    var entered = list.some(function (guest) { return str(guest.price).trim() !== ''; });
+    if (!entered) return null;
+    var fallback = Number(pricePerPerson);
+    var hasFallback = Number.isFinite(fallback);
+    var effective = list.map(function (guest) {
+      var raw = str(guest.price).trim();
+      if (raw !== '') {
+        var n = Number(raw);
+        if (Number.isFinite(n)) return n;
+      }
+      return hasFallback ? fallback : null;
+    });
+    if (effective.some(function (price) { return price == null; })) return null;
+    var same = effective.every(function (price) { return Math.abs(price - effective[0]) < 0.009; });
+    if (same) return null;
+    var total = 0;
+    var left = 0;
+    list.forEach(function (guest, i) {
+      var price = effective[i];
+      var deposit = num(guest.deposit);
+      var finalPayment = num(guest.finalPayment != null ? guest.finalPayment : guest.final_payment);
+      total += price;
+      left += price - deposit - finalPayment;
+    });
+    return {
+      total: Math.round(total * 100) / 100,
+      left: Math.round(left * 100) / 100
+    };
   }
 
   function roomSummary(rooms) {
@@ -1236,6 +1420,15 @@
     suggestedDepositGbp: suggestedDepositGbp,
     organiserFullName: organiserFullName,
     methodLabel: methodLabel,
+    normalisePayMethod: normalisePayMethod,
+    guestStayKey: guestStayKey,
+    normaliseHotelStayers: normaliseHotelStayers,
+    stayerKeysForSlot: stayerKeysForSlot,
+    guestsForHotel: guestsForHotel,
+    stayerBrief: stayerBrief,
+    roomsLabelForHotel: roomsLabelForHotel,
+    payMethodSummary: payMethodSummary,
+    perGuestMoney: perGuestMoney,
     roomSummary: roomSummary,
     mergeTravelIntoFlights: mergeTravelIntoFlights,
     hotelUsedKey: hotelUsedKey,

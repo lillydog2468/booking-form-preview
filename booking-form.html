@@ -2180,6 +2180,24 @@
     }
     .hotel-date-strip[hidden] { display: none !important; }
     .hotel-date-strip.hotel-nights-mismatch { color: var(--danger); }
+    .hotel-who { margin-top: 8px; }
+    .hotel-who > summary {
+      cursor: pointer; list-style: none; display: flex; align-items: baseline;
+      justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 800;
+    }
+    .hotel-who > summary::-webkit-details-marker { display: none; }
+    .hotel-who-title { flex: 0 0 auto; }
+    .hotel-who-brief { font-weight: 650; color: var(--text-secondary); text-align: right; }
+    .hotel-who-brief[hidden] { display: none !important; }
+    .hotel-who-list { display: flex; flex-wrap: wrap; gap: 6px 14px; padding-top: 8px; }
+    .hotel-who-guest {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 650; min-height: 32px;
+    }
+    .hotel-who-guest input { width: 16px; height: 16px; }
+    .member-balance { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+    .member-balance[hidden] { display: none !important; }
+    .member-pay-method-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--text-secondary); }
     p.hint.hotel-nights-mismatch,
     .tab-panel .hint.hotel-nights-mismatch,
     .layout-panel .hint.hotel-nights-mismatch,
@@ -2635,6 +2653,7 @@
       .member-pay-amt input[type="number"],
       .member-pay .date-field-row input,
       .member-paid-by-wrap select,
+      .member-pay-method-wrap select,
       .member-pay-payer select {
         font-size: 16px; min-height: 44px;
       }
@@ -3378,7 +3397,9 @@
           final_payment: row.querySelector('.member-paid')?.value ?? '',
           deposit_date: row.querySelector('.member-deposit-date')?.value ?? '',
           final_payment_date: row.querySelector('.member-paid-date')?.value ?? '',
-          paidBy: paidBySel?.value || paidBySel?.dataset.value || ''
+          paidBy: paidBySel?.value || paidBySel?.dataset.value || '',
+          payMethod: row.querySelector('.member-pay-method')?.value || '',
+          price: row.querySelector('.member-price')?.value ?? ''
         });
       });
     }
@@ -3524,6 +3545,8 @@
         deposit_date: m.deposit_date,
         final_payment_date: m.final_payment_date,
         paidBy: m.paidBy,
+        payMethod: m.payMethod || '',
+        price: m.price || '',
       });
       const row = membersList?.lastElementChild;
       const firstEl = row && row.querySelector('.member-first');
@@ -4500,6 +4523,16 @@
       </div>`;
   }
 
+  function hotelWhoHTML(slot) {
+    return `<details class="hotel-who" data-stay-slot="${escapeAttr(slot || '')}">
+      <summary>
+        <span class="hotel-who-title">Who is staying</span>
+        <span class="hotel-who-brief" hidden></span>
+      </summary>
+      <div class="hotel-who-list"></div>
+    </details>`;
+  }
+
   function hotelEditorHTML(t) {
     return `
       ${hotelRoomChoicesHTML(t)}
@@ -4547,6 +4580,7 @@
             </div>
           </div>
           <input type="checkbox" id="t${t}_main_hotel_booked" hidden>
+          ${hotelWhoHTML('primary')}
         </div>
         <div class="hotel-stays-list" id="t${t}_hotel_stays_list"></div>
         <p class="hint" id="t${t}_hotel_nights_hint" hidden></p>
@@ -5821,6 +5855,11 @@
       <div class="member-pay">
         <div class="member-pay-fields">
           <div class="member-pay-amt">
+            <span class="member-pay-label">Price</span>
+            <span class="member-pay-pound">£</span>
+            <input type="number" class="member-price" step="0.01" inputmode="decimal" placeholder="Price per person" value="${escapeAttr(memberAmountValue(src.price))}" aria-label="Price">
+          </div>
+          <div class="member-pay-amt">
             <span class="member-pay-label">Deposit</span>
             <span class="member-pay-pound">£</span>
             <input type="number" class="member-deposit" step="0.01" inputmode="decimal" placeholder="0.00" value="${escapeAttr(dep)}" aria-label="Deposit">
@@ -5836,6 +5875,16 @@
         <label class="member-paid-by-wrap">Paid by
           <select class="member-paid-by" aria-label="Paid by" data-value="${escapeAttr(paidBy)}"></select>
         </label>
+        <label class="member-pay-method-wrap">Paid via
+          <select class="member-pay-method" aria-label="Paid via">
+            <option value="" ${!src.payMethod ? 'selected' : ''}>Not recorded</option>
+            <option value="cash" ${src.payMethod === 'cash' ? 'selected' : ''}>Cash</option>
+            <option value="bank" ${src.payMethod === 'bank' ? 'selected' : ''}>Bank transfer</option>
+            <option value="paypal" ${src.payMethod === 'paypal' ? 'selected' : ''}>PayPal</option>
+            <option value="wise" ${src.payMethod === 'wise' ? 'selected' : ''}>Wise</option>
+          </select>
+        </label>
+        <span class="member-balance" hidden></span>
         <span class="member-covered"></span>
       </div>`;
   }
@@ -5886,6 +5935,23 @@
     const last = row.querySelector('.member-last')?.value.trim() || '';
     const name = [first, last].filter(Boolean).join(' ');
     return name || ('Guest ' + (fallbackIndex + 1));
+  }
+
+  function perGuestRowsFromDom(tabId) {
+    return memberPayEntries(tabId).filter(entry => entry.saved).map(entry => {
+      const row = entry.row;
+      const first = row.querySelector('.member-first')?.value.trim() || '';
+      const last = row.querySelector('.member-last')?.value.trim() || '';
+      return {
+        firstName: first,
+        lastName: last,
+        name: entry.label,
+        price: row.querySelector('.member-price')?.value.trim() || '',
+        payMethod: row.querySelector('.member-pay-method')?.value || '',
+        deposit: row.querySelector('.member-deposit')?.value.trim() || '',
+        finalPayment: row.querySelector('.member-paid')?.value.trim() || '',
+      };
+    });
   }
 
   function memberPayEntries(tabId) {
@@ -6009,8 +6075,37 @@
     deposits = Math.round(deposits * 100) / 100;
     paidTotal = Math.round(paidTotal * 100) / 100;
 
+    const pricePerPerson = (tEl(tabId, 'price_per_person')?.value || '').trim();
+    const guestRows = perGuestRowsFromDom(tabId);
+    const guestMoney = window.BookingExtras ? BookingExtras.perGuestMoney(guestRows, pricePerPerson) : null;
+    entries.forEach(entry => {
+      const priceInput = entry.row.querySelector('.member-price');
+      if (priceInput) priceInput.placeholder = pricePerPerson || 'Price per person';
+      const balance = entry.row.querySelector('.member-balance');
+      const rawPrice = entry.row.querySelector('.member-price')?.value.trim() || '';
+      if (!balance) return;
+      if (!entry.saved || !rawPrice) {
+        balance.hidden = true;
+        balance.textContent = '';
+        return;
+      }
+      const price = Number(rawPrice);
+      const deposit = parseMemberAmount(entry.row.querySelector('.member-deposit')?.value.trim() || '') || 0;
+      const paid = parseMemberAmount(entry.row.querySelector('.member-paid')?.value.trim() || '') || 0;
+      if (!Number.isFinite(price)) {
+        balance.hidden = true;
+        return;
+      }
+      const left = Math.round((price - deposit - paid) * 100) / 100;
+      balance.hidden = false;
+      balance.textContent = 'Balance ' + formatMoney(left, 'GBP');
+    });
+    const methodLine = window.BookingExtras ? BookingExtras.payMethodSummary(guestRows) : '';
+
     const sumsEl = document.getElementById(`t${tabId}_pay_sums`);
-    const tourRaw = (tEl(tabId, 'beading_tour_price')?.value || '').trim();
+    const tourRaw = guestMoney
+      ? String(guestMoney.total)
+      : ((tEl(tabId, 'beading_tour_price')?.value || '').trim());
     const perRaw = (tEl(tabId, 'price_per_person')?.value || '').trim();
     const headRaw = (tEl(tabId, 'no_people')?.value || '').trim();
     let tourPrice = null;
@@ -6022,15 +6117,31 @@
     const bits = [];
     if (rowsWithAmount > 0) {
       bits.push('Deposits ' + formatMoney(deposits, 'GBP'), 'Paid ' + formatMoney(paidTotal, 'GBP'));
-      if (amountsComplete && tourPrice != null && Number.isFinite(tourPrice)) {
-        bits.push('Outstanding ' + formatMoney(Math.round((tourPrice - sum) * 100) / 100, 'GBP'));
-      }
     }
+    if (guestMoney) {
+      bits.push('Outstanding ' + formatMoney(guestMoney.left, 'GBP'));
+    } else if (rowsWithAmount > 0 && amountsComplete && tourPrice != null && Number.isFinite(tourPrice)) {
+      bits.push('Outstanding ' + formatMoney(Math.round((tourPrice - sum) * 100) / 100, 'GBP'));
+    }
+    if (methodLine) bits.push(methodLine);
     if (sumsEl) sumsEl.textContent = bits.join(' · ');
 
     const flagEl = document.getElementById(`t${tabId}_pay_flag`);
     if (!flagEl) return;
     flagEl.className = 'member-pay-flag';
+    if (guestMoney) {
+      if (Math.abs(guestMoney.left) <= 0.009) {
+        flagEl.classList.add('is-ok');
+        flagEl.textContent = '✓ Guest balances are clear';
+      } else if (guestMoney.left > 0) {
+        flagEl.classList.add('is-short');
+        flagEl.textContent = formatMoney(guestMoney.left, 'GBP') + ' still to pay across guests';
+      } else {
+        flagEl.classList.add('is-over');
+        flagEl.textContent = formatMoney(Math.abs(guestMoney.left), 'GBP') + ' overpaid across guests';
+      }
+      return;
+    }
     if (!amountsComplete) {
       const depositMadeRaw = (tEl(tabId, 'depositmade')?.value || '').trim();
       const finalRaw = (tEl(tabId, 'finalpayment')?.value || '').trim();
@@ -6136,6 +6247,7 @@
         if (inp.classList.contains('member-first') || inp.classList.contains('member-last')) {
           if (!guestRowNamed(row)) unpairGuestRow(row);
           paintRoomShares(tabId);
+          paintHotelStayers(tabId);
           suggestRoomsFromHeadcount(tabId);
         }
         onTabInput(tabId);
@@ -6149,6 +6261,7 @@
     list.appendChild(row);
     paintEmptyFields(row);
     paintRoomShares(tabId);
+    paintHotelStayers(tabId);
     refreshMemberPayments(tabId);
     refreshMemberAlbumLines(tabId);
 
@@ -6202,6 +6315,7 @@
     renumberMemberRows(tabId);
     closeShareMenus();
     paintRoomShares(tabId);
+    paintHotelStayers(tabId);
     suggestRoomsFromHeadcount(tabId);
     onTabInput(tabId);
   }
@@ -6238,6 +6352,8 @@
           deposit_date: toStorageISO(row.querySelector('.member-deposit-date')?.value || '') || '',
           final_payment_date: toStorageISO(row.querySelector('.member-paid-date')?.value || '') || '',
           paidBy: (paidBySel?.value || paidBySel?.dataset.value || '').trim(),
+          payMethod: row.querySelector('.member-pay-method')?.value || '',
+          price: row.querySelector('.member-price')?.value.trim() || '',
           personId: (row.dataset.personId || '').trim(),
           sharesWith,
           roomType: sharesWith ? ((row.dataset.roomType || '') === 'twin' ? 'twin' : 'double') : '',
@@ -6490,6 +6606,8 @@
       email: m.email || '',
       personId: m.personId || '',
       paidBy: m.paidBy && m.paidBy !== 'self' ? String(m.paidBy) : '',
+      payMethod: m.payMethod || '',
+      price: m.price || '',
       sharesWith: m.sharesWith || '',
       roomType: m.roomType || '',
     }));
@@ -6527,6 +6645,7 @@
     x.money.fxNote = fieldVal(tabId, 'fx_note');
     x.leaderHalfPrice = checkVal(tabId, 'leader_half_price');
     x.organiserBooksHotels = checkVal(tabId, 'organiser_books_hotels');
+    x.hotelStayers = collectHotelStayers(tabId);
     const people = Number(x.headcount) || 0;
     const price = Number(x.money.pricePerPerson) || 0;
     const deposit = Number(x.money.depositAmount) || 0;
@@ -6630,12 +6749,17 @@
       if (!entry) return;
       const sel = entry.row.querySelector('.member-paid-by');
       if (sel) sel.dataset.value = g.paidBy && g.paidBy !== 'self' ? String(g.paidBy) : '';
+      const price = entry.row.querySelector('.member-price');
+      if (price && g.price) price.value = g.price;
+      const method = entry.row.querySelector('.member-pay-method');
+      if (method) method.value = g.payMethod || '';
       if (g.personId) entry.row.dataset.personId = g.personId;
       entry.row.dataset.sharesWith = g.sharesWith || '';
       entry.row.dataset.roomType = g.sharesWith ? (g.roomType === 'twin' ? 'twin' : 'double') : '';
     });
     paintRoomShares(tabId);
     refreshMemberPayments(tabId);
+    applyHotelStayers(tabId, x.hotelStayers);
     applyMemberPayFold(tabId);
   }
 
@@ -6919,7 +7043,8 @@
     }
     if (typeof tabIsDayTrip === 'function' && tabIsDayTrip(tabId)) return;
     if (typeof organiserBooksHotelsOn === 'function' && organiserBooksHotelsOn(tabId)) return;
-    const people = headcountPeople(tabId);
+    const ticked = (typeof primaryTickedCount === 'function') ? primaryTickedCount(tabId) : null;
+    const people = ticked == null ? headcountPeople(tabId) : ticked;
     const follow = singles.dataset.roomsSource === 'headcount';
     if (!follow && !roomCountBlank(tabId)) {
       singles.dataset.roomsSource = 'typed';
@@ -7915,6 +8040,7 @@
         </div>
       </div>
       <input type="checkbox" class="hotel-stay-booked" hidden ${data.booked ? 'checked' : ''}>
+      ${hotelWhoHTML('')}
     `;
     row.dataset.comment = data.comments || data.notes || '';
 
@@ -7940,11 +8066,14 @@
     list.appendChild(row);
     paintEmptyFields(row);
     syncHotelPanel(tabId);
+    refreshStaySlots(tabId);
+    paintHotelStayers(tabId);
   }
 
   function removeHotelStayRow(btn, tabId) {
     btn.closest('.hotel-stay-row').remove();
     renumberHotelStayRows(tabId);
+    paintHotelStayers(tabId);
     suggestBlankHotelNights(tabId);
     onTabInput(tabId);
   }
@@ -7959,6 +8088,178 @@
       const num = row.querySelector('.hotel-stay-num');
       if (num) num.textContent = 'Hotel ' + (start + i);
     });
+    if (typeof refreshStaySlots === 'function') refreshStaySlots(tabId);
+  }
+
+  function hotelWhoBoxes(tabId) {
+    const root = document.getElementById('tabPanel_' + tabId);
+    if (!root) return [];
+    return [...root.querySelectorAll('.hotel-who')];
+  }
+
+  function refreshStaySlots(tabId) {
+    const primary = document.querySelector('#t' + tabId + '_primary_hotel_card .hotel-who');
+    if (primary) primary.dataset.staySlot = 'primary';
+    const list = document.getElementById('t' + tabId + '_hotel_stays_list');
+    if (!list) return;
+    list.querySelectorAll('.hotel-stay-row').forEach((row, index) => {
+      const who = row.querySelector('.hotel-who');
+      if (!who) return;
+      const hotelVal = row.querySelector('.hotel-stay-select')?.value || '';
+      const name = row.querySelector('.hotel-stay-other')?.value.trim() || '';
+      if (hotelVal && hotelVal !== '__other__') {
+        who.dataset.staySlot = 'hotel:' + hotelVal + '#' + index;
+        who.dataset.hotelId = hotelVal;
+        who.dataset.hotelName = hotelNameById(hotelVal);
+      } else {
+        who.dataset.staySlot = 'extra:' + index;
+        who.dataset.hotelId = '';
+        who.dataset.hotelName = name;
+      }
+    });
+  }
+
+  function guestStayRows(tabId) {
+    const list = document.getElementById(`t${tabId}_members_list`);
+    if (!list || !window.BookingExtras) return [];
+    const rows = [];
+    list.querySelectorAll('.member-row').forEach(row => {
+      const first = row.querySelector('.member-first')?.value.trim() || '';
+      const last = row.querySelector('.member-last')?.value.trim() || '';
+      const name = [first, last].filter(Boolean).join(' ');
+      if (!name) return;
+      const guest = {
+        row,
+        personId: (row.dataset.personId || '').trim(),
+        id: (row.dataset.memberId || '').trim(),
+        firstName: first,
+        lastName: last,
+        name,
+      };
+      guest.key = BookingExtras.guestStayKey(guest);
+      rows.push(guest);
+    });
+    return rows;
+  }
+
+  function readStayerKeys(box) {
+    try {
+      const parsed = JSON.parse(box.dataset.stayerKeys || '[]');
+      return Array.isArray(parsed) ? parsed.map(key => String(key)) : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function paintHotelStayers(tabId) {
+    if (!window.BookingExtras) return;
+    refreshStaySlots(tabId);
+    const guests = guestStayRows(tabId);
+    const live = new Set(guests.map(guest => guest.key));
+    hotelWhoBoxes(tabId).forEach(box => {
+      let keys = readStayerKeys(box);
+      keys = keys.map(key => {
+        const renamed = guests.find(guest => guest.row.dataset.guestStayKey === key && guest.key !== key);
+        return renamed ? renamed.key : key;
+      });
+      if (box.dataset.stayerMode === 'list') {
+        keys = keys.filter(key => live.has(key));
+        if (box.dataset.stayerPainted === '1') {
+          guests.forEach(guest => {
+            if (!guest.row.dataset.guestStayKey && !keys.includes(guest.key)) keys.push(guest.key);
+          });
+        }
+        if (!guests.length || guests.every(guest => keys.includes(guest.key))) {
+          box.dataset.stayerMode = '';
+          keys = [];
+        }
+        box.dataset.stayerKeys = JSON.stringify(keys);
+      }
+      box.dataset.stayerPainted = '1';
+      const everyone = box.dataset.stayerMode !== 'list';
+      const list = box.querySelector('.hotel-who-list');
+      if (list) {
+        list.innerHTML = guests.length
+          ? guests.map(guest => `<label class="hotel-who-guest"><input type="checkbox" data-guest-key="${escapeAttr(guest.key)}" ${everyone || keys.includes(guest.key) ? 'checked' : ''}>${escapeHtml(guest.name)}</label>`).join('')
+          : '<span class="hint">Add the guests, then untick anyone who is not staying here.</span>';
+        list.querySelectorAll('input').forEach(input => {
+          input.addEventListener('change', () => {
+            const chosen = [...list.querySelectorAll('input')].filter(boxInput => boxInput.checked).map(boxInput => boxInput.dataset.guestKey);
+            if (chosen.length === guests.length) {
+              box.dataset.stayerMode = '';
+              box.dataset.stayerKeys = '[]';
+            } else {
+              box.dataset.stayerMode = 'list';
+              box.dataset.stayerKeys = JSON.stringify(chosen);
+            }
+            paintHotelStayers(tabId);
+            suggestRoomsFromHeadcount(tabId);
+            onTabInput(tabId);
+          });
+        });
+      }
+      const staying = everyone ? guests : guests.filter(guest => keys.includes(guest.key));
+      const brief = box.querySelector('.hotel-who-brief');
+      const text = BookingExtras.stayerBrief(staying.map(guest => guest.name), guests.length);
+      if (brief) {
+        brief.textContent = text;
+        brief.hidden = !text;
+      }
+    });
+    guests.forEach(guest => { guest.row.dataset.guestStayKey = guest.key; });
+  }
+
+  function applyHotelStayers(tabId, saved) {
+    if (!window.BookingExtras) return;
+    refreshStaySlots(tabId);
+    const rows = BookingExtras.normaliseHotelStayers(saved);
+    const used = new Set();
+    hotelWhoBoxes(tabId).forEach(box => {
+      const slot = box.dataset.staySlot || '';
+      let found = rows.find(row => row.slot === slot && row.guests.length && !used.has(row));
+      if (!found && slot !== 'primary') {
+        const hotelId = box.dataset.hotelId || '';
+        const name = String(box.dataset.hotelName || '').trim().toLowerCase();
+        found = rows.find(row => {
+          if (used.has(row) || !row.guests.length || row.slot === 'primary') return false;
+          if (hotelId && row.hotelId != null && String(row.hotelId) === String(hotelId)) return true;
+          return !!(name && row.name && row.name.toLowerCase() === name);
+        });
+      }
+      if (found) used.add(found);
+      if (found) {
+        box.dataset.stayerMode = 'list';
+        box.dataset.stayerKeys = JSON.stringify(found.guests);
+      } else {
+        box.dataset.stayerMode = '';
+        box.dataset.stayerKeys = '[]';
+      }
+    });
+    paintHotelStayers(tabId);
+  }
+
+  function collectHotelStayers(tabId) {
+    refreshStaySlots(tabId);
+    const out = [];
+    hotelWhoBoxes(tabId).forEach(box => {
+      if (box.dataset.stayerMode !== 'list') return;
+      const guests = readStayerKeys(box);
+      if (!guests.length) return;
+      const hotelId = box.dataset.hotelId ? Number(box.dataset.hotelId) : null;
+      out.push({
+        slot: box.dataset.staySlot || '',
+        hotelId: Number.isFinite(hotelId) ? hotelId : null,
+        name: box.dataset.hotelName || '',
+        guests,
+      });
+    });
+    return out;
+  }
+
+  function primaryTickedCount(tabId) {
+    const box = document.querySelector('#t' + tabId + '_primary_hotel_card .hotel-who');
+    if (!box || box.dataset.stayerMode !== 'list') return null;
+    return readStayerKeys(box).length;
   }
 
   function onHotelStayChange(selectEl, tabId) {
@@ -9795,13 +10096,24 @@
       // A stored tour price stays until both inputs are filled. Clearing it here
       // would wipe the price, the amount left to pay, and the profit on save.
       // A tour price Keith has typed stays too, including a flat price with headcount 1.
+      const guestMoney = window.BookingExtras
+        ? BookingExtras.perGuestMoney(perGuestRowsFromDom(tabId), priceRaw)
+        : null;
       const canCompute = peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(pricePerPerson);
       const half = leaderHalfPriceOn(tabId);
-      if (canCompute && beadingTourPriceInput.dataset.tourPriceSource !== 'typed') {
+      if (guestMoney) {
+        const nextVal = guestMoney.total.toFixed(2);
+        if (beadingTourPriceInput.value !== nextVal) beadingTourPriceInput.value = nextVal;
+        beadingTourPriceInput.dataset.tourPriceSource = 'computed';
+        beadingTourPriceInput.dataset.guestPriceTotal = '1';
+      } else if (canCompute && beadingTourPriceInput.dataset.tourPriceSource !== 'typed') {
         const next = tourFareAmount(people, pricePerPerson, half);
         const nextVal = next == null ? '' : next.toFixed(2);
         if (nextVal && beadingTourPriceInput.value !== nextVal) beadingTourPriceInput.value = nextVal;
         beadingTourPriceInput.dataset.tourPriceSource = 'computed';
+        beadingTourPriceInput.dataset.guestPriceTotal = '';
+      } else if (!guestMoney) {
+        beadingTourPriceInput.dataset.guestPriceTotal = '';
       }
     }
 
@@ -9811,7 +10123,10 @@
     const totalExpenses = hotelExpenses + additionalExpenses + fuelCost;
     const totalPayments = tNum(tabId, 'depositmade') + tNum(tabId, 'finalpayment');
     const totalCost = tNum(tabId, 'beading_tour_price') + totalExpenses;
-    const leftToPay = tNum(tabId, 'beading_tour_price') - totalPayments;
+    const guestLeft = window.BookingExtras
+      ? BookingExtras.perGuestMoney(perGuestRowsFromDom(tabId), tEl(tabId, 'price_per_person')?.value || '')
+      : null;
+    const leftToPay = guestLeft ? guestLeft.left : (tNum(tabId, 'beading_tour_price') - totalPayments);
     const profit = totalPayments - totalExpenses;
     const profitForecast = tNum(tabId, 'beading_tour_price') - totalExpenses;
 
@@ -9901,7 +10216,10 @@
     const totalPayments = (data.depositmade || 0) + (data.finalpayment || 0);
     data.totalexpenses = totalExpenses;
     data.totalcost = (data.beading_tour_price || 0) + totalExpenses;
-    data.left_to_pay = (data.beading_tour_price || 0) - totalPayments;
+    const guestLeft = window.BookingExtras
+      ? BookingExtras.perGuestMoney(perGuestRowsFromDom(tabId), data.price_per_person)
+      : null;
+    data.left_to_pay = guestLeft ? guestLeft.left : ((data.beading_tour_price || 0) - totalPayments);
     data.totalprofit = totalPayments - totalExpenses;
     data.leader_half_price = checkVal(tabId, 'leader_half_price');
 
@@ -9988,11 +10306,15 @@
           deposit_date: m.deposit_date,
           final_payment_date: m.final_payment_date,
           paidBy: g.paidBy || '',
+          payMethod: g.payMethod || '',
+          price: g.price || '',
         });
       });
     } else if (guestExtras.length) {
       guestExtras.forEach(g => addMemberRow(tabId, g.firstName || '', '', g.lastName || '', g.email || '', false, {
         paidBy: g.paidBy || '',
+        payMethod: g.payMethod || '',
+        price: g.price || '',
       }));
     } else {
       addMemberRow(tabId);
