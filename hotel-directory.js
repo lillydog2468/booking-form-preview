@@ -415,7 +415,8 @@
             hotelName: displayName,
             booked: !!stay.booked,
             status: stayStatus(stay),
-            href: stay.bookingId ? ('booking-form.html?booking=' + encodeURIComponent(String(stay.bookingId)) + '&layout=layout') : ''
+            deviceOnly: !!stay.deviceOnly && !stay.bookingId,
+            href: (!stay.deviceOnly && stay.bookingId) ? ('booking-form.html?booking=' + encodeURIComponent(String(stay.bookingId)) + '&layout=layout') : ''
           };
         })
       };
@@ -645,8 +646,11 @@
     var yearHtml = stay.year
       ? ' · <a href="' + esc(visitsHref(stay.year, stay.hotelName || '')) + '">' + esc(String(stay.year)) + '</a>'
       : '';
-    var link = stay.href ? '<a href="' + esc(stay.href) + '">Open booking</a>' : '';
-    return '<li class="use' + (stay.status === 'cancelled' ? ' is-cancelled' : '') + '">'
+    var link = (!stay.deviceOnly && stay.href) ? '<a href="' + esc(stay.href) + '">Open booking</a>' : '';
+    var device = stay.deviceOnly
+      ? '<p class="device-only-note">Saved on this device only — no booking</p><div class="device-only-actions"><button type="button" class="btn btn-danger" data-delete-plan="' + esc(stay.bookingKey) + '">Delete this test plan</button></div>'
+      : '';
+    return '<li class="use' + (stay.status === 'cancelled' ? ' is-cancelled' : '') + (stay.deviceOnly ? ' device-only' : '') + '">'
       + '<div class="use-group">' + groupHtml + '</div>'
       + '<div class="use-when">' + esc(stay.whenLabel) + yearHtml + '</div>'
       + '<div class="use-meta">' + esc(stay.roleLabel) + ' · ' + nights + ' · ' + booked + '</div>'
@@ -655,6 +659,7 @@
       + head
       + other
       + address
+      + device
       + (link ? '<div class="use-link">' + link + '</div>' : '')
       + '</li>';
   }

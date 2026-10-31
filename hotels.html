@@ -62,6 +62,11 @@
       border: 1px solid var(--border); background: var(--surface); color: var(--text);
       font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; border-radius: 8px; cursor: pointer;
     }
+    .btn-danger { background: #dc2626; border-color: #b91c1c; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .device-only-note { margin: 8px 0 6px; font-size: 13px; font-weight: 800; color: #5b21b6; }
+    [data-theme="dark"] .device-only-note { color: #ddd6fe; }
+    .device-only-actions { margin-top: 8px; }
     .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; }
     .intro { color: var(--text-secondary); font-size: 14px; max-width: 46em; margin: 0 0 16px; }
     .page-help { margin: 0 0 12px; }
@@ -76,6 +81,26 @@
     .page-help-body p { margin: 0 0 6px; }
     .intro strong { color: var(--text); }
     .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 16px; }
+    .stay-stats {
+      display: block; width: fit-content; max-width: 100%;
+      margin: -4px 0 14px; padding: 5px 12px;
+      border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+      color: var(--text-secondary); font-size: 13px; font-weight: 800; line-height: 1.35;
+      overflow-wrap: anywhere; white-space: normal;
+    }
+    .stay-hotel-nights {
+      max-width: 100%; margin: -8px 0 14px;
+      color: var(--text-secondary); font-size: 13px; font-weight: 700; line-height: 1.45;
+      overflow-wrap: break-word;
+    }
+    .stay-hotel-nights[hidden] { display: none !important; }
+    .stay-hotel-more {
+      display: inline-flex; align-items: center; justify-content: center;
+      margin: 2px 0 2px 6px; padding: 6px 12px; min-height: 44px;
+      border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+      color: var(--accent); font: inherit; font-size: 13px; font-weight: 800;
+      cursor: pointer; vertical-align: baseline;
+    }
     .field label { display: block; font-size: 11px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
     select, input[type="search"], textarea {
       font: inherit; font-size: 15px; padding: 8px 10px; min-height: 42px;
@@ -156,6 +181,8 @@
     @media (max-width: 800px) {
       .stay { grid-template-columns: 1fr; }
       .topbar-inner, .wrap { padding-left: 14px; padding-right: 14px; }
+      .stay-stats { font-size: 15px; padding: 6px 12px; }
+      .stay-hotel-nights, .stay-hotel-more { font-size: 15px; }
     }
 
     /* Stay cards: group name, hotel, and dates lead the scan.
@@ -279,6 +306,8 @@
           <input type="search" id="searchBox" placeholder="Tour or hotel name" autocomplete="off">
         </div>
       </div>
+      <p class="stay-stats" id="stayStats" hidden></p>
+      <p class="stay-hotel-nights" id="stayHotelNights" hidden></p>
       <div class="cards" id="stayList"></div>
     </section>
 
@@ -311,13 +340,15 @@
     const LIVE_BOOKINGS_ORIGIN = 'https://keith-booking-form.netlify.app';
 
     let stays = [];
+    let staysByBooking = new Map();
     let directoryHotels = [];
     let directoryPlaces = [];
     let directoryCatalogue = [];
-    let yearFilter = String(new Date().getUTCFullYear());
+    let yearFilter = '2027';
     const requestedYear = new URLSearchParams(location.search).get('year');
     if (requestedYear === 'all' || /^\d{4}$/.test(requestedYear || '')) yearFilter = requestedYear;
     let search = '';
+    let hotelNightsExpanded = false;
     let saveTimer = null;
     let hotelBaselines = {};
     let planHotelsByKey = {};
@@ -478,8 +509,8 @@
       let source = null;
       let column;
       if (booking) {
-        const split = BookingExtras.splitNotesAndExtras(booking.extra_notes || '');
-        source = (split.rawExtras && Object.keys(split.rawExtras).length) ? split.rawExtras : null;
+        const split = splitStayExtras(booking.extra_notes || '');
+        source = (split && split.rawExtras && Object.keys(split.rawExtras).length) ? split.rawExtras : null;
         column = booking.keith_own_room;
       } else if (plan && plan.bookingDetails) {
         source = plan.bookingDetails;
@@ -610,18 +641,33 @@
         stayHotelId: stay.stayHotelId || '',
         recordedAddress: stay.recordedAddress || '',
         organiserBooksHotels: !!stay.organiserBooksHotels,
+        deviceOnly: !!stay.deviceOnly,
         roomsNeededLabel: (stay.dayTrip || stay.organiserBooksHotels) ? '' : String(stay.roomsNeededLabel || ''),
         peopleLabel: String(stay.peopleLabel || ''),
         people: Array.isArray(stay.people) ? stay.people : [],
         hotelsUsedHref: stay.hotelsUsedHref || '',
       });
+      const added = list[list.length - 1];
+      if (typeof staysByBooking !== 'undefined' && staysByBooking) {
+        const bucket = staysByBooking.get(added.bookingKey);
+        if (bucket) bucket.push(added);
+        else staysByBooking.set(added.bookingKey, [added]);
+      }
     }
 
+    const extrasSplitCache = new Map();
+    function splitStayExtras(extraNotes) {
+      const key = String(extraNotes || '');
+      if (extrasSplitCache.has(key)) return extrasSplitCache.get(key);
+      const split = window.BookingExtras ? BookingExtras.splitNotesAndExtras(key) : null;
+      extrasSplitCache.set(key, split);
+      return split;
+    }
     function applyHotelStayersToStay(stay, membersByBooking) {
       if (!stay || !stay.staySlot || !window.BookingExtras || stay.dayTrip || stay.organiserBooksHotels) return;
       const splitSource = stay.extraNotes;
       if (!splitSource) return;
-      const split = BookingExtras.splitNotesAndExtras(splitSource);
+      const split = splitStayExtras(splitSource);
       const saved = BookingExtras.normaliseHotelStayers(split.extras && split.extras.hotelStayers);
       let row = saved.find(item => item.slot === stay.staySlot && item.guests.length);
       if (!row && stay.stayHotelId) {
@@ -669,14 +715,16 @@
       }
     }
 
-    async function loadData() {
-      setStatus('Loading…', '');
-      const meta = loadMeta();
-      const localPlans = loadLocalPlans();
-      const list = [];
+    function yieldToBrowser() {
+      return new Promise(resolve => {
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(resolve, 0));
+        else setTimeout(resolve, 0);
+      });
+    }
+
+    async function fetchHotelSources() {
       let bookings = [];
       let live = false;
-
       try {
         const bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, no_people, other_hotel_nights, keith_own_room, hotels(name)';
         let bookingQuery = await sb.from('bookings')
@@ -710,77 +758,108 @@
         live = false;
       }
 
-      if (bookings.length) {
+      const ids = bookings.map(b => b.id);
+      const quiet = (promise) => Promise.resolve(promise).then(res => res || { data: [], error: true }).catch(err => {
+        console.warn(err);
+        return { data: [], error: err };
+      });
+      const [memberRes, stayRes, hotelRes, placeRes, planRes] = await Promise.all([
+        quiet(sb.from('members').select('id, booking_id, first_name, last_name').limit(2000)),
+        ids.length
+          ? quiet(sb.from('booking_hotels').select('booking_id, hotel_id, custom_hotel_name, nights, hotels(name)').in('booking_id', ids))
+          : Promise.resolve({ data: [], error: null }),
+        quiet(sb.from('hotels').select('id, name').order('name').limit(300)),
+        quiet(sb.from('planner_places').select('client_id, name, place_type, place_types, address, notes, contact_method, contact_detail').limit(500)),
+        quiet(sb.from('planner_plans').select('booking_id, client_key, payload').limit(1000)),
+      ]);
+      return { bookings, live, memberRes, stayRes, hotelRes, placeRes, planRes };
+    }
+
+    let hotelsPrefetch = null;
+    function beginHotelsPrefetch() {
+      if (hotelsPrefetch) return hotelsPrefetch;
+      hotelsPrefetch = (async () => {
         try {
-          const { data, error } = await sb.from('members').select('id, booking_id, first_name, last_name').limit(2000);
-          if (!error) {
-            const byId = {};
-            (data || []).forEach(m => {
-              if (!m || m.booking_id == null) return;
-              const id = String(m.booking_id);
-              if (!byId[id]) byId[id] = [];
-              byId[id].push(m);
-            });
-            bookings.forEach(b => { b._members = byId[String(b.id)] || []; });
-          }
-        } catch (err) { console.warn(err); }
+          const res = await sb.auth.getSession();
+          const session = res && res.data && res.data.session;
+          if (!session || !session.user) return null;
+          const sources = await fetchHotelSources();
+          sources.userId = session.user.id;
+          return sources;
+        } catch (err) {
+          console.warn(err);
+          return null;
+        }
+      })();
+      return hotelsPrefetch;
+    }
+
+    async function loadData(preset) {
+      setStatus('Loading…', '');
+      staysByBooking = new Map();
+      extrasSplitCache.clear();
+      const meta = loadMeta();
+      const localPlans = loadLocalPlans();
+      const list = [];
+      const sources = preset || await fetchHotelSources();
+      const bookings = sources.bookings || [];
+      const live = !!sources.live;
+      const memberRes = sources.memberRes || { data: [], error: true };
+      const stayRes = sources.stayRes || { data: [], error: true };
+      const hotelRes = sources.hotelRes || { data: [], error: true };
+      const placeRes = sources.placeRes || { data: [], error: true };
+      const planRes = sources.planRes || { data: [], error: true };
+
+      const membersById = {};
+      if (!memberRes.error) {
+        (memberRes.data || []).forEach(m => {
+          if (!m || m.booking_id == null) return;
+          const id = String(m.booking_id);
+          if (!membersById[id]) membersById[id] = [];
+          membersById[id].push(m);
+        });
       }
+      bookings.forEach(b => { b._members = membersById[String(b.id)] || []; });
 
       const extraByBooking = new Map();
-      if (bookings.length) {
-        try {
-          const ids = bookings.map(b => b.id);
-          const { data, error } = await sb.from('booking_hotels').select('*, hotels(name)').in('booking_id', ids);
-          if (!error) {
-            (data || []).forEach(s => {
-              const arr = extraByBooking.get(s.booking_id) || [];
-              arr.push(s);
-              extraByBooking.set(s.booking_id, arr);
-            });
-          }
-        } catch (err) { console.warn(err); }
+      if (!stayRes.error) {
+        (stayRes.data || []).forEach(s => {
+          const arr = extraByBooking.get(s.booking_id) || [];
+          arr.push(s);
+          extraByBooking.set(s.booking_id, arr);
+        });
       }
 
       directoryCatalogue = [];
       directoryPlaces = [];
       const guestsByBooking = new Map();
       const membersByBooking = new Map();
-      try {
-        const [hotelRes, placeRes, memberRes] = await Promise.all([
-          sb.from('hotels').select('id, name').order('name').limit(300),
-          sb.from('planner_places').select('client_id, name, place_type, place_types, address, notes, contact_method, contact_detail').limit(500),
-          sb.from('members').select('id, booking_id, first_name, last_name').limit(2000),
-        ]);
-        if (!hotelRes.error) directoryCatalogue = hotelRes.data || [];
-        if (!placeRes.error) directoryPlaces = placeRes.data || [];
-        if (!memberRes.error) {
-          (memberRes.data || []).forEach(m => {
-            const name = [m.first_name, m.last_name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
-            if (!name) return;
-            const id = String(m.booking_id);
-            const arr = guestsByBooking.get(id) || [];
-            if (!arr.some(existing => existing.toLowerCase() === name.toLowerCase())) arr.push(name);
-            guestsByBooking.set(id, arr);
-            const people = membersByBooking.get(id) || [];
-            people.push(m);
-            membersByBooking.set(id, people);
-          });
-        }
-      } catch (err) { console.warn(err); }
+      if (!hotelRes.error) directoryCatalogue = hotelRes.data || [];
+      if (!placeRes.error) directoryPlaces = placeRes.data || [];
+      if (!memberRes.error) {
+        (memberRes.data || []).forEach(m => {
+          const name = [m.first_name, m.last_name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
+          if (!name) return;
+          const id = String(m.booking_id);
+          const arr = guestsByBooking.get(id) || [];
+          if (!arr.some(existing => existing.toLowerCase() === name.toLowerCase())) arr.push(name);
+          guestsByBooking.set(id, arr);
+          const people = membersByBooking.get(id) || [];
+          people.push(m);
+          membersByBooking.set(id, people);
+        });
+      }
 
       planHotelsByKey = {};
       const cloudPlans = new Map();
-      try {
-        const { data, error } = await sb.from('planner_plans').select('booking_id, client_key, payload').limit(1000);
-        if (!error) {
-          (data || []).forEach(row => {
-            const payload = row.payload || {};
-            if (window.isLegacyDemoPlan && window.isLegacyDemoPlan(row.client_key, payload)) return;
-            if (row.booking_id != null) cloudPlans.set(String(row.booking_id), payload);
-            if (row.client_key) cloudPlans.set(String(row.client_key), payload);
-          });
-        }
-      } catch (err) { console.warn(err); }
+      if (!planRes.error) {
+        (planRes.data || []).forEach(row => {
+          const payload = row.payload || {};
+          if (window.isLegacyDemoPlan && window.isLegacyDemoPlan(row.client_key, payload)) return;
+          if (row.booking_id != null) cloudPlans.set(String(row.booking_id), payload);
+          if (row.client_key) cloudPlans.set(String(row.client_key), payload);
+        });
+      }
 
       bookings.forEach(b => {
         const key = String(b.id);
@@ -837,7 +916,7 @@
             hotelName: h.hotelName, role: h.role, booked: h.booked, paid: h.paid, notes: h.notes,
           }));
         });
-        list.filter(s => s.bookingKey === key).forEach(s => applyOverlay(s, planHotels, meta));
+        (staysByBooking.get(key) || []).forEach(s => applyOverlay(s, planHotels, meta));
       });
 
       Object.keys(localPlans).forEach(key => {
@@ -855,6 +934,7 @@
         const year = link.year || yearFromIso(plan.arrivalDate || '');
         const base = {
           bookingKey: key, bookingId: /^\d+$/.test(key) ? key : '', groupName,
+          deviceOnly: !planKeyIsBookingId(key),
           arrivalDate: plan.arrivalDate || '', departureDate: plan.departureDate || '',
           dayTrip, organiserBooksHotels,
           roomsNeededLabel: (dayTrip || organiserBooksHotels) ? '' : (link.roomsLabel || roomsNeededFor(null, plan, dayTrip)),
@@ -873,7 +953,7 @@
             hotelName: h.hotelName, role: h.role, booked: h.booked, paid: h.paid, notes: h.notes,
           }));
         });
-        list.filter(s => s.bookingKey === key).forEach(s => applyOverlay(s, planHotels, meta));
+        (staysByBooking.get(key) || []).forEach(s => applyOverlay(s, planHotels, meta));
       });
 
       list.forEach(s => {
@@ -894,14 +974,16 @@
         hotelBaselines[key] = overlayForBooking(key);
       });
       fillYearOptions();
-      rebuildDirectory();
       render();
+      setStatus(live ? totalHotelStaysLabel(stays.length) : 'Using plans saved on this device', live ? 'ok' : '');
+      await yieldToBrowser();
+      rebuildDirectory();
       renderHotelsUsed();
-      setStatus(live ? (stays.length + ' hotel stay' + (stays.length === 1 ? '' : 's')) : 'Using plans saved on this device', live ? 'ok' : '');
     }
 
     function fillYearOptions() {
       const years = new Set(stays.map(s => yearFromIso(s.arrivalDate)).filter(Boolean));
+      years.add('2027');
       if (!years.has(yearFilter) && yearFilter !== 'all') years.add(yearFilter);
       const sel = document.getElementById('yearFilter');
       const current = yearFilter;
@@ -929,6 +1011,49 @@
       }).sort(compareHotelStaysNewest);
     }
 
+    function planKeyIsBookingId(key) {
+      const s = String(key || '').trim();
+      return /^\d+$/.test(s) || /^booking:\d+$/.test(s);
+    }
+
+    function removeDevicePlanFromStore(store, key) {
+      const src = store && typeof store === 'object' ? store : {};
+      const copy = {};
+      Object.keys(src).forEach(name => { copy[name] = src[name]; });
+      const plans = Object.assign({}, (src.plans && typeof src.plans === 'object') ? src.plans : {});
+      copy.plans = plans;
+      if (planKeyIsBookingId(key)) return copy;
+      delete plans[String(key)];
+      return copy;
+    }
+
+    function deleteDevicePlan(key) {
+      const id = String(key || '').trim();
+      if (!id || planKeyIsBookingId(id)) return;
+      const matches = stays.filter(s => s.deviceOnly && String(s.bookingKey) === id);
+      if (!matches.length || matches.some(s => stayBookingId(s))) return;
+      const name = matches[0].groupName || 'this plan';
+      if (!window.confirm('Delete “' + name + '”? This plan is saved on this device only.')) return;
+      try {
+        const store = JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || '{}') || {};
+        localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(removeDevicePlanFromStore(store, id)));
+      } catch (err) {
+        console.warn(err);
+        return;
+      }
+      stays = stays.filter(s => !(s.deviceOnly && String(s.bookingKey) === id));
+      delete planHotelsByKey[id];
+      delete hotelBaselines[id];
+      fillYearOptions();
+      render();
+      rebuildDirectory();
+      renderHotelsUsed();
+      const status = document.getElementById('statusText');
+      if (status && /hotel stay/.test(status.textContent || '')) {
+        setStatus(totalHotelStaysLabel(stays.length), 'ok');
+      }
+    }
+
     function bookingHref(s) {
       const id = stayBookingId(s);
       if (id) return 'booking-form.html?booking=' + encodeURIComponent(id) + '&layout=layout';
@@ -940,8 +1065,133 @@
       return 'tour-planner.html';
     }
 
+    function totalHotelStaysLabel(count) {
+      return count + ' total hotel stay' + (count === 1 ? '' : 's');
+    }
+
+    function stayRoomCount(stay) {
+      const label = String((stay && stay.roomsNeededLabel) || '').trim();
+      const match = /^(\d+)\s+rooms?\s+needed$/i.exec(label);
+      if (!match) return null;
+      const n = Number(match[1]);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function stayViewSummary(rows, yearLabel) {
+      const list = Array.isArray(rows) ? rows : [];
+      let nights = 0;
+      let roomNights = 0;
+      let anyRoomNights = false;
+      list.forEach(stay => {
+        if (!stay || stay.bookingStatus === 'cancelled') return;
+        const known = (typeof HotelDirectory !== 'undefined' && HotelDirectory && HotelDirectory.stayNights)
+          ? HotelDirectory.stayNights(stay)
+          : null;
+        if (known == null) return;
+        nights += known;
+        const rooms = stayRoomCount(stay);
+        if (rooms == null) return;
+        anyRoomNights = true;
+        roomNights += rooms * known;
+      });
+      const label = yearLabel || 'All years';
+      const stayWord = list.length === 1 ? 'stay' : 'stays';
+      const nightWord = nights === 1 ? 'hotel night' : 'hotel nights';
+      let text = label + ': ' + list.length + ' ' + stayWord + ' · ' + nights + ' ' + nightWord;
+      let title = "Hotel nights come from each stay's nights or dates. Cancelled stays are still listed and are not included in the nights.";
+      if (anyRoomNights) {
+        const roomWord = roomNights === 1 ? 'room-night' : 'room-nights';
+        text += ' · ' + roomNights + ' ' + roomWord;
+        title += ' Room-nights are rooms × nights from the rooms already shown. Cancelled stays are left out of those too.';
+      }
+      return { text: text, title: title };
+    }
+
+    function hotelNightPhrase(nights, name) {
+      const n = Number(nights) || 0;
+      return n + ' ' + (n === 1 ? 'night' : 'nights') + ' at ' + name;
+    }
+
+    function stayHotelLabel(stay) {
+      const name = String(stay && stay.hotelName || '').trim();
+      if (isPlaceholderHotelName(name)) return 'Hotel not named yet';
+      return name;
+    }
+
+    function hotelNightRows(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      const buckets = new Map();
+      list.forEach(stay => {
+        if (!stay || stay.bookingStatus === 'cancelled') return;
+        const known = (typeof HotelDirectory !== 'undefined' && HotelDirectory && HotelDirectory.stayNights)
+          ? HotelDirectory.stayNights(stay)
+          : null;
+        if (known == null || known <= 0) return;
+        const label = stayHotelLabel(stay);
+        const key = label === 'Hotel not named yet'
+          ? '\u0000unnamed'
+          : ((typeof HotelDirectory !== 'undefined' && HotelDirectory && HotelDirectory.foldName)
+            ? HotelDirectory.foldName(label)
+            : label.toLowerCase());
+        let bucket = buckets.get(key);
+        if (!bucket) {
+          bucket = { nights: 0, spellings: {} };
+          buckets.set(key, bucket);
+        }
+        bucket.nights += known;
+        bucket.spellings[label] = (bucket.spellings[label] || 0) + known;
+      });
+      const items = Array.from(buckets.values()).filter(bucket => bucket.nights > 0).map(bucket => {
+        const spellings = Object.keys(bucket.spellings).sort((a, b) =>
+          (bucket.spellings[b] - bucket.spellings[a]) || a.localeCompare(b));
+        const name = spellings[0] || 'Hotel not named yet';
+        return { name: name, nights: bucket.nights, text: hotelNightPhrase(bucket.nights, name) };
+      });
+      items.sort((a, b) => b.nights - a.nights || a.name.localeCompare(b.name));
+      return items;
+    }
+
+    function hotelNightPreview(items, expanded) {
+      const rows = Array.isArray(items) ? items : [];
+      const preview = 3;
+      const shown = expanded ? rows : rows.slice(0, preview);
+      const extra = rows.length - shown.length;
+      let more = '';
+      if (extra > 0) more = '+' + extra + ' more';
+      else if (expanded && rows.length > preview) more = 'Show less';
+      return { text: shown.map(item => item.text).join(' · '), more: more };
+    }
+
+    function paintStayHotelNights(rows) {
+      const el = document.getElementById('stayHotelNights');
+      if (!el) return;
+      const view = hotelNightPreview(hotelNightRows(rows), hotelNightsExpanded);
+      if (!view.text) {
+        el.hidden = true;
+        el.textContent = '';
+        return;
+      }
+      const button = view.more
+        ? ' <button type="button" class="stay-hotel-more" data-hotel-nights-more>' + esc(view.more) + '</button>'
+        : '';
+      el.hidden = false;
+      el.innerHTML = esc(view.text) + button;
+    }
+
+    function paintStayStats(rows) {
+      const el = document.getElementById('stayStats');
+      if (!el) return;
+      const yearLabel = yearFilter === 'all' ? 'All years' : String(yearFilter || 'All years');
+      const summary = stayViewSummary(rows, yearLabel);
+      el.hidden = false;
+      el.textContent = summary.text;
+      el.title = summary.title;
+    }
+
     function render() {
       const rows = visibleStays();
+      paintStayStats(rows);
+      paintStayHotelNights(rows);
       const el = document.getElementById('stayList');
       if (!rows.length) {
         el.innerHTML = '<p class="empty">No hotel names found for this year on bookings or plans.</p>';
@@ -958,7 +1208,11 @@
         const people = peopleLinks(s.people, s.peopleLabel);
         const cancelled = s.bookingStatus === 'cancelled';
         const tag = cancelled ? '<span class="cancelled-tag">Cancelled</span>' : '';
-        return `<article class="stay${cancelled ? ' cancelled' : ''}" data-stay-key="${esc(s.key)}" data-booking-status="${esc(s.bookingStatus || '')}">
+        const deviceOnly = !!s.deviceOnly && !stayBookingId(s);
+        const deviceNote = deviceOnly
+          ? `<p class="device-only-note">Saved on this device only — no booking</p><div class="device-only-actions"><button type="button" class="btn btn-danger" data-delete-plan="${esc(s.bookingKey)}">Delete this test plan</button></div>`
+          : '';
+        return `<article class="stay${cancelled ? ' cancelled' : ''}${deviceOnly ? ' device-only' : ''}" data-stay-key="${esc(s.key)}" data-booking-status="${esc(s.bookingStatus || '')}">
           <div>
             <div class="tour-name"><a href="${esc(plannerHref(s))}">${esc(s.groupName)}</a>${tag}</div>
             <div class="hotel-name">${esc(s.hotelName)}</div>
@@ -966,8 +1220,9 @@
             <div class="dates">${esc(dates)}${yearLink}</div>
             ${people ? `<div class="stay-people">${people}</div>` : ''}
             ${s.roomsNeededLabel ? `<div class="rooms-needed">${esc(s.roomsNeededLabel)}</div>` : ''}
+            ${deviceNote}
             <div class="links">
-              <a href="${esc(bookingHref(s))}">Open booking</a>
+              ${deviceOnly ? '' : `<a href="${esc(bookingHref(s))}">Open booking</a>`}
               <a href="${esc(plannerHref(s))}">Open planner</a>
               ${s.hotelsUsedHref ? `<a href="${esc(s.hotelsUsedHref)}">Hotels used</a>` : ''}
             </div>
@@ -1192,6 +1447,20 @@
       }
     }
 
+    function onDeletePlanClick(event) {
+      const btn = event.target.closest('[data-delete-plan]');
+      if (!btn) return;
+      event.preventDefault();
+      deleteDevicePlan(btn.getAttribute('data-delete-plan'));
+    }
+    document.getElementById('stayList').addEventListener('click', onDeletePlanClick);
+    document.getElementById('hotelDirectory').addEventListener('click', onDeletePlanClick);
+    document.getElementById('stayHotelNights').addEventListener('click', event => {
+      const btn = event.target.closest('[data-hotel-nights-more]');
+      if (!btn) return;
+      hotelNightsExpanded = !hotelNightsExpanded;
+      paintStayHotelNights(visibleStays());
+    });
     document.getElementById('yearFilter').addEventListener('change', e => { yearFilter = e.target.value; render(); });
     document.getElementById('searchBox').addEventListener('input', e => { search = e.target.value; render(); });
     document.getElementById('hotelSearch').addEventListener('input', () => renderHotelsUsed());
@@ -1239,14 +1508,21 @@
     }
 
     fixExternalNavLinks();
-    AuthGate.require(sb, { title: 'Hotels' }).then(session => {
+    beginHotelsPrefetch();
+    AuthGate.require(sb, { title: 'Hotels' }).then(async session => {
       cloudReady = !!session;
       if (!session) {
         AuthGate.useLocalData(sb);
         setStatus('Offline — showing what is saved on this device', '');
+        hotelsPrefetch = null;
+        initGlobalSearch();
+        return loadData();
       }
       initGlobalSearch();
-      return loadData();
+      const ready = await beginHotelsPrefetch();
+      hotelsPrefetch = null;
+      const sameUser = ready && session.user && ready.userId === session.user.id;
+      return loadData(sameUser ? ready : null);
     }).catch(err => {
       console.error(err);
       setStatus(err.message || 'Failed to load', 'err');
