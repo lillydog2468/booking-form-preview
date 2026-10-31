@@ -88,6 +88,24 @@
       color: var(--text-secondary); font-size: 13px; font-weight: 800; line-height: 1.35;
       overflow-wrap: anywhere; white-space: normal;
     }
+    .full-only-chip {
+      min-height: 44px; padding: 8px 12px; border-radius: 999px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      font: inherit; font-size: 13px; font-weight: 800; cursor: pointer;
+    }
+    .full-only-chip[aria-pressed="true"] { background: #15803d; border-color: #166534; color: #fff; }
+    .tour-full-flag {
+      display: inline-flex; align-items: center; max-width: 100%;
+      margin-top: 8px; padding: 6px 10px; border-radius: 999px;
+      background: #15803d; color: #fff;
+      font-size: 14px; font-weight: 800; line-height: 1.3;
+    }
+    .tour-full-flag.is-booked {
+      margin-top: 6px; padding: 3px 8px;
+      background: transparent; color: #166534;
+      border: 1px solid #86efac; font-size: 13px; font-weight: 700;
+    }
+    [data-theme="dark"] .tour-full-flag.is-booked { color: #86efac; border-color: #166534; }
     .stay-hotel-nights {
       max-width: 100%; margin: -8px 0 14px;
       color: var(--text-secondary); font-size: 13px; font-weight: 700; line-height: 1.45;
@@ -182,6 +200,7 @@
       .stay { grid-template-columns: 1fr; }
       .topbar-inner, .wrap { padding-left: 14px; padding-right: 14px; }
       .stay-stats { font-size: 15px; padding: 6px 12px; }
+      .full-only-chip, .tour-full-flag { font-size: 15px; }
       .stay-hotel-nights, .stay-hotel-more { font-size: 15px; }
     }
 
@@ -305,6 +324,7 @@
           <label for="searchBox">Search</label>
           <input type="search" id="searchBox" placeholder="Tour or hotel name" autocomplete="off">
         </div>
+        <button type="button" class="full-only-chip" id="fullOnlyChip" aria-pressed="false">Full tours only</button>
       </div>
       <p class="stay-stats" id="stayStats" hidden></p>
       <p class="stay-hotel-nights" id="stayHotelNights" hidden></p>
@@ -350,6 +370,7 @@
     const requestedYear = new URLSearchParams(location.search).get('year');
     if (requestedYear === 'all' || /^\d{4}$/.test(requestedYear || '')) yearFilter = requestedYear;
     let search = '';
+    let fullOnly = false;
     let hotelNightsExpanded = false;
     let saveTimer = null;
     let hotelBaselines = {};
@@ -644,6 +665,7 @@
         recordedAddress: stay.recordedAddress || '',
         organiserBooksHotels: !!stay.organiserBooksHotels,
         deviceOnly: !!stay.deviceOnly,
+        tourFull: !!stay.tourFull,
         roomsNeededLabel: (stay.dayTrip || stay.organiserBooksHotels) ? '' : String(stay.roomsNeededLabel || ''),
         peopleLabel: String(stay.peopleLabel || ''),
         people: Array.isArray(stay.people) ? stay.people : [],
@@ -728,11 +750,18 @@
       let bookings = [];
       let live = false;
       try {
-        const bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, no_people, other_hotel_nights, keith_own_room, hotels(name)';
+        let bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, no_people, other_hotel_nights, keith_own_room, tour_full, hotels(name)';
         let bookingQuery = await sb.from('bookings')
           .select(bookingCols)
           .order('tour_arrival_date', { ascending: false })
           .limit(1000);
+        if (bookingQuery.error && /tour_full/i.test(bookingQuery.error.message || '')) {
+          bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, no_people, other_hotel_nights, keith_own_room, hotels(name)';
+          bookingQuery = await sb.from('bookings')
+            .select(bookingCols)
+            .order('tour_arrival_date', { ascending: false })
+            .limit(1000);
+        }
         if (bookingQuery.error && /no_people|other_hotel_nights|keith_own_room/i.test(bookingQuery.error.message || '')) {
           bookingQuery = await sb.from('bookings')
             .select('id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, keith_own_room, hotels(name)')
@@ -887,6 +916,7 @@
           arrivalDate: arrival, departureDate: departure, hasCloudPlan: cloudPlans.has(key),
           bookingStatus, dayTrip, organiserBooksHotels,
           headcount: b.no_people || '',
+          tourFull: bookingIsTourFull(b),
           keithRoom: b.keith_own_room,
           extraNotes: b.extra_notes || '',
           otherHotelNights: b.other_hotel_nights || '',
@@ -1012,9 +1042,31 @@
       const q = search.trim().toLowerCase();
       return stays.filter(s => {
         if (yearFilter !== 'all' && yearFromIso(s.arrivalDate) !== yearFilter) return false;
+        if (fullOnly && !s.tourFull) return false;
         if (!q) return true;
         return (s.groupName + ' ' + s.hotelName).toLowerCase().includes(q);
       }).sort(compareHotelStaysNewest);
+    }
+
+    function bookingIsTourFull(booking) {
+      const value = booking && booking.tour_full;
+      return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
+    }
+
+    function fullHotelFlag(stay) {
+      if (!stay || !stay.tourFull) return '';
+      if (stay.booked) return '<div class="tour-full-flag is-booked">Tour full · hotel booked ✓</div>';
+      return '<div class="tour-full-flag">Tour full: make sure the hotel is booked</div>';
+    }
+
+    function fullTourCount(rows) {
+      const ids = new Set();
+      (rows || []).forEach(stay => {
+        if (!stay || !stay.tourFull) return;
+        const id = String(stay.bookingId || stay.bookingKey || '').trim();
+        if (id) ids.add(id);
+      });
+      return ids.size;
     }
 
     function planKeyIsBookingId(key) {
@@ -1121,6 +1173,8 @@
       const label = yearLabel || 'All years';
       const stayWord = list.length === 1 ? 'stay' : 'stays';
       const nightWord = nights === 1 ? 'hotel night' : 'hotel nights';
+      const full = fullTourCount(list);
+      const fullWord = full === 1 ? 'full tour' : 'full tours';
       let text = label + ': ' + list.length + ' ' + stayWord + ' · ' + nights + ' ' + nightWord;
       let title = "Hotel nights come from each stay's nights or dates. Cancelled stays are still listed and are not included in the nights.";
       if (anyRoomNights) {
@@ -1128,6 +1182,7 @@
         text += ' · ' + roomNights + ' ' + roomWord;
         title += ' Room-nights are rooms × nights from the rooms already shown. Cancelled stays are left out of those too.';
       }
+      text += ' · ' + full + ' ' + fullWord;
       return { text: text, title: title };
     }
 
@@ -1214,6 +1269,8 @@
 
     function render() {
       const rows = visibleStays();
+      const chip = document.getElementById('fullOnlyChip');
+      if (chip) chip.setAttribute('aria-pressed', fullOnly ? 'true' : 'false');
       paintStayStats(rows);
       paintStayHotelNights(rows);
       const el = document.getElementById('stayList');
@@ -1240,6 +1297,7 @@
           <div>
             <div class="tour-name"><a href="${esc(plannerHref(s))}">${esc(s.groupName)}</a>${tag}</div>
             <div class="hotel-name">${esc(s.hotelName)}</div>
+            ${fullHotelFlag(s)}
             <div class="role">${esc(roleLabel(s.role))}</div>
             <div class="dates">${esc(dates)}${yearLink}</div>
             ${people ? `<div class="stay-people">${people}</div>` : ''}
@@ -1283,6 +1341,13 @@
           if (field === 'notes') stay.notes = inp.value;
           if (field === 'booked') {
             inp.closest('.tick').classList.toggle('on', stay.booked);
+            const flag = card.querySelector('.tour-full-flag');
+            const html = fullHotelFlag(stay);
+            if (flag) flag.outerHTML = html;
+            else if (html) {
+              const name = card.querySelector('.hotel-name');
+              if (name) name.insertAdjacentHTML('afterend', html);
+            }
             rebuildDirectory();
             renderHotelsUsed();
           }
@@ -1486,6 +1551,7 @@
       paintStayHotelNights(visibleStays());
     });
     document.getElementById('yearFilter').addEventListener('change', e => { yearFilter = e.target.value; render(); });
+    document.getElementById('fullOnlyChip').addEventListener('click', () => { fullOnly = !fullOnly; render(); });
     document.getElementById('searchBox').addEventListener('input', e => { search = e.target.value; render(); });
     document.getElementById('hotelSearch').addEventListener('input', () => renderHotelsUsed());
     document.getElementById('refreshBtn').addEventListener('click', () => loadData());

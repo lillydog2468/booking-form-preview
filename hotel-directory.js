@@ -414,6 +414,7 @@
             recordedAddress: String(stay.recordedAddress || '').trim(),
             hotelName: displayName,
             booked: !!stay.booked,
+            tourFull: !!stay.tourFull,
             status: stayStatus(stay),
             deviceOnly: !!stay.deviceOnly,
             href: (!stay.deviceOnly && stay.bookingId) ? ('booking-form.html?booking=' + encodeURIComponent(String(stay.bookingId)) + '&layout=layout') : ''
@@ -639,6 +640,12 @@
     var booked = stay.booked
       ? '<span class="booked-flag on">Booked</span>'
       : '<span class="booked-flag">Not booked yet</span>';
+    var fullFlag = '';
+    if (stay.tourFull) {
+      fullFlag = stay.booked
+        ? '<div class="tour-full-flag is-booked">Tour full · hotel booked ✓</div>'
+        : '<div class="tour-full-flag">Tour full: make sure the hotel is booked</div>';
+    }
     var planHref = plannerPlanHref(stay);
     var groupHtml = planHref
       ? '<a href="' + esc(planHref) + '">' + esc(stay.groupName) + '</a>'
@@ -652,6 +659,7 @@
       : '';
     return '<li class="use' + (stay.status === 'cancelled' ? ' is-cancelled' : '') + (stay.deviceOnly ? ' device-only' : '') + '">'
       + '<div class="use-group">' + groupHtml + '</div>'
+      + fullFlag
       + '<div class="use-when">' + esc(stay.whenLabel) + yearHtml + '</div>'
       + '<div class="use-meta">' + esc(stay.roleLabel) + ' · ' + nights + ' · ' + booked + '</div>'
       + statusHtml

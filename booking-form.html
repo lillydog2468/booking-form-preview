@@ -2116,6 +2116,65 @@
       min-height: 28px;
       font-size: 13px;
     }
+    .tour-full-toggle {
+      flex: 0 0 auto;
+      align-self: flex-end;
+      margin: 0 0 4px;
+      min-height: 44px;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .tour-full-toggle[aria-pressed="true"] {
+      background: #15803d;
+      border-color: #166534;
+      color: #fff;
+    }
+    .tour-full-badge {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #15803d;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      vertical-align: middle;
+    }
+    .tour-full-badge[hidden] { display: none !important; }
+    .tour-full-note {
+      flex: 1 1 100%;
+      margin: 2px 0 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #166534;
+      line-height: 1.35;
+    }
+    .tour-full-note[hidden] { display: none !important; }
+    [data-theme="dark"] .tour-full-note { color: #86efac; }
+    .year-tour-full {
+      display: inline-block;
+      margin-left: 3px;
+      padding: 0 3px;
+      border-radius: 4px;
+      background: #15803d;
+      color: #fff;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .03em;
+      line-height: 1.4;
+      vertical-align: middle;
+    }
+    .year-tour-chip .year-tour-full,
+    .year-tour-item .year-tour-full { font-size: 10px; padding: 1px 5px; }
     .tour-fare-block .field label,
     .tab-panel.layout-mode .tour-fare-block .field label {
       font-size: 10px;
@@ -3633,6 +3692,7 @@
     state.roomsSource = tEl(tabId, 'rooms_singles')?.dataset.roomsSource || '';
     state.openFolds = [...panelFolds(tabId)].filter(d => d.open).map(d => d.getAttribute('data-fold'));
 
+    state.tourFull = tourFullOn(tabId);
     return state;
   }
 
@@ -3775,6 +3835,7 @@
     applySuggestedPrice(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
     updateHotelNightsHint(tabId);
+    applyTourFull(tabId, !!state.tourFull);
   }
 
   function bookingIdLabel(id) {
@@ -4686,9 +4747,11 @@
         <div class="field tour-fare-name"><label>Group name</label><input type="text" id="t${t}_group_name" placeholder="Tour label" title="The group name is the tour label, not the person’s name"></div>
         <div class="field-with-currency tour-fare-price"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
         <div class="field tour-fare-head"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
+        <button type="button" class="tour-full-toggle" id="t${t}_tour_full" aria-pressed="false" onclick="toggleTourFull('${t}')">Tour full</button>
         <label class="day-trip-toggle group-price-toggle"><input type="checkbox" id="t${t}_group_price"> One price for the whole group</label>
         <div class="field-with-currency tour-fare-total"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to follow the price per person. Leader half price takes a half off that organiser only."></div>${currencyMarkHTML()}</div>
         <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
+        <p class="tour-full-note" id="t${t}_tour_full_note" hidden>Tour is full. Untick Full to add more people.</p>
         <p class="hint price-hint" id="t${t}_price_hint"></p>
       </div>`;
   }
@@ -4839,6 +4902,7 @@
         <span class="booking-id-tag" id="t${t}_bookingIdTag" hidden></span>
         <span class="year-tint-badge" id="t${t}_yearBadge" hidden></span>
         <span class="cancelled-tag" id="t${t}_cancelledTag" hidden>Cancelled</span>
+        <span class="tour-full-badge" id="t${t}_fullTag" hidden>FULL</span>
         <label class="delay-until" id="t${t}_delayUntilWrap" hidden>Delayed until <input type="text" id="t${t}_delay_until" inputmode="numeric" maxlength="4" placeholder="Year" autocomplete="off" title="Year this booking is delayed until"></label>
       </div>
       <div class="form-header-actions">
@@ -4983,6 +5047,7 @@
         <span class="booking-id-tag" id="t${t}_bookingIdTag" hidden></span>
         <span class="year-tint-badge" id="t${t}_yearBadge" hidden></span>
         <span class="cancelled-tag" id="t${t}_cancelledTag" hidden>Cancelled</span>
+        <span class="tour-full-badge" id="t${t}_fullTag" hidden>FULL</span>
         <label class="delay-until" id="t${t}_delayUntilWrap" hidden>Delayed until <input type="text" id="t${t}_delay_until" inputmode="numeric" maxlength="4" placeholder="Year" autocomplete="off" title="Year this booking is delayed until"></label>
       </div>
       <div class="form-header-actions">
@@ -5341,6 +5406,7 @@
         cancelled: bookingIsCancelled(b),
         hotel: b.hotel_name || '',
         people: (typeof BookingExtras !== 'undefined' && BookingExtras.bookingHeadcount) ? BookingExtras.bookingHeadcount(b) : b.no_people,
+        full: bookingIsTourFull(b),
         dayTrip: yearTourIsDayTrip(b),
         arrival: range ? toISODateUTC(range.start) : '',
         departure: range ? toISODateUTC(range.end) : '',
@@ -5395,6 +5461,7 @@
       <span class="year-tour-dates">${escapeHtml(yearTourDateLabel(tour))}</span>
       <span class="year-tour-name">${escapeHtml(tour.title)}</span>
       ${tour.cancelled ? '<span class="cancelled-tag">Cancelled</span>' : ''}
+      ${tour.full ? '<span class="year-tour-full">FULL</span>' : ''}
       ${bits.length ? `<span class="year-tour-meta">${escapeHtml(bits.join(' · '))}</span>` : ''}
     </button>`;
   }
@@ -5474,6 +5541,7 @@
           id: booking.id,
           title: String(booking.group_name || ('Booking #' + booking.id)).trim() || ('Booking #' + booking.id),
           people: yearTourHeadcount({ people: booking.no_people }),
+          full: bookingIsTourFull(booking),
           dayTrip: yearTourIsDayTrip(booking),
         };
       }
@@ -5515,14 +5583,16 @@
       const isEnd = tours.some(tour => (tour.departure || tour.arrival) === iso);
       const classes = ['yc-cell', 'tour', 'year-tour-day', heat.dayTrip ? 'day-trip' : 'overnight', isStart ? 'start' : '', isEnd ? 'end' : '', tours.every(tour => tour.cancelled) ? 'cancelled' : ''].filter(Boolean).join(' ');
       const extra = tours.length > 1 ? `<span class="yc-dot">${tours.length}</span>` : '';
+      const fullMark = tours.some(tour => tour.full) ? '<span class="year-tour-full">FULL</span>' : '';
       const headText = heat.head > 0 ? String(heat.head) : '–';
-      cells.push(`<button type="button" class="${classes}" style="--yt-bg:${heat.bg};--yt-ink:${heat.ink}" data-tour-ids="${ids.join(',')}" data-headcount="${heat.head}" title="${escapeAttr(names)}" onclick="openYearTourDay(this, event)"><span class="year-tour-daynum">${dayNum}</span><span class="year-tour-head">${headText}</span>${extra}</button>`);
+      cells.push(`<button type="button" class="${classes}" style="--yt-bg:${heat.bg};--yt-ink:${heat.ink}" data-tour-ids="${ids.join(',')}" data-headcount="${heat.head}" title="${escapeAttr(names)}" onclick="openYearTourDay(this, event)"><span class="year-tour-daynum">${dayNum}</span><span class="year-tour-head">${headText}</span>${fullMark}${extra}</button>`);
     }
     const chips = (month.tours || []).map(tour => {
       const id = Number(tour.id);
       const click = Number.isFinite(id) && id > 0 ? ` onclick="openYearTourBooking(${id}, event)"` : '';
       const shade = yearTourShade(!!tour.dayTrip, yearTourHeatAmount(yearTourHeadcount(tour), scale));
-      return `<button type="button" class="year-tour-chip${tour.cancelled ? ' cancelled' : ''}${tour.dayTrip ? ' day-trip' : ''}" style="--yt-bg:${shade.bg};--yt-ink:${shade.ink}"${click}>${escapeHtml(yearTourDateLabel(tour))} · ${escapeHtml(tour.title)} · ${escapeHtml(yearTourPeopleLabel(yearTourHeadcount(tour)))}</button>`;
+      const fullMark = tour.full ? ' <span class="year-tour-full">FULL</span>' : '';
+      return `<button type="button" class="year-tour-chip${tour.cancelled ? ' cancelled' : ''}${tour.dayTrip ? ' day-trip' : ''}" style="--yt-bg:${shade.bg};--yt-ink:${shade.ink}"${click}>${escapeHtml(yearTourDateLabel(tour))} · ${escapeHtml(tour.title)} · ${escapeHtml(yearTourPeopleLabel(yearTourHeadcount(tour)))}${fullMark}</button>`;
     }).join('');
     return `<div class="yc-month year-tour-cal"><div class="yc-weekdays">${weekdayRow}</div><div class="yc-grid">${cells.join('')}</div>${chips ? `<div class="year-tour-chips">${chips}</div>` : ''}</div>`;
   }
@@ -5569,7 +5639,7 @@
     }
     panel.innerHTML = '<div class="yc-day-choice-actions">' + ids.map(id => {
       const tour = yearTourById(id);
-      const title = tour ? (tour.title + ' · ' + yearTourPeopleLabel(tour.people)) : ('Booking #' + id);
+      const title = tour ? (tour.title + ' · ' + yearTourPeopleLabel(tour.people) + (tour.full ? ' · FULL' : '')) : ('Booking #' + id);
       return `<button type="button" class="btn btn-outline btn-sm" onclick="openYearTourBooking(${Number(id)}, event)">${escapeHtml(title)}</button>`;
     }).join('') + '</div>';
     panel.hidden = false;
@@ -6509,6 +6579,7 @@
   }
 
   function addMemberRow(tabId, firstName = '', memberId = '', lastName = '', email = '', reveal, pay) {
+    if (reveal && tourFullOn(tabId)) return;
     const list = document.getElementById(`t${tabId}_members_list`);
     if (!list) return;
     const idx = list.children.length + 1;
@@ -9430,6 +9501,69 @@
     return !!tEl(tabId, 'leader_half_price')?.checked;
   }
 
+  function tourFullOn(tabId) {
+    const btn = tEl(tabId, 'tour_full');
+    return !!(btn && btn.getAttribute('aria-pressed') === 'true');
+  }
+
+  function bookingIsTourFull(booking) {
+    const value = booking && booking.tour_full;
+    return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
+  }
+
+  function nextHeadcountWhenFull(capRaw, requestedRaw) {
+    const cap = String(capRaw == null ? '' : capRaw).trim();
+    const requested = String(requestedRaw == null ? '' : requestedRaw).trim();
+    if (requested === '') return { value: '', cap: cap };
+    const next = Number(requested);
+    const capNum = cap === '' ? 0 : Number(cap);
+    if (!Number.isFinite(next) || (Number.isFinite(capNum) && next > capNum)) {
+      return { value: cap, cap: cap };
+    }
+    return { value: String(next), cap: String(next) };
+  }
+
+  function clampHeadcountIfFull(tabId) {
+    if (!tourFullOn(tabId)) return;
+    const head = tEl(tabId, 'no_people');
+    if (!head) return;
+    const next = nextHeadcountWhenFull(head.dataset.fullCap, head.value);
+    head.value = next.value;
+    head.dataset.fullCap = next.cap;
+    if (next.cap !== '' && Number.isFinite(Number(next.cap))) head.max = next.cap;
+    else head.removeAttribute('max');
+  }
+
+  function applyTourFull(tabId, on) {
+    const btn = tEl(tabId, 'tour_full');
+    if (btn) btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const badge = tEl(tabId, 'fullTag');
+    const note = tEl(tabId, 'tour_full_note');
+    if (badge) badge.hidden = !on;
+    if (note) note.hidden = !on;
+    const panel = document.getElementById('tabPanel_' + tabId);
+    if (panel) panel.querySelectorAll('button.member-add').forEach(button => { button.disabled = !!on; });
+    const head = tEl(tabId, 'no_people');
+    if (!head) return;
+    if (!on) {
+      head.removeAttribute('max');
+      delete head.dataset.fullCap;
+      return;
+    }
+    if (head.dataset.fullCap == null) head.dataset.fullCap = String(head.value || '').trim();
+    clampHeadcountIfFull(tabId);
+  }
+
+  function toggleTourFull(tabId) {
+    const next = !tourFullOn(tabId);
+    if (next) {
+      const head = tEl(tabId, 'no_people');
+      if (head) delete head.dataset.fullCap;
+    }
+    applyTourFull(tabId, next);
+    onTabInput(tabId, 't' + tabId + '_tour_full', 'change');
+  }
+
   function tourFareAmount(people, price, half) {
     const extras = typeof window !== 'undefined' ? window.BookingExtras : null;
     if (extras && extras.tourFare) return extras.tourFare(people, price, half);
@@ -10384,6 +10518,7 @@
     ) {
       markRoomsTyped(tabId);
     }
+    if (changedId.endsWith('_no_people')) clampHeadcountIfFull(tabId);
     if (changedId.endsWith('_no_people') || changedId.endsWith('_day_trip') || changedId.endsWith('_organiser_books_hotels')) {
       if (changedId.endsWith('_organiser_books_hotels') && organiserBooksHotelsOn(tabId)) {
         const singles = tEl(tabId, 'rooms_singles');
@@ -10715,6 +10850,7 @@
     data.left_to_pay = guestSplit ? guestSplit.left : ((data.beading_tour_price || 0) - totalPayments);
     data.totalprofit = totalPayments - totalExpenses;
     data.leader_half_price = checkVal(tabId, 'leader_half_price');
+    data.tour_full = tourFullOn(tabId);
 
     // Child data
     data._members = getMembersData(tabId);
@@ -10857,6 +10993,7 @@
     }
     noteLoadedRooms(tabId, roomRaw, record.keith_own_room);
     if (record.leader_half_price === true) setCheck(tabId, 'leader_half_price', true);
+    applyTourFull(tabId, bookingIsTourFull(record));
     noteLoadedPrice(tabId);
     noteLoadedNights(tabId);
     noteLoadedHotelCosts(tabId);
@@ -10951,6 +11088,7 @@
     tEl(tabId, 'id').value = '';
     tEl(tabId, 'formTitle').textContent = 'New Booking';
     updateTabTitle(tabId, 'New Booking');
+    applyTourFull(tabId, false);
     syncBookingIdTag(tabId);
     const deleteBtn = tEl(tabId, 'deleteBtn');
     if (deleteBtn) deleteBtn.style.display = 'none';
@@ -11225,11 +11363,12 @@
 	      const idLabel = bookingIdLabel(r.id);
 	      const idTag = idLabel ? ' <span class="booking-id-tag">' + idLabel + '</span>' : '';
 	      const cancelledTag = cancelled ? ' <span class="cancelled-tag">Cancelled</span>' : '';
+	      const fullTag = bookingIsTourFull(r) ? ' <span class="tour-full-badge">FULL</span>' : '';
 	      const delayText = cancelled ? delayUntilLabel(r) : '';
 	      parts.push(`
 	      <div class="record-item year-band year-band-${band} ${cancelled ? 'cancelled' : ''} ${r.id === activeBookingId ? 'active' : ''}" onclick="openBookingInTab(${r.id})">
 	        ${cancelled ? cancelCrossHtml() : ''}
-	        <div class="record-title">${openIds.has(r.id) ? '<span style="color:var(--accent);margin-right:4px;">●</span>' : ''}${recordName}${idTag}${cancelledTag}</div>
+	        <div class="record-title">${openIds.has(r.id) ? '<span style="color:var(--accent);margin-right:4px;">●</span>' : ''}${recordName}${idTag}${fullTag}${cancelledTag}</div>
 	        <div class="record-sub">${
 	          r.tour_arrival_date ? formatDateDMY(r.tour_arrival_date) : 'No date'
 	        } · ${r.no_people || '?'} people${
@@ -11490,6 +11629,9 @@
   async function saveBookingRow(bookingData, extras, bid) {
     const existing = bid ? (allBookings || []).find(b => String(b.id) === String(bid)) : null;
     const optional = bookingColumnsFromExtras(extras, existing);
+    if (bookingData && Object.prototype.hasOwnProperty.call(bookingData, 'tour_full')) {
+      optional.tour_full = bookingData.tour_full === true;
+    }
     const optionalKeys = Object.keys(optional);
     let row = { ...bookingData, ...optional };
     const run = payload => bid
@@ -12180,7 +12322,8 @@
             const delay = delayText ? '<div class="record-delay">' + escapeHtml(delayText) + '</div>' : '';
             const pairLine = pairSummaryText(r) ? '<div class="record-pair">' + escapeHtml(pairSummaryText(r)) + '</div>' : '';
             const reschedule = cancelled ? '<button type="button" class="btn btn-outline btn-sm rescheduled-btn" onclick="event.stopPropagation(); openRescheduledBooking(' + r.id + ')">Rescheduled</button>' : '';
-            display = (cancelled ? name + ' <span class="cancelled-tag">Cancelled</span>' + delay + reschedule : name) + pairLine;
+            const full = bookingIsTourFull(r) ? ' <span class="tour-full-badge">FULL</span>' : '';
+            display = (cancelled ? name + full + ' <span class="cancelled-tag">Cancelled</span>' + delay + reschedule : name + full) + pairLine;
           } else if (col.key === 'extra_notes' || col.key === 'organiser_display' || col.key === 'room_plan_display' || col.key === 'payment_method_display') {
             display = val ? escapeHtml(String(val)) : '—';
           }
