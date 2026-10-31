@@ -34,7 +34,7 @@
   let tabCounter = 0;
   let autoSaveEnabled = false;
   const AUTOSAVE_DELAY = 2000;
-  let formLayout = (localStorage.getItem('form_layout') || 'standard');
+  let formLayout = 'layout';
   let layoutZoom = Number(localStorage.getItem('layout_zoom') || 1);
 
   let currentUser = null;
@@ -66,8 +66,9 @@
   ];
 
   function applyStoredFormLayout() {
-    formLayout = (localStorage.getItem('form_layout') || 'standard');
-    if (formLayout !== 'layout') formLayout = 'standard';
+    // Form and Layout are the same booking form. A saved "standard" choice opens Layout.
+    formLayout = 'layout';
+    try { localStorage.setItem('form_layout', 'layout'); } catch (e) {}
     document.documentElement.setAttribute('data-form-layout', formLayout);
     applyLayoutSearch();
   }
@@ -156,21 +157,24 @@
 
   function updateLayoutNav() {
     const inForm = currentView === 'form';
-    const isLayout = formLayout === 'layout';
     const navForm = el('navForm');
     const navLayout = el('navLayout');
     const navTable = el('navTable');
     const navYearTours = el('navYearTours');
     if (navTable) navTable.classList.toggle('active', currentView === 'table');
     if (navYearTours) navYearTours.classList.toggle('active', currentView === 'year');
-    if (navForm) navForm.classList.toggle('active', inForm && !isLayout);
-    if (navLayout) navLayout.classList.toggle('active', inForm && isLayout);
+    if (navForm) navForm.classList.remove('active');
+    if (navLayout) navLayout.classList.toggle('active', inForm);
   }
 
   function setFormLayout(mode) {
-    const next = mode === 'layout' ? 'layout' : 'standard';
+    // 'standard' is the old Form tab. It opens the same Layout form.
+    const next = mode === 'standard' ? 'layout' : 'layout';
     if (formLayout === next) {
+      try { localStorage.setItem('form_layout', 'layout'); } catch (e) {}
+      document.documentElement.setAttribute('data-form-layout', 'layout');
       applyLayoutSearch();
+      updateLayoutNav();
       return;
     }
     formLayout = next;
@@ -731,6 +735,58 @@
     return d ? toISODateUTC(d) : null;
   }
 
+  // A timestamp such as 2027-10-02T00:00:00.000Z is still that calendar day.
+  function normaliseStoredDate(value) {
+    const direct = toStorageISO(value);
+    if (direct) return direct;
+    const s = String(value == null ? '' : value).trim();
+    const m = /^(\d{4}-\d{2}-\d{2})(?:$|T|\s)/.exec(s);
+    return m ? toStorageISO(m[1]) : null;
+  }
+
+  // An empty date box must not wipe a date already stored on this booking.
+  // A blank wins only when that box was cleared by hand.
+  function bookingDateForSave(tabId, field, rawValue) {
+    const typed = normaliseStoredDate(rawValue);
+    if (typed) return typed;
+    const td = tabs.get(tabId);
+    const loaded = td && td.loadedDates ? normaliseStoredDate(td.loadedDates[field]) : null;
+    const blank = String(rawValue == null ? '' : rawValue).trim() === '';
+    const touched = !!(td && td.dateFieldsTouched && td.dateFieldsTouched[field]);
+    if (loaded && !(blank && touched)) return loaded;
+    return null;
+  }
+
+  function rememberLoadedDates(tabId, record) {
+    const td = tabs.get(tabId);
+    if (!td) return;
+    td.loadedDates = {};
+    td.dateFieldsTouched = {};
+    FORM_DATE_KEYS.forEach(f => {
+      td.loadedDates[f] = normaliseStoredDate(record && record[f]);
+    });
+  }
+
+  function rememberSavedDates(tabId, data) {
+    const td = tabs.get(tabId);
+    if (!td || !data) return;
+    td.loadedDates = td.loadedDates || {};
+    FORM_DATE_KEYS.forEach(f => {
+      if (Object.prototype.hasOwnProperty.call(data, f)) td.loadedDates[f] = data[f] || null;
+    });
+    td.dateFieldsTouched = {};
+  }
+
+  function noteDateFieldTouched(tabId, changedId) {
+    const field = ['tour_arrival_date', 'departure_date', 'deposit_paid_date', 'final_payment_date']
+      .find(name => String(changedId || '').endsWith('_' + name));
+    if (!field) return;
+    const td = tabs.get(tabId);
+    if (!td) return;
+    if (!td.dateFieldsTouched) td.dateFieldsTouched = {};
+    td.dateFieldsTouched[field] = true;
+  }
+
   function getDateFieldISO(tabId, field) {
     return toStorageISO(tEl(tabId, field)?.value || '');
   }
@@ -1026,22 +1082,11 @@
     const bookingNum = bookingIdFromLocation();
     if (bookingNum) pendingDeepLinkBookingId = bookingNum;
 
-    // Explicit layout=layout, or default to layout when opening a booking from the planner
-    const wantLayout = layout === 'layout' || (pendingDeepLinkBookingId && layout !== 'standard');
-    if (wantLayout) {
-      showView('form');
-      setFormLayout('layout');
-    } else if (layout === 'standard') {
-      setFormLayout('standard');
-      if (view === 'table') showView('table');
-      else showView('form');
-    } else if (view === 'table') {
-      showView('table');
-    } else if (view === 'year' || view === 'year-tours') {
-      showView('year');
-    } else {
-      showView('form');
-    }
+    // layout=standard is the old Form link. It opens Layout, as does the default.
+    setFormLayout(layout === 'standard' ? 'standard' : 'layout');
+    if (view === 'table') showView('table');
+    else if (view === 'year' || view === 'year-tours') showView('year');
+    else showView('form');
 
     updateLayoutNav();
   }
@@ -6954,6 +6999,7 @@
   }
 
 	  function onTabInput(tabId, changedId = '', eventType = '') {
+	    noteDateFieldTouched(tabId, changedId);
 	    if (changedId.endsWith('_delay_until')) {
 	      saveDelayYear(tabId);
 	      return;
@@ -7260,10 +7306,17 @@
     const data = {};
     FIELDS.forEach(f => {
       const input = tEl(tabId, f);
-      if (!input) return;
+      if (!input) {
+        // A missing box is not a request to wipe a date that is already stored.
+        if (FORM_DATE_KEYS.has(f)) {
+          const kept = bookingDateForSave(tabId, f, '');
+          if (kept) data[f] = kept;
+        }
+        return;
+      }
       let val = input.value.trim();
       if (FORM_DATE_KEYS.has(f)) {
-        data[f] = toStorageISO(val);
+        data[f] = bookingDateForSave(tabId, f, val);
         return;
       }
       data[f] = NUMERIC_FIELDS.includes(f) ? (val ? parseFloat(val) : null) : (val || null);
@@ -7424,6 +7477,7 @@
     const tabData = tabs.get(tabId);
     if (tabData) {
       tabData.bookingId = record.id || null;
+      rememberLoadedDates(tabId, record);
       tabData.status = bookingIsCancelled(record) ? 'cancelled' : null;
       tabData.delayUntilYear = delayUntilYearOf(record);
       tabData.rescheduledFromId = rescheduledFromIdOf(record);
@@ -7535,6 +7589,8 @@
       tabData.delayUntilYear = '';
       tabData.rescheduledFromId = '';
       tabData.orphanHotelExpenses = [];
+      tabData.loadedDates = {};
+      tabData.dateFieldsTouched = {};
     }
     const hotelPrice = tEl(tabId, 'hotel_price');
     if (hotelPrice) {
@@ -7642,6 +7698,22 @@
 	    return (y >= 1990 && y <= 2100) ? y : null;
 	  }
 
+	  function bookingMatchesSidebarYear(b, yearFilter) {
+	    if (yearFilter === 'all') return true;
+	    const y = bookingYear(b);
+	    return y == null || y === yearFilter;
+	  }
+
+	  function sidebarRecordGroups(records) {
+	    const undated = [];
+	    const dated = [];
+	    (records || []).forEach(r => {
+	      if (bookingYear(r) == null) undated.push(r);
+	      else dated.push(r);
+	    });
+	    return { undated, dated };
+	  }
+
 	  function fillSidebarYearOptions() {
 	    const sel = el('sidebarYear');
 	    if (!sel) return;
@@ -7727,7 +7799,7 @@
 	    const yf = year === 'all' ? 'all' : Number(year);
 	    const records = [...(allBookings || [])]
 	      .filter(b => matchesSidebarFilter(b, filter))
-	      .filter(b => yf === 'all' || bookingYear(b) === yf)
+	      .filter(b => bookingMatchesSidebarYear(b, yf))
 	      .filter(b => matchesSidebarQuery(b, q, searchField))
 	      .sort((a, b) => {
 	        const res = compareSidebarBookings(a, b, sort);
@@ -7805,13 +7877,16 @@
 
 	    const parts = [];
 	    let lastYearKey = null;
-	    for (const r of records) {
-	      const y = bookingYear(r);
-	      const yearKey = y == null ? 'none' : String(y);
+	    const grouped = sidebarRecordGroups(records);
+	    const shown = grouped.undated.concat(grouped.dated);
+	    for (const r of shown) {
+	      const undatedRow = bookingYear(r) == null;
+	      const y = undatedRow ? null : bookingYear(r);
+	      const yearKey = undatedRow ? 'undated' : String(y);
 	      const band = yearBandIndex(y == null ? 0 : y);
 	      if (yearKey !== lastYearKey) {
 	        lastYearKey = yearKey;
-	        const label = y == null ? 'No year' : String(y);
+	        const label = undatedRow ? 'Undated' : String(y);
 	        parts.push(`<div class="records-year-header year-band year-band-${band}" role="presentation">${escapeHtml(label)}</div>`);
 	      }
 	      const cancelled = bookingIsCancelled(r);
@@ -8166,6 +8241,7 @@
       if (idx >= 0) allBookings[idx] = Object.assign({}, allBookings[idx], record);
       else allBookings.unshift(record);
       saveLocalBookings();
+      rememberSavedDates(tabId, data);
       if (activeTabId === tabId) syncBookingAddress(tabData.bookingId);
       const idInput = tEl(tabId, 'id');
       if (idInput) idInput.value = tabData.bookingId;
@@ -8246,6 +8322,7 @@
         if (!silent) toast('Booking created', 'success');
       }
 
+      rememberSavedDates(tabId, data);
       applyBookingCancelledChrome(tabId);
       markTabDirty(tabId, false);
       const payMap = readMemberPayOpenMap();
