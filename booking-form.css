@@ -2152,6 +2152,23 @@
       vertical-align: middle;
     }
     .tour-full-badge[hidden] { display: none !important; }
+    .data-table .tour-full-badge { margin-left: 0; }
+    .table-day-trip {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #d6ebf8;
+      color: #102033;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      vertical-align: middle;
+    }
+    [data-theme="dark"] .table-day-trip {
+      background: #1a4f86;
+      color: #f4f8fc;
+    }
     .tour-full-note {
       flex: 1 1 100%;
       margin: 2px 0 0;
@@ -2658,6 +2675,26 @@
     .column-menu .menu-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .data-table th.draggable { cursor: grab; }
     .data-table th.dragging { opacity: .65; }
+    .data-table thead th .col-resize {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 16px;
+      height: 100%;
+      cursor: col-resize;
+      touch-action: none;
+      z-index: 7;
+    }
+    .data-table thead th .col-resize::after {
+      content: "";
+      position: absolute;
+      top: 18%;
+      bottom: 18%;
+      right: 5px;
+      width: 2px;
+      border-radius: 1px;
+      background: var(--border);
+    }
     .table-search {
       padding: 8px 12px;
       border: 1px solid var(--border);
@@ -2740,6 +2777,7 @@
     .data-table .positive { color: var(--success); font-weight: 600; }
     .data-table .negative { color: var(--danger); font-weight: 600; }
     .data-table .potential { color: var(--warning); font-weight: 600; }
+    .data-table .profit-to-come { color: var(--warning); font-weight: 700; }
 
     .table-footer {
       padding: 10px 24px;

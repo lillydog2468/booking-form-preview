@@ -8682,6 +8682,7 @@
   const TABLE_COLUMNS = [
     { key: 'id', label: 'ID', type: 'num' },
     { key: 'group_name', label: 'Group Name' },
+    { key: 'status', label: 'Status' },
     { key: 'organiser_display', label: 'Organiser' },
     { key: 'no_people', label: 'People' },
     { key: 'room_plan_display', label: 'Rooms' },
@@ -8733,13 +8734,44 @@
     return (Number(b?.id) || 0) - (Number(a?.id) || 0);
   }
 
+  function withStatusColumn(order) {
+    const keys = (order || []).filter(key => key !== 'status');
+    if ((order || []).includes('status')) return (order || []).slice();
+    const at = keys.indexOf('group_name');
+    keys.splice(at === -1 ? 0 : at + 1, 0, 'status');
+    return keys;
+  }
+
+  function tableIsoDay(value) {
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(value == null ? '' : value).trim());
+    return m ? m[1] : '';
+  }
+
+  function tableBookingIsDayTrip(record) {
+    if (record && record._extras && record._extras.dayTrip === false) return false;
+    if (typeof yearTourIsDayTrip === 'function' && yearTourIsDayTrip(record)) return true;
+    const start = tableIsoDay(record && record.tour_arrival_date);
+    const end = tableIsoDay(record && record.departure_date);
+    return !!(start && end && start === end);
+  }
+
+  function tableStatusCell(record) {
+    const bits = [];
+    if (tableBookingIsDayTrip(record)) bits.push('<span class="table-day-trip">Day trip</span>');
+    if (bookingIsTourFull(record)) bits.push('<span class="tour-full-badge">Full</span>');
+    const raw = record && record.status != null ? String(record.status).trim() : '';
+    if (raw) bits.push(escapeHtml(raw.charAt(0).toUpperCase() + raw.slice(1)));
+    return bits.join(' · ');
+  }
+
   function loadTablePreferences() {
     try {
       const storedOrder = JSON.parse(localStorage.getItem('booking_table_column_order') || 'null');
       if (Array.isArray(storedOrder)) {
         const valid = storedOrder.filter(key => TABLE_COLUMNS.some(col => col.key === key));
-        const missing = TABLE_COLUMNS.map(col => col.key).filter(key => !valid.includes(key));
-        tableColumnsOrder = [...valid, ...missing];
+        const missing = TABLE_COLUMNS.map(col => col.key).filter(key => !valid.includes(key) && key !== 'status');
+        const order = valid.concat(missing);
+        tableColumnsOrder = valid.includes('status') ? order : withStatusColumn(order);
       }
     } catch {}
 
@@ -8758,12 +8790,105 @@
     if (storedLocked !== null) {
       tableColumnsLocked = storedLocked === 'true';
     }
+    loadTableColumnWidths();
   }
 
   function saveTablePreferences() {
     localStorage.setItem('booking_table_column_order', JSON.stringify(tableColumnsOrder));
     localStorage.setItem('booking_table_column_visibility', JSON.stringify(tableColumnVisibility));
     localStorage.setItem('booking_table_columns_locked', String(tableColumnsLocked));
+  }
+
+  const TABLE_COL_WIDTHS_KEY = 'keith_table_col_widths_v1';
+  const TABLE_COL_MIN_PX = 50;
+  let tableColumnWidths = {};
+  let tableColResizeDrag = null;
+
+  function loadTableColumnWidths() {
+    tableColumnWidths = {};
+    try {
+      const stored = JSON.parse(localStorage.getItem(TABLE_COL_WIDTHS_KEY) || 'null');
+      if (!stored || typeof stored !== 'object') return;
+      TABLE_COLUMNS.forEach(col => {
+        const n = Number(stored[col.key]);
+        if (Number.isFinite(n) && n >= TABLE_COL_MIN_PX) tableColumnWidths[col.key] = Math.round(n);
+      });
+    } catch (e) { /* keep the defaults */ }
+  }
+
+  function saveTableColumnWidths() {
+    const payload = {};
+    TABLE_COLUMNS.forEach(col => {
+      if (tableColumnWidths[col.key]) payload[col.key] = tableColumnWidths[col.key];
+    });
+    try { localStorage.setItem(TABLE_COL_WIDTHS_KEY, JSON.stringify(payload)); } catch (e) { /* ignore */ }
+  }
+
+  function tableColWidthPx(key) {
+    const n = Number(tableColumnWidths[key]);
+    if (!Number.isFinite(n) || n < TABLE_COL_MIN_PX) return 0;
+    return Math.round(n);
+  }
+
+  function tableColSizeStyle(key) {
+    const px = tableColWidthPx(key);
+    if (!px) return '';
+    return 'width:' + px + 'px;min-width:' + px + 'px;max-width:' + px + 'px;';
+  }
+
+  function applyLiveTableColumnWidth(key, px) {
+    const width = Math.max(TABLE_COL_MIN_PX, Math.round(Number(px) || 0));
+    tableColumnWidths[key] = width;
+    const style = width + 'px';
+    document.querySelectorAll('[data-table-col="' + key + '"]').forEach(cell => {
+      cell.style.width = style;
+      cell.style.minWidth = style;
+      cell.style.maxWidth = style;
+    });
+  }
+
+  function beginTableColumnResize(event, key) {
+    if (!event || !key) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const header = document.querySelector('th[data-table-col="' + key + '"]');
+    const startWidth = header ? header.getBoundingClientRect().width : (tableColWidthPx(key) || 120);
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    let moved = false;
+    tableColResizeDrag = { key, pointerId };
+    function move(ev) {
+      if (!tableColResizeDrag || ev.pointerId !== pointerId) return;
+      if (Math.abs(ev.clientX - startX) < 1) return;
+      ev.preventDefault();
+      moved = true;
+      applyLiveTableColumnWidth(key, startWidth + (ev.clientX - startX));
+    }
+    function up(ev) {
+      if (ev.pointerId !== pointerId) return;
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      if (tableColResizeDrag && tableColResizeDrag.pointerId === pointerId) tableColResizeDrag = null;
+      if (moved) saveTableColumnWidths();
+    }
+    document.addEventListener('pointermove', move, { passive: false });
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+    if (event.currentTarget && event.currentTarget.setPointerCapture && pointerId != null) {
+      try { event.currentTarget.setPointerCapture(pointerId); } catch (e) { /* still follow document moves */ }
+    }
+  }
+
+  function resetTableColumnWidth(event, key) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (!key || !Object.prototype.hasOwnProperty.call(tableColumnWidths, key)) return;
+    delete tableColumnWidths[key];
+    saveTableColumnWidths();
+    renderTable(allBookings || []);
   }
 
   function renderTableHead() {
@@ -8773,34 +8898,41 @@
       return;
     }
 
-    el('dataTableHead').innerHTML = '<tr>' + columns.map(col =>
-      `<th class="${tableColumnsLocked ? '' : 'draggable'}" ${tableColumnsLocked ? '' : 'draggable="true"'} ondragstart="onTableHeaderDragStart(event, '${col.key}')" ondragover="onTableHeaderDragOver(event)" ondrop="onTableHeaderDrop(event, '${col.key}')" ondragend="onTableHeaderDragEnd(event)">
+    el('dataTableHead').innerHTML = '<tr>' + columns.map(col => {
+      const size = tableColSizeStyle(col.key);
+      return `<th class="${tableColumnsLocked ? '' : 'draggable'}" data-table-col="${col.key}" ${size ? `style="${size}"` : ''} ${tableColumnsLocked ? '' : 'draggable="true"'} ondragstart="onTableHeaderDragStart(event, '${col.key}')" ondragover="onTableHeaderDragOver(event)" ondrop="onTableHeaderDrop(event, '${col.key}')" ondragend="onTableHeaderDragEnd(event)">
         ${col.label}
-      </th>`
-    ).join('') + '</tr>';
+        <span class="col-resize" data-col-resize="${col.key}" role="separator" aria-orientation="vertical" aria-label="Resize ${col.label}" title="Drag to resize. Double-click to reset." draggable="false" onpointerdown="beginTableColumnResize(event, '${col.key}')" ondblclick="resetTableColumnWidth(event, '${col.key}')" onclick="event.preventDefault(); event.stopPropagation();" ondragstart="event.preventDefault(); event.stopPropagation();"></span>
+      </th>`;
+    }).join('') + '</tr>';
   }
 
   /**
    * Stored profit is payments minus expenses, so it goes minus while money is still due.
    * After that money arrives the result is stored profit plus what is still owed.
-   * Show that future result as potential when it is not a loss. Red is only a loss that remains.
+   * While something is still due, that full result is the figure, and the outstanding
+   * part is marked in orange. Red is only a loss that remains after the money arrives.
    */
   function profitListCell(record) {
     const storedRaw = record.totalprofit;
     const stored = Number(storedRaw);
     const left = Number(record.left_to_pay);
     const owed = Number.isFinite(left) && left > 0 ? left : 0;
-    const profit = Number.isFinite(stored) ? stored : 0;
+    const profitSet = storedRaw != null && storedRaw !== '' && Number.isFinite(stored);
+    const profit = profitSet ? stored : 0;
     const after = profit + owed;
     const currency = normalizeCurrency(record.beading_tour_price_currency || record.depositmade_currency || DEFAULT_CURRENCY);
-    if (storedRaw != null && storedRaw !== '' && profit < 0 && owed > 0) {
-      if (after < 0) return { cls: ' negative', text: formatMoney(after, currency) };
-      return { cls: ' potential', text: formatMoney(after, currency) + ' potential' };
+    if (profitSet && owed > 0) {
+      if (after < 0) return { cls: ' negative', text: escapeHtml(formatMoney(after, currency)) };
+      const main = escapeHtml(formatMoney(after, currency));
+      const due = escapeHtml(formatMoney(owed, currency));
+      const cls = after > 0 ? ' positive' : '';
+      return { cls, text: main + ' <span class="profit-to-come">(+' + due + ' to come)</span>' };
     }
     let cls = '';
     if (Number.isFinite(stored) && stored > 0) cls = ' positive';
     else if (Number.isFinite(stored) && stored < 0) cls = ' negative';
-    const text = storedRaw != null && storedRaw !== '' ? String(storedRaw) : '—';
+    const text = storedRaw != null && storedRaw !== '' ? escapeHtml(String(storedRaw)) : '—';
     return { cls, text };
   }
 
@@ -8855,8 +8987,10 @@
             const delay = delayText ? '<div class="record-delay">' + escapeHtml(delayText) + '</div>' : '';
             const pairLine = pairSummaryText(r) ? '<div class="record-pair">' + escapeHtml(pairSummaryText(r)) + '</div>' : '';
             const reschedule = cancelled ? '<button type="button" class="btn btn-outline btn-sm rescheduled-btn" onclick="event.stopPropagation(); openRescheduledBooking(' + r.id + ')">Rescheduled</button>' : '';
-            const full = bookingIsTourFull(r) ? ' <span class="tour-full-badge">FULL</span>' : '';
-            display = (cancelled ? name + full + ' <span class="cancelled-tag">Cancelled</span>' + delay + reschedule : name + full) + pairLine;
+            display = (cancelled ? name + ' <span class="cancelled-tag">Cancelled</span>' + delay + reschedule : name) + pairLine;
+          } else if (col.key === 'status') {
+            const shown = tableStatusCell(r);
+            display = shown || '—';
           } else if (col.key === 'extra_notes' || col.key === 'organiser_display' || col.key === 'room_plan_display' || col.key === 'payment_method_display') {
             display = val ? escapeHtml(String(val)) : '—';
           }
@@ -8883,7 +9017,8 @@
             cls += ' cancel-marked';
             display = `<div class="cancel-event-label">${display}</div>`;
           }
-          return `<td class="${cls}">${cross}${display}</td>`;
+          const size = tableColSizeStyle(col.key);
+          return `<td class="${cls}" data-table-col="${col.key}"${size ? ` style="${size}"` : ''}>${cross}${display}</td>`;
         }).join('') +
         '</tr>'
       );
@@ -8894,6 +9029,11 @@
   }
 
   function onTableHeaderDragStart(event, sourceKey) {
+    const from = event.target && event.target.closest ? event.target : (event.target && event.target.parentElement);
+    if (from && from.closest && from.closest('.col-resize')) {
+      event.preventDefault();
+      return;
+    }
     if (tableColumnsLocked) return;
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', sourceKey);
