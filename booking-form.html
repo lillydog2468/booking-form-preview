@@ -4456,6 +4456,7 @@
       role = (profile && profile.role) || 'user';
     } catch (_) { /* the sign-in is enough to open the form */ }
     openEditor(session.user.email, role);
+    loadSharedPriceBook();
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -8728,9 +8729,8 @@
     return { years: {}, parkHotelPrice: '' };
   }
 
-  function readPriceBook() {
+  function normalisePriceBook(raw) {
     try {
-      const raw = JSON.parse(localStorage.getItem(PRICE_BOOK_KEY) || '');
       const parkHotelPrice = raw && typeof raw === 'object' ? cleanParkHotelPrice(raw.parkHotelPrice) : '';
       if (!raw || typeof raw !== 'object' || !raw.years || typeof raw.years !== 'object') {
         return { years: {}, parkHotelPrice };
@@ -8753,11 +8753,96 @@
     }
   }
 
-  function writePriceBook(book) {
+  function readPriceBook() {
+    try {
+      return normalisePriceBook(JSON.parse(localStorage.getItem(PRICE_BOOK_KEY) || ''));
+    } catch (_) {
+      return emptyPriceBook();
+    }
+  }
+
+  // A year that exists on the server stays as the server saved it.
+  // A year that exists only in this browser is added. Park Hotel price is
+  // filled from this browser only when the server has none.
+  function mergePriceBookYears(remoteBook, localBook) {
+    const remote = normalisePriceBook(remoteBook);
+    const local = normalisePriceBook(localBook);
+    const years = {};
+    let changed = false;
+    Object.keys(remote.years).forEach(year => { years[year] = remote.years[year]; });
+    Object.keys(local.years).forEach(year => {
+      if (!Object.prototype.hasOwnProperty.call(years, year)) {
+        years[year] = local.years[year];
+        changed = true;
+      }
+    });
+    let parkHotelPrice = remote.parkHotelPrice;
+    if (!parkHotelPrice && local.parkHotelPrice) {
+      parkHotelPrice = local.parkHotelPrice;
+      changed = true;
+    }
+    return { book: { years, parkHotelPrice }, changed };
+  }
+
+  let priceBookCloudTimer = null;
+  let priceBookCloudLoaded = false;
+
+  function storePriceBookLocal(book) {
     const stored = { years: (book && book.years) || {} };
     const parkHotelPrice = cleanParkHotelPrice(book && book.parkHotelPrice);
     if (parkHotelPrice) stored.parkHotelPrice = parkHotelPrice;
     localStorage.setItem(PRICE_BOOK_KEY, JSON.stringify(stored));
+  }
+
+  function writePriceBook(book) {
+    storePriceBookLocal(book);
+    schedulePriceBookCloudSave();
+  }
+
+  function schedulePriceBookCloudSave() {
+    if (!priceBookCloudLoaded || typeof setTimeout !== 'function') return;
+    if (priceBookCloudTimer && typeof clearTimeout === 'function') clearTimeout(priceBookCloudTimer);
+    priceBookCloudTimer = setTimeout(function () {
+      priceBookCloudTimer = null;
+      savePriceBookToCloud();
+    }, 500);
+  }
+
+  async function savePriceBookToCloud() {
+    if (!priceBookCloudLoaded || typeof sb === 'undefined' || !sb) return;
+    const book = readPriceBook();
+    const payload = { years: book.years };
+    if (book.parkHotelPrice) payload.parkHotelPrice = book.parkHotelPrice;
+    try {
+      const res = await sb.from('tour_price_book').upsert({
+        id: 'main',
+        book: payload,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+      if (res && res.error) throw res.error;
+    } catch (_) { /* this browser still has the list */ }
+  }
+
+  async function loadSharedPriceBook() {
+    if (typeof sb === 'undefined' || !sb || (typeof cloudReady !== 'undefined' && !cloudReady)) return;
+    let remoteRaw = null;
+    try {
+      const res = await sb.from('tour_price_book').select('book').eq('id', 'main').maybeSingle();
+      if (!res || res.error) throw (res && res.error) || new Error('price book');
+      remoteRaw = res.data && res.data.book ? res.data.book : { years: {} };
+    } catch (_) {
+      priceBookCloudLoaded = false;
+      if (typeof renderPriceBook === 'function') renderPriceBook();
+      return;
+    }
+    const merged = mergePriceBookYears(remoteRaw, readPriceBook());
+    try { storePriceBookLocal(merged.book); } catch (_) { /* keep showing whatever is already stored */ }
+    priceBookCloudLoaded = true;
+    if (merged.changed) await savePriceBookToCloud();
+    if (typeof renderPriceBook === 'function') renderPriceBook();
+    if (typeof refreshPricesOnOpenTabs === 'function' && typeof tabs !== 'undefined' && tabs) {
+      try { refreshPricesOnOpenTabs(); } catch (_) { /* the list is already on screen */ }
+    }
   }
 
   function shownParkHotelPrice(book) {
