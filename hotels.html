@@ -340,6 +340,8 @@
     const LIVE_BOOKINGS_ORIGIN = 'https://keith-booking-form.netlify.app';
 
     let stays = [];
+    let loadedBookings = [];
+    let bookingListLoaded = false;
     let staysByBooking = new Map();
     let directoryHotels = [];
     let directoryPlaces = [];
@@ -619,7 +621,7 @@
       list.push({
         key,
         bookingKey: String(stay.bookingKey || ''),
-        bookingId: stayBookingId(stay),
+        bookingId: stay.deviceOnly ? '' : stayBookingId(stay),
         groupName: stay.groupName || 'Untitled group',
         hotelName,
         role: stay.role === 'prague' || stay.role === 'extra' ? stay.role : 'tour',
@@ -804,6 +806,8 @@
       const sources = preset || await fetchHotelSources();
       const bookings = sources.bookings || [];
       const live = !!sources.live;
+      loadedBookings = bookings;
+      bookingListLoaded = live;
       const memberRes = sources.memberRes || { data: [], error: true };
       const stayRes = sources.stayRes || { data: [], error: true };
       const hotelRes = sources.hotelRes || { data: [], error: true };
@@ -920,7 +924,8 @@
       });
 
       Object.keys(localPlans).forEach(key => {
-        if (bookings.some(b => String(b.id) === String(key))) return;
+        const matchedBookingId = bookingIdFromPlanKey(key);
+        if (matchedBookingId && loadedBookingHasId(bookings, matchedBookingId)) return;
         const plan = localPlans[key] || {};
         if (window.isLegacyDemoPlan && window.isLegacyDemoPlan(key, plan)) return;
         const planHotels = (plan.hotels || []).map(normalizeHotelRow).filter(Boolean);
@@ -932,9 +937,10 @@
           : false;
         const link = stayLink(null, plan);
         const year = link.year || yearFromIso(plan.arrivalDate || '');
+        const deviceOnly = localPlanIsDeviceOnly(key, bookings, live);
         const base = {
-          bookingKey: key, bookingId: /^\d+$/.test(key) ? key : '', groupName,
-          deviceOnly: !planKeyIsBookingId(key),
+          bookingKey: key, bookingId: deviceOnly ? '' : matchedBookingId, groupName,
+          deviceOnly,
           arrivalDate: plan.arrivalDate || '', departureDate: plan.departureDate || '',
           dayTrip, organiserBooksHotels,
           roomsNeededLabel: (dayTrip || organiserBooksHotels) ? '' : (link.roomsLabel || roomsNeededFor(null, plan, dayTrip)),
@@ -1012,8 +1018,26 @@
     }
 
     function planKeyIsBookingId(key) {
+      return !!bookingIdFromPlanKey(key);
+    }
+
+    function bookingIdFromPlanKey(key) {
       const s = String(key || '').trim();
-      return /^\d+$/.test(s) || /^booking:\d+$/.test(s);
+      if (/^\d+$/.test(s)) return s;
+      const prefixed = /^booking:(\d+)$/.exec(s);
+      return prefixed ? prefixed[1] : '';
+    }
+
+    function loadedBookingHasId(bookings, id) {
+      return (bookings || []).some(b => b && String(b.id) === String(id));
+    }
+
+    /** A local plan is device-only when its key is not a booking that was loaded. */
+    function localPlanIsDeviceOnly(key, bookings, bookingsLoaded) {
+      const id = bookingIdFromPlanKey(key);
+      if (!id) return true;
+      if (!bookingsLoaded) return false;
+      return !loadedBookingHasId(bookings, id);
     }
 
     function removeDevicePlanFromStore(store, key) {
@@ -1022,16 +1046,16 @@
       Object.keys(src).forEach(name => { copy[name] = src[name]; });
       const plans = Object.assign({}, (src.plans && typeof src.plans === 'object') ? src.plans : {});
       copy.plans = plans;
-      if (planKeyIsBookingId(key)) return copy;
-      delete plans[String(key)];
+      const id = String(key || '').trim();
+      if (id) delete plans[id];
       return copy;
     }
 
     function deleteDevicePlan(key) {
       const id = String(key || '').trim();
-      if (!id || planKeyIsBookingId(id)) return;
-      const matches = stays.filter(s => s.deviceOnly && String(s.bookingKey) === id);
-      if (!matches.length || matches.some(s => stayBookingId(s))) return;
+      if (!id || !localPlanIsDeviceOnly(id, loadedBookings, bookingListLoaded)) return;
+      const matches = stays.filter(s => String(s.bookingKey) === id);
+      if (!matches.length || matches.some(s => !s.deviceOnly)) return;
       const name = matches[0].groupName || 'this plan';
       if (!window.confirm('Delete “' + name + '”? This plan is saved on this device only.')) return;
       try {
@@ -1208,7 +1232,7 @@
         const people = peopleLinks(s.people, s.peopleLabel);
         const cancelled = s.bookingStatus === 'cancelled';
         const tag = cancelled ? '<span class="cancelled-tag">Cancelled</span>' : '';
-        const deviceOnly = !!s.deviceOnly && !stayBookingId(s);
+        const deviceOnly = !!s.deviceOnly;
         const deviceNote = deviceOnly
           ? `<p class="device-only-note">Saved on this device only — no booking</p><div class="device-only-actions"><button type="button" class="btn btn-danger" data-delete-plan="${esc(s.bookingKey)}">Delete this test plan</button></div>`
           : '';

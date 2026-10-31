@@ -415,7 +415,7 @@
             hotelName: displayName,
             booked: !!stay.booked,
             status: stayStatus(stay),
-            deviceOnly: !!stay.deviceOnly && !stay.bookingId,
+            deviceOnly: !!stay.deviceOnly,
             href: (!stay.deviceOnly && stay.bookingId) ? ('booking-form.html?booking=' + encodeURIComponent(String(stay.bookingId)) + '&layout=layout') : ''
           };
         })
