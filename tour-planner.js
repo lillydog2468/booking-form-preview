@@ -543,7 +543,7 @@
   function parseLoanAmount(raw) {
     let s = String(raw == null ? '' : raw).trim();
     if (!s) return 0;
-    s = s.replace(/£/gi, '').replace(/\s+/g, '');
+    s = s.replace(/£/gi, '').replace(/kč|kc|czk/gi, '').replace(/\s+/g, '');
     if (s.indexOf(',') >= 0 && s.indexOf('.') >= 0) {
       if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
       else s = s.replace(/,/g, '');
@@ -572,18 +572,26 @@
     else g.id = String(g.id);
     if (typeof g.lent !== 'number' || Number.isNaN(g.lent)) g.lent = Number(g.lent) || 0;
     if (!Array.isArray(g.repayments)) g.repayments = [];
-    g.repayments = g.repayments.map(r => ({
-      id: r.id || uid('r'),
-      date: r.date || todayISO(),
-      amount: Number(r.amount) || 0,
-    }));
+    g.repayments = g.repayments.map(r => {
+      const next = {
+        id: r.id || uid('r'),
+        date: r.date || todayISO(),
+        amount: Number(r.amount) || 0,
+      };
+      if (r && r.currency) next.currency = String(r.currency);
+      return next;
+    });
     if (!Array.isArray(g.loans)) g.loans = [];
-    g.loans = g.loans.map(row => ({
-      id: (row && row.id) || uid('l'),
-      amount: roundPounds(row && row.amount),
-      at: row && row.at ? String(row.at) : '',
-      legacy: !!(row && (row.legacy || !row.at)),
-    })).filter(row => row.amount > 0);
+    g.loans = g.loans.map(row => {
+      const next = {
+        id: (row && row.id) || uid('l'),
+        amount: roundPounds(row && row.amount),
+        at: row && row.at ? String(row.at) : '',
+        legacy: !!(row && (row.legacy || !row.at)),
+      };
+      if (row && row.currency) next.currency = String(row.currency);
+      return next;
+    }).filter(row => row.amount > 0);
     const covered = loanTotal(g);
     const stated = roundPounds(g.lent);
     if (stated > covered + 0.001) {
@@ -612,6 +620,7 @@
       amount: pounds,
       at: at || new Date().toISOString(),
       legacy: false,
+      currency: 'CZK',
     });
     g.lent = loanTotal(g);
     return true;
@@ -669,15 +678,13 @@
     ensureGuestDebt(g);
     return Math.round(((Number(g.lent) || 0) - guestPaidBack(g)) * 100) / 100;
   }
+  /** Lending only. Whole crowns, a space between thousands, Kč after the number. */
   function formatAmount(n) {
     const v = Number(n);
-    const value = Number.isFinite(v) ? v : 0;
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
+    const rounded = Number.isFinite(v) ? Math.round(v) : 0;
+    const sign = rounded < 0 ? '-' : '';
+    const grouped = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return sign + grouped + ' Kč';
   }
 
   /**
@@ -5551,7 +5558,7 @@
     const g = state.plan.guests.find(x => x.id === guestId);
     if (!g) return;
     ensureGuestDebt(g);
-    g.repayments.push({ id: uid('r'), date: todayISO(), amount: 0 });
+    g.repayments.push({ id: uid('r'), date: todayISO(), amount: 0, currency: 'CZK' });
     scheduleAutoSave();
     render();
   }
