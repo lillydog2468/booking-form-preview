@@ -1590,7 +1590,7 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
           Delete
         </button>
-        <button class="btn btn-success" onclick="saveBooking('${t}', false)">
+        <button class="btn btn-success" id="t${t}_saveBtn" onclick="saveBooking('${t}', false)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
           Save
         </button>
@@ -6527,6 +6527,8 @@
     if (next) {
       input.value = next;
       input.dataset.priceSource = 'table';
+      // A new price per person replaces a tour total that had been typed by hand.
+      releaseTypedTourPrice(tabId);
     } else if (input.dataset.priceSource === 'table' || !String(input.value || '').trim()) {
       input.value = '';
       input.dataset.priceSource = '';
@@ -6752,6 +6754,13 @@
     syncGroupPriceChrome(tabId);
   }
 
+  function releaseTypedTourPrice(tabId) {
+    const total = tEl(tabId, 'beading_tour_price');
+    if (!total) return;
+    if (typeof groupPriceOn === 'function' && groupPriceOn(tabId)) return;
+    if (total.dataset.tourPriceSource === 'typed') total.dataset.tourPriceSource = '';
+  }
+
   function noteLoadedTourPrice(tabId) {
     const total = tEl(tabId, 'beading_tour_price');
     if (!total) return;
@@ -6760,24 +6769,29 @@
       return;
     }
     const stored = String(total.value || '').trim();
-    if (!stored) {
-      total.dataset.tourPriceSource = '';
-      return;
-    }
     const peopleRaw = String(tEl(tabId, 'no_people')?.value || '').trim();
     const priceRaw = String(tEl(tabId, 'price_per_person')?.value || '').trim();
     const people = parseFloat(peopleRaw);
     const price = parseFloat(priceRaw);
     const canCompute = peopleRaw !== '' && priceRaw !== '' && Number.isFinite(people) && Number.isFinite(price);
+    if (!canCompute) {
+      total.dataset.tourPriceSource = stored ? 'typed' : '';
+      return;
+    }
     const half = leaderHalfPriceOn(tabId);
-    const expected = canCompute ? tourFareAmount(people, price, half) : null;
-    const full = canCompute ? tourFareAmount(people, price, false) : null;
+    const expected = tourFareAmount(people, price, half);
+    const full = tourFareAmount(people, price, false);
     const storedNorm = Number.isFinite(parseFloat(stored)) ? parseFloat(stored).toFixed(2) : stored;
     const expectedNorm = expected == null ? '' : expected.toFixed(2);
     const fullNorm = full == null ? '' : full.toFixed(2);
     const follows = expectedNorm && storedNorm === expectedNorm;
     const staleFull = half && fullNorm && storedNorm === fullNorm;
-    total.dataset.tourPriceSource = follows || staleFull ? 'computed' : 'typed';
+    // A stored total that is not headcount × price is shown as the fare.
+    // The group tick is the only way a flat price stays, including headcount 1.
+    // The corrected figure is written the next time the booking is saved.
+    if (!follows && !staleFull && expectedNorm) total.value = expectedNorm;
+    else if (!stored && expectedNorm) total.value = expectedNorm;
+    total.dataset.tourPriceSource = expectedNorm ? 'computed' : '';
   }
 
   function nightsText(input) {
@@ -7717,6 +7731,13 @@
         }
       }
     }
+    // A hand-typed tour total holds only until the headcount or the price per person changes.
+    // Adding a guest that changes the headcount comes through this same field.
+    if (changedId.endsWith('_no_people')) releaseTypedTourPrice(tabId);
+    if (changedId.endsWith('_price_per_person') && !changedId.endsWith('_price_per_person_cur')) {
+      const priceNow = String(tEl(tabId, 'price_per_person')?.value || '').trim();
+      if (priceNow) releaseTypedTourPrice(tabId);
+    }
 	    recalculateTab(tabId);
 	    markTabDirty(tabId, true);
 
@@ -7873,7 +7894,8 @@
 
       // A stored tour price stays until both inputs are filled. Clearing it here
       // would wipe the price, the amount left to pay, and the profit on save.
-      // A tour price Keith has typed stays too, including a flat price with headcount 1.
+      // A tour price typed in this box stays until the headcount or the price per person changes.
+      // One price for the whole group is never replaced. Per-guest prices use their own total.
       const fixedGroup = groupPriceOn(tabId);
       const guestMoney = !fixedGroup && window.BookingExtras
         ? BookingExtras.perGuestMoney(perGuestRowsFromDom(tabId), priceRaw)
@@ -8954,9 +8976,57 @@
     }
   }
 
-  async function saveBooking(tabId, silent = false) {
+  let bookingSaveFlights = new Map();
+
+  function bookingSaveKey(tabId) {
+    const tabData = tabs.get(tabId);
+    const id = tabData && tabData.bookingId;
+    return id != null && id !== '' ? ('b:' + id) : ('t:' + tabId);
+  }
+
+  function setBookingSaveBusy(tabId, busy) {
+    const btn = tEl(tabId, 'saveBtn');
+    if (!btn) return;
+    btn.disabled = !!busy;
+    if (busy) btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+  }
+
+  // One save at a time for a booking. A second Save or autosave is remembered
+  // and run once after this one finishes, so two deletes cannot pass each other.
+  function startBookingSave(tabId, silent) {
+    const key = bookingSaveKey(tabId);
+    const existing = bookingSaveFlights.get(key);
+    if (existing) {
+      existing.pending += 1;
+      if (!silent) existing.wantsToast = true;
+      return existing.promise;
+    }
+    const flight = { pending: 0, wantsToast: false, promise: null };
+    bookingSaveFlights.set(key, flight);
+    setBookingSaveBusy(tabId, true);
+    let nextSilent = !!silent;
+    flight.promise = (async () => {
+      try {
+        do {
+          const thisSilent = nextSilent;
+          flight.pending = 0;
+          flight.wantsToast = false;
+          await saveBooking(tabId, thisSilent, true);
+          nextSilent = thisSilent || !flight.wantsToast;
+        } while (flight.pending > 0);
+      } finally {
+        setBookingSaveBusy(tabId, false);
+        bookingSaveFlights.delete(key);
+      }
+    })();
+    return flight.promise;
+  }
+
+  async function saveBooking(tabId, silent = false, flightPass) {
     const tabData = tabs.get(tabId);
     if (!tabData) return;
+    if (!flightPass) return startBookingSave(tabId, silent);
     if (!cloudReady) {
       const data = await getTabFormData(tabId);
       if (!tabData.bookingId) tabData.bookingId = localNextId++;
