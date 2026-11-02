@@ -1084,6 +1084,43 @@
     .repay-row input[type="number"] { width: 96px; min-height: 40px; font-size: 15px; }
     .repay-row input[type="date"] { width: 140px; min-height: 40px; font-size: 14px; }
     .repay-note { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 4px; }
+    .lent-lady { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+    .lent-summary {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      min-height: 44px; padding: 8px 12px; cursor: pointer; list-style: none;
+    }
+    .lent-summary::-webkit-details-marker { display: none; }
+    .lent-name { font-weight: 800; font-size: 16px; min-width: 0; }
+    .lent-owes { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 16px; flex: 0 0 auto; }
+    .lent-body { padding: 0 12px 10px; }
+    .lent-field { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+    .lent-field input {
+      width: 7em; min-height: 36px; padding: 6px 8px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--input-bg); color: var(--text);
+      font: inherit; font-size: 16px; font-variant-numeric: tabular-nums;
+    }
+    .lent-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .lent-entry { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .lent-when { color: var(--text-secondary); font-weight: 700; }
+    .lent-amt { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .lent-remove { min-width: 32px; min-height: 32px; }
+    .view-phone .lent-summary { min-height: 48px; }
+    .view-phone .lent-field input { min-height: 44px; }
+    .lending-desk {
+      margin: 8px 0 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+    .lending-desk > summary {
+      min-height: 32px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .lending-desk-body { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
 
     /* Booking ticks — small pills, still a finger-sized tap */
     .stop-kicker, .rough-stop-line, .day-glance-main {

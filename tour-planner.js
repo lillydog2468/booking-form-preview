@@ -68,6 +68,8 @@
     roughSelectedHandover: null,
     roughShowUsed: false,
     roughFocusDayIndex: null,
+    openLentRows: {},
+    lendingOpen: false,
     handoverPeopleEdit: {},
     liveBookings: false,
     supabasePlanTable: false,
@@ -514,6 +516,18 @@
   function contactLabel(id) {
     return (CONTACT_METHODS.find(c => c.id === id) || {}).label || (id || 'Contact');
   }
+  function roundPounds(n) {
+    return Math.round((Number(n) || 0) * 100) / 100;
+  }
+  function loanTotal(g) {
+    return roundPounds((g && g.loans || []).reduce((sum, row) => sum + (Number(row && row.amount) || 0), 0));
+  }
+  function loanWhenLabel(row) {
+    if (!row || !row.at) return 'Earlier';
+    const d = new Date(row.at);
+    if (Number.isNaN(d.getTime())) return 'Earlier';
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
   function ensureGuestDebt(g) {
     if (!g) return g;
     if (typeof g.lent !== 'number' || Number.isNaN(g.lent)) g.lent = Number(g.lent) || 0;
@@ -523,11 +537,47 @@
       date: r.date || todayISO(),
       amount: Number(r.amount) || 0,
     }));
+    if (!Array.isArray(g.loans)) g.loans = [];
+    g.loans = g.loans.map(row => ({
+      id: (row && row.id) || uid('l'),
+      amount: roundPounds(row && row.amount),
+      at: row && row.at ? String(row.at) : '',
+      legacy: !!(row && (row.legacy || !row.at)),
+    })).filter(row => row.amount > 0);
+    const covered = loanTotal(g);
+    const stated = roundPounds(g.lent);
+    if (stated > covered + 0.001) {
+      g.loans.unshift({ id: uid('l'), amount: roundPounds(stated - covered), at: '', legacy: true });
+    }
+    g.lent = loanTotal(g);
     if (g.email == null) g.email = '';
     else g.email = String(g.email).trim();
     if (g.personId == null) g.personId = '';
     else g.personId = String(g.personId || '').trim();
     return g;
+  }
+  function recordGuestLoan(g, amount, at) {
+    if (!g) return false;
+    ensureGuestDebt(g);
+    const pounds = roundPounds(amount);
+    if (!(pounds > 0)) return false;
+    g.loans.push({
+      id: uid('l'),
+      amount: pounds,
+      at: at || new Date().toISOString(),
+      legacy: false,
+    });
+    g.lent = loanTotal(g);
+    return true;
+  }
+  function removeGuestLoan(g, loanId) {
+    if (!g) return false;
+    ensureGuestDebt(g);
+    const before = g.loans.length;
+    g.loans = g.loans.filter(row => String(row.id) !== String(loanId));
+    if (g.loans.length === before) return false;
+    g.lent = loanTotal(g);
+    return true;
   }
   function guestPaidBack(g) {
     ensureGuestDebt(g);
@@ -5366,6 +5416,12 @@
     }
     const paid = document.querySelector(`[data-debt-paid="${guestId}"]`);
     if (paid) paid.textContent = formatAmount(guestPaidBack(g));
+    paintGuestOwes(guestId);
+  }
+  function paintGuestOwes(guestId) {
+    const g = state.plan && state.plan.guests && state.plan.guests.find(x => x.id === guestId);
+    const el = document.querySelector(`[data-lent-owes="${guestId}"]`);
+    if (g && el) el.textContent = formatAmount(guestOwes(g));
   }
   function removeGuestRepayment(guestId, repayId) {
     const g = state.plan.guests.find(x => x.id === guestId);
@@ -5441,7 +5497,52 @@
     render();
   }
 
-    function renderGuests() {
+    function renderGuestLending(g, displayName) {
+      ensureGuestDebt(g);
+      const owes = guestOwes(g);
+      const repayRows = (g.repayments || []).map(r => `
+        <div class="repay-row">
+          <input type="date" data-repay-date="${g.id}" data-repay-id="${r.id}" value="${escapeHtml(r.date || '')}" aria-label="Repayment date">
+          <input type="number" inputmode="decimal" min="0" step="0.01" data-repay-amount="${g.id}" data-repay-id="${r.id}" value="${escapeHtml(String(r.amount ?? 0))}" aria-label="Repayment amount">
+          <button type="button" class="icon-btn" data-remove-repay="${g.id}" data-repay-id="${r.id}" aria-label="Remove repayment">×</button>
+        </div>
+      `).join('') || `<p class="muted">No daily repayments yet.</p>`;
+      const loanRows = (g.loans || []).map(row => `
+        <li class="lent-entry">
+          <span class="lent-when">${escapeHtml(loanWhenLabel(row))}</span>
+          <span class="lent-amt">${escapeHtml(formatAmount(row.amount))}</span>
+          <button type="button" class="icon-btn lent-remove" data-remove-loan="${escapeHtml(g.id)}" data-loan-id="${escapeHtml(row.id)}" aria-label="Remove this lending">×</button>
+        </li>`).join('') || `<li class="muted lent-empty">Nothing lent yet.</li>`;
+      const lentOpen = state.openLentRows[String(g.id)] ? ' open' : '';
+      return `
+        <details class="lent-lady"${lentOpen} data-lent-guest="${escapeHtml(g.id)}">
+          <summary class="lent-summary">
+            <span class="lent-name">${escapeHtml(displayName)}</span>
+            <span class="lent-owes" data-lent-owes="${escapeHtml(g.id)}">${escapeHtml(formatAmount(owes))}</span>
+          </summary>
+          <div class="lent-body">
+            <label class="lent-field">
+              <span>Lent</span>
+              <input type="number" inputmode="decimal" min="0" step="0.01" enterkeyhint="done" data-lent-entry="${escapeHtml(g.id)}" placeholder="0.00" aria-label="Amount lent. Press Enter to add it.">
+            </label>
+            <ul class="lent-list">${loanRows}</ul>
+            <div class="row-between">
+              <span class="muted" style="font-weight:700;">Daily repayments</span>
+              <button type="button" class="btn btn-outline btn-sm" data-add-repay="${g.id}">Add today’s repayment</button>
+            </div>
+            <div class="repay-list">${repayRows}</div>
+          </div>
+        </details>`;
+    }
+    function renderLendingSection() {
+      const rows = (state.plan.guests || []).map(g => {
+        ensureGuestDebt(g);
+        return renderGuestLending(g, String(g.name || '').trim() || 'Unnamed');
+      }).join('') || '<p class="muted">No guests yet.</p>';
+      const open = state.lendingOpen ? ' open' : '';
+      return `<details class="lending-desk"${open}><summary>Lending</summary><div class="lending-desk-body">${rows}</div></details>`;
+    }
+    function renderGuests(withLending) {
     const markEmpties = planShowsEmptyMarkers(state.plan);
     return (state.plan.guests || []).map(g => {
       ensureGuestDebt(g);
@@ -5452,13 +5553,6 @@
       const personId = person ? person.id : (g.personId || '');
       const displayName = String(g.name || '').trim() || 'Unnamed';
       const canOpen = !!personId && !!findPersonById(personId);
-      const repayRows = (g.repayments || []).map(r => `
-        <div class="repay-row">
-          <input type="date" data-repay-date="${g.id}" data-repay-id="${r.id}" value="${escapeHtml(r.date || '')}" aria-label="Repayment date">
-          <input type="number" inputmode="decimal" min="0" step="0.01" data-repay-amount="${g.id}" data-repay-id="${r.id}" value="${escapeHtml(String(r.amount ?? 0))}" aria-label="Repayment amount">
-          <button type="button" class="icon-btn" data-remove-repay="${g.id}" data-repay-id="${r.id}" aria-label="Remove repayment">×</button>
-        </div>
-      `).join('') || `<p class="muted">No daily repayments yet.</p>`;
       return `
       <div class="guest-block${missingMarkerClass(nameMissing || emailMissing)}" data-guest-id="${escapeHtml(g.id)}" data-person-id="${escapeHtml(personId)}">
         <div class="guest-row">
@@ -5474,18 +5568,7 @@
           ${emailMissing ? missingBadgeHtml('Email missing') : ''}
         </div>
         ${renderGuestAlbums(g)}
-        <div class="debt-grid">
-          <div class="debt-field">
-            <label for="lent_${g.id}">Lent (£)</label>
-            <input type="number" inputmode="decimal" min="0" step="0.01" id="lent_${g.id}" data-guest-lent="${g.id}" value="${escapeHtml(String(g.lent ?? 0))}" placeholder="0.00">
-          </div>
-        </div>
-        <div class="row-between">
-          <span class="muted" style="font-weight:700;">Daily repayments</span>
-          <button type="button" class="btn btn-outline btn-sm" data-add-repay="${g.id}">Add today’s repayment</button>
-        </div>
-        <div class="repay-list">${repayRows}</div>
-        ${pageHelp('<p>Enter amounts yourself. Nothing is invented. The name opens that person in People.</p>')}
+        ${withLending ? renderGuestLending(g, displayName) : ''}
       </div>`;
     }).join('');
   }
@@ -8887,11 +8970,11 @@ function renderDayTabs() {
       </div>
     `;
 
-    const guestsCard = `
+    const renderGuestsCard = (withLending) => `
       <div class="card">
         <div class="row-between"><h2>Ladies / guests</h2>
           <button type="button" class="btn btn-outline btn-sm" id="btnAddGuest">Add name</button></div>
-        <div id="guestList">${renderGuests()}</div>
+        <div id="guestList">${renderGuests(withLending)}</div>
         ${pageHelp('<p>Every guest’s full name and email. Each name links to People when there is a match. The organiser stays in the field above and is not the group name. Debt tracking stays on this device with the plan.</p>')}
       </div>
     `;
@@ -8953,7 +9036,7 @@ function renderDayTabs() {
       <div style="height:12px;"></div>
       ${dayCard}
       <div style="height:12px;"></div>
-      ${guestsCard}
+      ${renderGuestsCard(true)}
       <div style="height:12px;"></div>
       <div class="card">
         <h2>Dates &amp; hotel</h2>
@@ -8970,7 +9053,8 @@ function renderDayTabs() {
             <h2>Group</h2>
             ${datesRow}
           </div>
-          ${guestsCard}
+          ${renderGuestsCard(false)}
+          ${renderLendingSection()}
           <div class="card">
             <h2>Day 1 journey start</h2>
             ${renderHotelCard()}
@@ -9561,9 +9645,42 @@ function renderDayTabs() {
     document.querySelectorAll('[data-remove-guest]').forEach(btn => {
       btn.addEventListener('click', () => removeGuest(btn.getAttribute('data-remove-guest')));
     });
-    document.querySelectorAll('[data-guest-lent]').forEach(inp => {
-      inp.addEventListener('input', () => setGuestLent(inp.getAttribute('data-guest-lent'), inp.value));
-      inp.addEventListener('change', () => setGuestLent(inp.getAttribute('data-guest-lent'), inp.value));
+    document.querySelectorAll('[data-lent-entry]').forEach(inp => {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const id = inp.getAttribute('data-lent-entry');
+        const guest = (state.plan.guests || []).find(x => String(x.id) === String(id));
+        if (!recordGuestLoan(guest, inp.value)) return;
+        state.openLentRows[String(id)] = 1;
+        if (document.querySelector('.lending-desk')) state.lendingOpen = true;
+        scheduleAutoSave();
+        render();
+        const again = document.querySelector(`[data-lent-entry="${id}"]`);
+        if (again) again.focus();
+      });
+    });
+    document.querySelector('.lending-desk')?.addEventListener('toggle', (e) => {
+      state.lendingOpen = !!e.currentTarget.open;
+    });
+    document.querySelectorAll('.lent-lady').forEach(el => {
+      el.addEventListener('toggle', () => {
+        const id = el.getAttribute('data-lent-guest');
+        if (!id) return;
+        if (el.open) state.openLentRows[id] = 1;
+        else delete state.openLentRows[id];
+      });
+    });
+    document.querySelectorAll('[data-remove-loan]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-remove-loan');
+        const guest = (state.plan.guests || []).find(x => String(x.id) === String(id));
+        if (!removeGuestLoan(guest, btn.getAttribute('data-loan-id'))) return;
+        state.openLentRows[String(id)] = 1;
+        if (document.querySelector('.lending-desk')) state.lendingOpen = true;
+        scheduleAutoSave();
+        render();
+      });
     });
     document.querySelectorAll('[data-add-repay]').forEach(btn => {
       btn.addEventListener('click', () => addGuestRepayment(btn.getAttribute('data-add-repay')));
