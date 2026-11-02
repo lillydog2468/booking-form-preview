@@ -315,27 +315,126 @@
     });
   }
 
-  function googleMapsSearchUrl(text) {
+  function finiteCoord(value, limit) {
+    var n = Number(value);
+    if (!isFinite(n) || Math.abs(n) > limit) return null;
+    return String(n);
+  }
+
+  function pairFromNumbers(latText, lngText, latHemi, lngHemi) {
+    var lat = finiteCoord(latText, 90);
+    var lng = finiteCoord(lngText, 180);
+    if (lat == null || lng == null) return null;
+    if (/[Ss]/.test(latHemi || '')) lat = finiteCoord(-Math.abs(Number(lat)), 90);
+    if (/[Ww]/.test(lngHemi || '')) lng = finiteCoord(-Math.abs(Number(lng)), 180);
+    if (lat == null || lng == null) return null;
+    return { lat: lat, lng: lng };
+  }
+
+  /** '50.7 , 15.2', '50.70123,15.20123', or '50.7 N, 15.2 E'. */
+  function bareCoordinates(text) {
+    var s = String(text || '').trim();
+    var lead = /^([NnSs])\s*([+-]?\d+(?:\.\d+)?)\s*[, ]\s*([EeWw])\s*([+-]?\d+(?:\.\d+)?)$/.exec(s);
+    if (lead) return pairFromNumbers(lead[2], lead[4], lead[1], lead[3]);
+    var pair = /^([+-]?\d+(?:\.\d+)?)\s*°?\s*([NnSs])?\s*,\s*([+-]?\d+(?:\.\d+)?)\s*°?\s*([EeWw])?$/.exec(s);
+    if (pair) return pairFromNumbers(pair[1], pair[3], pair[2], pair[4]);
+    return null;
+  }
+
+  function isAppleMapsUrl(text) {
+    return /^(?:https?:\/\/)?maps\.apple(?:\.com)?(?:\/|\?|$)/i.test(text) || /^maps:\/\//i.test(text);
+  }
+
+  function isGoogleMapsUrl(text) {
+    return /^https?:\/\/(?:www\.)?(?:google\.[^/\s]+\/maps|maps\.google\.|goo\.gl\/maps|maps\.app\.goo\.gl)/i.test(text);
+  }
+
+  function coordinatesInUrl(text) {
+    var decoded = String(text || '');
+    try { decoded = decodeURIComponent(decoded); } catch (e) { /* keep the raw text */ }
+    var keys = ['ll', 'coordinate', 'sll', 'q', 'query', 'center', 'daddr', 'destination'];
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      var found = new RegExp('(?:[?&#]|^)' + keys[i] + '=([+-]?\\d+(?:\\.\\d+)?)\\s*,\\s*([+-]?\\d+(?:\\.\\d+)?)', 'i').exec(decoded);
+      if (found) {
+        var pair = pairFromNumbers(found[1], found[2]);
+        if (pair) return pair;
+      }
+    }
+    var at = /@([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)/.exec(decoded);
+    if (at) return pairFromNumbers(at[1], at[2]);
+    return null;
+  }
+
+  function directionsToPoint(lat, lng) {
+    var point = lat + ',' + lng;
+    var apple = 'https://maps.apple.com/?daddr=' + point + '&dirflg=d';
+    return {
+      mode: 'directions',
+      scheme: 'maps://?daddr=' + point + '&dirflg=d',
+      https: apple,
+      google: 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(point),
+      apple: apple,
+    };
+  }
+
+  function openMapUrl(url) {
+    return { mode: 'open', scheme: url, https: url, google: url, apple: url };
+  }
+
+  /**
+   * Where Navigate and the Maps links should go.
+   * Coordinates and map pins use exact daddr=lat,lng. A map link with no
+   * coordinates opens itself. Typed addresses stay a directions search.
+   */
+  function resolveMapTarget(text) {
     var query = String(text || '').trim();
-    if (!query) return '';
-    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query);
+    if (!query) return { mode: '', scheme: '', https: '', google: '', apple: '', label: '' };
+    var bare = bareCoordinates(query);
+    if (bare) {
+      var point = directionsToPoint(bare.lat, bare.lng);
+      point.label = query;
+      return point;
+    }
+    if (isAppleMapsUrl(query) || isGoogleMapsUrl(query)) {
+      var pin = coordinatesInUrl(query);
+      if (pin) {
+        var pinned = directionsToPoint(pin.lat, pin.lng);
+        pinned.label = 'Pinned location';
+        return pinned;
+      }
+      var open = openMapUrl(query);
+      open.label = 'Pinned location';
+      return open;
+    }
+    var encoded = encodeURIComponent(query);
+    return {
+      mode: 'search',
+      scheme: 'maps://?daddr=' + encoded + '&dirflg=d',
+      https: 'https://maps.apple.com/?daddr=' + encoded + '&dirflg=d',
+      google: 'https://www.google.com/maps/search/?api=1&query=' + encoded,
+      apple: 'https://maps.apple.com/?q=' + encoded,
+      label: query,
+    };
+  }
+
+  function mapFieldLabel(text) {
+    var target = resolveMapTarget(text);
+    return target.label || '';
+  }
+
+  function googleMapsSearchUrl(text) {
+    return resolveMapTarget(text).google || '';
   }
 
   function appleMapsSearchUrl(text) {
-    var query = String(text || '').trim();
-    if (!query) return '';
-    return 'https://maps.apple.com/?q=' + encodeURIComponent(query);
+    return resolveMapTarget(text).apple || '';
   }
 
   /** Driving directions. iOS uses the maps scheme; other devices use the https link. */
   function appleDirectionsUrl(text) {
-    var query = String(text || '').trim();
-    if (!query) return { scheme: '', https: '' };
-    var encoded = encodeURIComponent(query);
-    return {
-      scheme: 'maps://?daddr=' + encoded + '&dirflg=d',
-      https: 'https://maps.apple.com/?daddr=' + encoded + '&dirflg=d',
-    };
+    var target = resolveMapTarget(text);
+    return { scheme: target.scheme || '', https: target.https || '' };
   }
 
   /** Move a stop between days or within a day. Time, guests and notes stay on the stop. */
@@ -385,6 +484,8 @@
     googleMapsSearchUrl: googleMapsSearchUrl,
     appleMapsSearchUrl: appleMapsSearchUrl,
     appleDirectionsUrl: appleDirectionsUrl,
+    resolveMapTarget: resolveMapTarget,
+    mapFieldLabel: mapFieldLabel,
     relocateStop: relocateStop,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

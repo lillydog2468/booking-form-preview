@@ -77,6 +77,7 @@ Run these in the Supabase **SQL Editor** in the order below. The order matters b
 | — | `19_2027_booking_fields.sql` | **Optional. Do not run it for the pages to work.** Documents extra columns for guest email, rooms, payment method and similar. The booking form and planner already store those details without these columns. |
 | — | `20_booking_status.sql` | **Optional. Do not run it for the tax summary to work.** Adds nullable `bookings.status` (`cancelled`, `unconfirmed`, `duplicate`, `companion`). The tax page uses the column when it is filled in, and a built-in id list when it is not. |
 | — | `21_planner_place_categories.sql` | **Run this so a place can have more than one category.** Adds nullable `planner_places.place_types`. Does not change or delete existing rows. A null list means the place still has only `place_type`. |
+| — | `28_planner_place_pins.sql` | **Run this so a dragged map pin is stored.** Adds nullable `pin_lat`, `pin_lng`, and `pin_set_at` on `planner_places`. Existing rows are left alone. The planner still works before this is run. |
 
 Files 04–07 are **reference queries** (SELECT, INSERT, UPDATE, DELETE) — you don't need to run them during setup. They're templates for your application code.
 
@@ -101,6 +102,10 @@ Adds `planner_places.place_types` (`TEXT[]`, nullable) so one place can be, for 
 - Safe to re-run. It does not delete rows and it does not rewrite `place_type`.
 
 `sql/16_tour_planner_tables.sql` creates the same column on a fresh database. Run `21` on a database that already has `planner_places`.
+
+### `28_planner_place_pins.sql`
+
+Adds three nullable columns on `planner_places`: `pin_lat` and `pin_lng` (`double precision`) and `pin_set_at` (`timestamptz`). They store the pin dragged on the place map. A null pin means Navigate still uses the typed address. Existing rows are not changed. Safe to re-run. The planner keeps the pin on this device until these columns exist.
 
 ### Optional — `19_2027_booking_fields.sql`
 

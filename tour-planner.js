@@ -317,9 +317,19 @@
     }
     return n + ', Czech Republic';
   }
+  function directMapHref(addr) {
+    const text = String(addr || '').trim();
+    const HS = window.HandoverStops;
+    if (!text || !HS || !HS.resolveMapTarget) return '';
+    const target = HS.resolveMapTarget(text);
+    if (target.mode === 'directions' || target.mode === 'open') return target.https || text;
+    return '';
+  }
   function appleMapsUrl(name, address) {
     const addr = (address || '').trim();
-    // Pasted Apple Maps links (maps.apple.com / maps.apple/p/…) open directly.
+    const direct = directMapHref(addr);
+    // Pasted Apple or Google links, typed coordinates, and a saved pin open on that point.
+    if (direct) return direct;
     if (addressLooksLikeMapsUrl(addr)) return addr;
     const q = mapsQuery(name, address);
     // https works in browser; Apple devices hand off to Maps
@@ -361,6 +371,8 @@
   }
   function tourHotelAppleMapsUrl(name, address) {
     const addr = (address || '').trim();
+    const direct = directMapHref(addr);
+    if (direct) return direct;
     if (addressLooksLikeMapsUrl(addr)) return addr;
     return 'https://maps.apple.com/?q=' + encodeURIComponent(tourHotelMapsQuery(name, address));
   }
@@ -497,7 +509,7 @@
     const name = (stop && stop.title) || '';
     const place = placeById(stop && (stop.placeId || stop.place_id));
     const placeName = (place && place.name) || name;
-    const address = resolveStopAddress(stop) || knownTourHotelAddress(placeName || name);
+    const address = navigationAddressForStop(stop) || knownTourHotelAddress(placeName || name);
     const isTourHotel = (place && placeHasType(place, 'hotel')) || !!knownTourHotelAddress(placeName || name);
     if (isTourHotel) {
       return tourHotelMapsButtonHtml(placeName || name, address, label || 'Open in Apple Maps');
@@ -840,6 +852,7 @@
     }).filter(y => y != null);
     // unique sorted ascending
     p.visitYears = [...new Set(p.visitYears)].sort((a, b) => a - b);
+    if (window.PlacePin) PlacePin.normalisePlace(p);
     if (!String(p.nickname).trim()) {
       const seeded = (p.id && DEFAULT_NICKNAMES[p.id]) || inventShortNickname(p.name);
       if (seeded) p.nickname = seeded;
@@ -2714,7 +2727,7 @@
       types: r.place_types,
       place_types: r.place_types,
     });
-    return ensurePlace({
+    const place = ensurePlace({
       id: r.client_id || ('p' + r.id),
       name: r.name || '',
       type: categories[0] || 'other',
@@ -2730,6 +2743,8 @@
       visitCount: r.visit_count == null ? 0 : Number(r.visit_count),
       visitYears: r.visit_years || [],
     });
+    if (window.PlacePin) PlacePin.applyRowPin(place, r);
+    return place;
   }
 
 
@@ -3331,11 +3346,24 @@
       firstVisited: p.firstVisited ? String(p.firstVisited).slice(0, 10) : '',
       visitCount: Number(p.visitCount) || 0,
       visitYears: Array.isArray(p.visitYears) ? p.visitYears.slice() : [],
+      pinLat: p.pinLat == null ? null : p.pinLat,
+      pinLng: p.pinLng == null ? null : p.pinLng,
+      pinSetAt: p.pinSetAt || '',
     };
   }
   function rememberPlaceBaseline(p) {
     if (!p || !p.id) return;
-    try { placeBaselines[String(p.id)] = placeColumnSnapshot(p); } catch (_) {}
+    try {
+      const snap = placeColumnSnapshot(p);
+      // A pin that only exists on this device is not the saved baseline,
+      // so the next save of this place sends it once the columns exist.
+      if (p.pinNeedsUpload) {
+        snap.pinLat = null;
+        snap.pinLng = null;
+        snap.pinSetAt = '';
+      }
+      placeBaselines[String(p.id)] = snap;
+    } catch (_) {}
   }
   function rememberPlaceBaselines() {
     (state.catalogue || []).forEach(p => {
@@ -3726,8 +3754,15 @@
         const { data, error } = await sb.from('planner_places').select('*').eq('client_id', String(id)).maybeSingle();
         if (error) throw error;
         if (!data) {
-          const sent = placeToRow(place, Math.max(index, 0));
-          const { data: inserted, error: insErr } = await sb.from('planner_places').insert(sent).select('client_id, visit_count, first_visited, visit_years');
+          const sent = window.PlacePin
+            ? PlacePin.attachPinColumns(placeToRow(place, Math.max(index, 0)), place)
+            : placeToRow(place, Math.max(index, 0));
+          const writeInsert = (row) => sb.from('planner_places').insert(row).select('client_id, visit_count, first_visited, visit_years');
+          const insertedResult = window.PlacePin
+            ? await PlacePin.writeWithoutMissingPinColumns(sent, writeInsert)
+            : await writeInsert(sent);
+          const inserted = insertedResult && insertedResult.data;
+          const insErr = insertedResult && insertedResult.error;
           if (insErr) {
             // Another writer inserted this client_id. Re-read; do not add a second row.
             if (insErr.code === '23505' && attempt === 0) continue;
@@ -3735,6 +3770,7 @@
           }
           if (!insertedPlaceRowConfirms(sent, inserted && inserted[0])) return false;
           placeRowsOnServer.add(String(id));
+          if (!window.PlacePin || !PlacePin.columnsAreAbsent()) place.pinNeedsUpload = false;
           rememberPlaceBaseline(place);
           return true;
         }
@@ -3771,16 +3807,25 @@
           const mergedYears = patchEdited(data.visit_years || [], baseline.visitYears || [], current.visitYears || []).value;
           if (!jsonSame(mergedYears, data.visit_years || [])) patch.visit_years = mergedYears;
         }
+        if (window.PlacePin) Object.assign(patch, PlacePin.pinPatch(baseline, current));
         if (!Object.keys(patch).length) {
           rememberPlaceBaseline(place);
           return true;
         }
         patch.updated_at = new Date().toISOString();
-        let q = sb.from('planner_places').update(patch).eq('client_id', String(id)).select('client_id');
-        if (data.updated_at) q = sb.from('planner_places').update(patch).eq('client_id', String(id)).eq('updated_at', data.updated_at).select('client_id');
-        const { data: updated, error: upErr } = await q;
+        const writeUpdate = (row) => {
+          let q = sb.from('planner_places').update(row).eq('client_id', String(id)).select('client_id');
+          if (data.updated_at) q = sb.from('planner_places').update(row).eq('client_id', String(id)).eq('updated_at', data.updated_at).select('client_id');
+          return q;
+        };
+        const updatedResult = window.PlacePin
+          ? await PlacePin.writeWithoutMissingPinColumns(patch, writeUpdate)
+          : await writeUpdate(patch);
+        const updated = updatedResult && updatedResult.data;
+        const upErr = updatedResult && updatedResult.error;
         if (upErr) throw upErr;
         if (updated && updated.length) {
+          if (!window.PlacePin || !PlacePin.columnsAreAbsent()) place.pinNeedsUpload = false;
           rememberPlaceBaseline(place);
           return true;
         }
@@ -5118,6 +5163,14 @@
     const id = escapeHtml(stop.id);
     return `<button type="button" class="handover-toggle" data-handover-toggle="${id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Hide details' : 'Show details'}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`;
   }
+  /** Stop pin, then the linked place pin, then the typed address. */
+  function navigationAddressForStop(stop) {
+    const place = placeById(stop && (stop.placeId || stop.place_id));
+    const fallback = resolveStopAddress(stop) || String((stop && (stop.hotelName || stop.title)) || '').trim();
+    if (window.PlacePin && PlacePin.navigationQuery) return PlacePin.navigationQuery(stop, place, fallback);
+    return fallback;
+  }
+
   function navigateButtonHtml(address) {
     const HS = window.HandoverStops;
     const text = String(address || '').trim();
@@ -5131,10 +5184,13 @@
     const HS = window.HandoverStops;
     if (!HS || !HS.googleMapsSearchUrl || !stop || stop.placeKind === 'airport') return '';
     const text = String(stop.address || stop.hotelName || '').trim();
-    const google = HS.googleMapsSearchUrl(text);
+    const nav = navigationAddressForStop(stop);
+    const query = nav || text;
+    const google = HS.googleMapsSearchUrl(query);
     if (!google) return '';
-    const apple = HS.appleMapsSearchUrl ? HS.appleMapsSearchUrl(text) : '';
-    return `<p class="handover-maps"><span class="handover-address">${escapeHtml(text)}</span> <a href="${escapeHtml(google)}" target="_blank" rel="noopener">Google Maps</a>${apple ? ` · <a href="${escapeHtml(apple)}" target="_blank" rel="noopener">Apple Maps</a>` : ''} ${navigateButtonHtml(text)}</p>`;
+    const apple = HS.appleMapsSearchUrl ? HS.appleMapsSearchUrl(query) : '';
+    const shown = HS.mapFieldLabel ? HS.mapFieldLabel(text || query) : (text || query);
+    return `<p class="handover-maps"><span class="handover-address">${escapeHtml(shown)}</span> <a href="${escapeHtml(google)}" target="_blank" rel="noopener">Google Maps</a>${apple ? ` · <a href="${escapeHtml(apple)}" target="_blank" rel="noopener">Apple Maps</a>` : ''} ${navigateButtonHtml(query)}</p>`;
   }
 
   function renderHandoverBar(stop) {
@@ -5851,6 +5907,7 @@
             <div class="maps-under-field">${(placeHasType(p, 'hotel') || knownTourHotelAddress(p.name)) ? tourHotelMapsButtonHtml(p.name, p.address || knownTourHotelAddress(p.name), 'Open in Apple Maps') : mapsButtonHtml(p.name, p.address, 'Open in Apple Maps')}</div>
           </div>
         </div>
+        ${placeMapHtml(p)}
         <div class="dir-grid" style="margin-top:8px;">
           <div>
             <label class="field-label">Nickname</label>
@@ -7473,7 +7530,7 @@
             <div class="stop-notes address-row">
               <input type="text" data-stop-address="${s.id}" value="${escapeHtml(resolveStopAddress(s))}" placeholder="Address (village/town or street) or Apple Maps link" aria-label="Address">
               ${stopMapsButtonHtml(s, 'Open in Apple Maps')}
-              ${navigateButtonHtml(resolveStopAddress(s))}
+              ${navigateButtonHtml(navigationAddressForStop(s))}
             </div>
             ${placeHint}
           </div>
@@ -7744,6 +7801,191 @@ function renderDayTabs() {
       } catch { /* ignore */ }
     };
     requestAnimationFrame(() => requestAnimationFrame(apply));
+  }
+
+  function placeMapHtml(place) {
+    if (!place || !window.PlacePin) return '';
+    const pin = PlacePin.readPin(place);
+    const id = escapeHtml(place.id);
+    const status = pin
+      ? `Pin saved · ${escapeHtml(pin.lat)}, ${escapeHtml(pin.lng)} <button type="button" class="place-pin-clear" data-clear-pin="${id}">Clear pin</button>`
+      : 'Drag the pin to the exact spot.';
+    return `
+      <div class="place-pin-map" data-place-map="${id}">
+        <div class="field-label">Map</div>
+        <div class="place-pin-canvas" data-place-map-canvas="${id}" role="application" aria-label="Map of this place"></div>
+        <p class="place-pin-status" data-place-pin-status="${id}">${status}</p>
+        <p class="place-pin-credit">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors. Address search © <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener">Nominatim</a>.</p>
+      </div>`;
+  }
+
+  const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  const LEAFLET_JS_SRI = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+  const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  const LEAFLET_CSS_SRI = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+  let leafletPromise = null;
+  let placeMapToken = 0;
+  let placeLeafletMap = null;
+  let placePinBound = false;
+
+  function ensureLeaflet() {
+    if (window.L && window.L.map) return Promise.resolve(window.L);
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((resolve, reject) => {
+      if (!document.querySelector('link[data-leaflet]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = LEAFLET_CSS;
+        link.integrity = LEAFLET_CSS_SRI;
+        link.crossOrigin = 'anonymous';
+        link.setAttribute('data-leaflet', '1');
+        document.head.appendChild(link);
+      }
+      const script = document.createElement('script');
+      script.src = LEAFLET_JS;
+      script.integrity = LEAFLET_JS_SRI;
+      script.crossOrigin = 'anonymous';
+      script.onload = () => resolve(window.L);
+      script.onerror = () => {
+        leafletPromise = null;
+        reject(new Error('Leaflet did not load'));
+      };
+      document.head.appendChild(script);
+    });
+    return leafletPromise;
+  }
+
+  function leafletPinIcon(L) {
+    return L.icon({
+      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41],
+    });
+  }
+
+  function setPinStatus(id, html, asHtml) {
+    const el = document.querySelector(`[data-place-pin-status="${CSS.escape(String(id))}"]`);
+    if (!el) return;
+    if (asHtml) el.innerHTML = html;
+    else el.textContent = html;
+  }
+
+  function showPinSaved(place) {
+    const pin = window.PlacePin && PlacePin.readPin(place);
+    if (!pin) return;
+    const id = escapeHtml(place.id);
+    setPinStatus(place.id, `Pin saved · ${escapeHtml(pin.lat)}, ${escapeHtml(pin.lng)} <button type="button" class="place-pin-clear" data-clear-pin="${id}">Clear pin</button>`, true);
+  }
+
+  function destroyPlaceMap() {
+    placeMapToken += 1;
+    if (placeLeafletMap) {
+      try { placeLeafletMap.remove(); } catch (e) { /* the node may already be gone */ }
+      placeLeafletMap = null;
+    }
+  }
+
+  function bindPlacePinOnce() {
+    if (placePinBound) return;
+    placePinBound = true;
+    document.addEventListener('click', (event) => {
+      const btn = event.target && event.target.closest ? event.target.closest('[data-clear-pin]') : null;
+      if (!btn) return;
+      event.preventDefault();
+      const id = btn.getAttribute('data-clear-pin');
+      const place = directoryPlace(id);
+      if (!place || !window.PlacePin) return;
+      PlacePin.clearPin(place);
+      scheduleAutoSave({ placeId: id });
+      render();
+    });
+  }
+
+  async function initPlaceLeaflet(canvas, place, token) {
+    canvas.dataset.mapReady = '1';
+    let L;
+    try {
+      L = await ensureLeaflet();
+    } catch (e) {
+      setPinStatus(place.id, 'The map could not be loaded.');
+      return;
+    }
+    if (token !== placeMapToken || !canvas.isConnected || !window.PlacePin) return;
+    const centre = PlacePin.centreForPlace(place);
+    const map = L.map(canvas, {
+      scrollWheelZoom: false,
+      tap: true,
+      touchZoom: true,
+      dragging: true,
+    }).setView([centre.lat, centre.lng], PlacePin.zoomFor(centre));
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+    const marker = L.marker([centre.lat, centre.lng], {
+      draggable: true,
+      autoPan: true,
+      icon: leafletPinIcon(L),
+    }).addTo(map);
+    placeLeafletMap = map;
+    let moved = centre.source === 'pin';
+    marker.on('dragend', () => {
+      moved = true;
+      const ll = marker.getLatLng();
+      PlacePin.writePin(place, ll.lat, ll.lng);
+      showPinSaved(place);
+      scheduleAutoSave({ placeId: place.id });
+    });
+    setTimeout(() => { if (token === placeMapToken) map.invalidateSize(); }, 80);
+    if (!PlacePin.needsLookup(place)) return;
+    setPinStatus(place.id, 'Looking up the address…');
+    const addr = String(place.address || '').trim();
+    PlacePin.geocodeAddress(addr).then(point => {
+      if (token !== placeMapToken || moved || !canvas.isConnected) return;
+      if (!point) {
+        setPinStatus(place.id, 'Could not look up that address. The map is on Jablonec nad Nisou. Drag the pin to the right spot.');
+        return;
+      }
+      PlacePin.rememberGeocode(place, point);
+      marker.setLatLng([point.lat, point.lng]);
+      map.setView([point.lat, point.lng], 16);
+      if (!PlacePin.readPin(place)) setPinStatus(place.id, 'Drag the pin to the exact spot.');
+    });
+  }
+
+  function mountShownPlaceMap() {
+    bindPlacePinOnce();
+    const canvas = document.querySelector('[data-place-map-canvas]');
+    if (!canvas || !window.PlacePin) return;
+    if (canvas.dataset.mapReady === '1') return;
+    const place = directoryPlace(canvas.getAttribute('data-place-map-canvas'));
+    if (!place) return;
+    const token = ++placeMapToken;
+    const start = () => {
+      if (token !== placeMapToken || !canvas.isConnected) return;
+      initPlaceLeaflet(canvas, place, token);
+    };
+    if (typeof IntersectionObserver === 'function') {
+      const watcher = new IntersectionObserver((entries) => {
+        if (!entries.some(entry => entry.isIntersecting)) return;
+        watcher.disconnect();
+        start();
+      }, { rootMargin: '80px' });
+      watcher.observe(canvas);
+      return;
+    }
+    requestAnimationFrame(start);
+  }
+
+  function remountPlaceMap() {
+    const canvas = document.querySelector('[data-place-map-canvas]');
+    if (canvas) delete canvas.dataset.mapReady;
+    destroyPlaceMap();
+    mountShownPlaceMap();
   }
 
   function updatePlaceMapsLink(placeId) {
@@ -8778,7 +9020,7 @@ function renderDayTabs() {
     const open = state.plan && String(state.bookingKey) === key ? state.plan : null;
     const plan = open || (state.plans && state.plans[key]) || null;
     if (!plan || !window.WeekNote) return null;
-    return WeekNote.build(plan, { today: todayISO() });
+    return WeekNote.build(plan, { today: todayISO(), places: state.catalogue });
   }
   function copyWeekText(note) {
     const blob = note.title + '\n\n' + note.text;
@@ -8893,7 +9135,7 @@ function renderDayTabs() {
             <h2>Places directory</h2>
             <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
           </div>
-          ${pageHelp('<p>Search and pick a place on the left. Edit the name, type, contact, address, and notes on the right.</p>')}
+          ${pageHelp('<p>Search and pick a place on the left. Edit the name, type, contact, address, and notes on the right. Drag the pin on the map to save the exact spot.</p>')}
           ${renderCatalogue({ showAddToDay: false })}
         </div>`;
     } else if (state.mainTab === 'people') {
@@ -8911,10 +9153,12 @@ function renderDayTabs() {
     } else if (state.mainTab === 'visits') {
       body = renderVisitsPanel();
     }
+    destroyPlaceMap();
     const app = document.getElementById('app');
     if (app) app.innerHTML = `<div class="status-row">${live}${auth}</div>${body}`;
     bindDynamic();
     if (state.mainTab === 'people') bindPeopleDirectory();
+    if (state.mainTab === 'places') mountShownPlaceMap();
   }
 
   function render(opts) {
@@ -8924,6 +9168,7 @@ function renderDayTabs() {
 
     const view = effectiveView();
     syncViewChrome(view);
+    destroyPlaceMap();
     if (state.phoneWeek) {
       document.body.classList.add('phone-week');
       const app = document.getElementById('app');
@@ -8933,9 +9178,9 @@ function renderDayTabs() {
       }
       updateGroupHeading();
       markPhoneHeading(true);
-      const note = WeekNote.build(state.plan, { today: todayISO() });
+      const note = WeekNote.build(state.plan, { today: todayISO(), places: state.catalogue });
       window.weekNote = note;
-      if (app) app.innerHTML = WeekNote.render(state.plan, { today: todayISO() });
+      if (app) app.innerHTML = WeekNote.render(state.plan, { today: todayISO(), places: state.catalogue });
       bindPhoneWeek(note);
       return;
     }
@@ -9080,7 +9325,7 @@ function renderDayTabs() {
           <h2>Places directory</h2>
           <button type="button" class="btn btn-outline btn-sm" id="btnBackPlanner">Back to Planner</button>
         </div>
-        ${pageHelp('<p>Search and pick a place on the left. Edit the name, type, contact, address, and notes on the right. Hotels in this directory appear in Staying at.</p>')}
+        ${pageHelp('<p>Search and pick a place on the left. Edit the name, type, contact, address, and notes on the right. Drag the pin on the map to save the exact spot. Hotels in this directory appear in Staying at.</p>')}
         ${renderCatalogue({ showAddToDay: false })}
       </div>
     `;
@@ -9162,6 +9407,7 @@ function renderDayTabs() {
       ${renderVisitsPanel()}
     `;
 
+    destroyPlaceMap();
     const app = document.getElementById('app');
     if (state.mainTab === 'places') {
       app.innerHTML = placesView;
@@ -9181,6 +9427,7 @@ function renderDayTabs() {
       app.innerHTML = plannerDesktop;
     }
     bindDynamic();
+    if (state.mainTab === 'places') mountShownPlaceMap();
     if (state.mainTab === 'rough') bindRoughPlan();
     if (state.mainTab === 'people') bindPeopleDirectory();
     if (state.mainTab === 'issues') bindIssuesPanel();
@@ -10706,6 +10953,8 @@ function renderDayTabs() {
           render();
         } else {
           scheduleAutoSave({ placeId: id });
+          const edited = directoryPlace(id);
+          if (edited && window.PlacePin && !PlacePin.readPin(edited)) remountPlaceMap();
         }
       });
     });

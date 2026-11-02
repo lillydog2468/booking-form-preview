@@ -91,29 +91,53 @@
 
   function placeText(stop) {
     var title = String(stop && stop.title || '').trim();
-    if (title) return title;
     var hotel = String(stop && (stop.hotelName || stop.address) || '').trim();
-    if (hotel) return hotel;
-    return cueFor(stop).label;
+    var shown = title || hotel || cueFor(stop).label;
+    var HS = root.HandoverStops;
+    if (HS && HS.mapFieldLabel && (title || hotel)) return HS.mapFieldLabel(shown);
+    return shown;
   }
 
-  function mapQuery(stop) {
-    return String((stop && (stop.address || stop.hotelName || stop.title)) || '').trim();
+  function linkedPlace(stop, places) {
+    var id = stop && (stop.placeId || stop.place_id);
+    if (!id || !places) return null;
+    var i;
+    for (i = 0; i < places.length; i++) {
+      if (places[i] && String(places[i].id) === String(id)) return places[i];
+    }
+    return null;
   }
 
-  function mapLink(stop) {
-    var query = mapQuery(stop);
-    if (!query) return '';
-    return 'https://maps.apple.com/?daddr=' + encodeURIComponent(query) + '&dirflg=d';
+  function mapQuery(stop, places) {
+    var fallback = String((stop && (stop.address || stop.hotelName || stop.title)) || '').trim();
+    var place = linkedPlace(stop, places);
+    if (!fallback && place) fallback = String(place.address || '').trim();
+    var PP = root.PlacePin;
+    if (PP && PP.navigationQuery) return PP.navigationQuery(stop, place, fallback);
+    return fallback;
   }
 
-  function mapScheme(stop) {
-    var query = mapQuery(stop);
-    if (!query) return '';
-    return 'maps://?daddr=' + encodeURIComponent(query) + '&dirflg=d';
+  function mapUrls(stop, places) {
+    var query = mapQuery(stop, places);
+    var HS = root.HandoverStops;
+    if (HS && HS.appleDirectionsUrl) return HS.appleDirectionsUrl(query);
+    if (!query) return { scheme: '', https: '' };
+    var encoded = encodeURIComponent(query);
+    return {
+      scheme: 'maps://?daddr=' + encoded + '&dirflg=d',
+      https: 'https://maps.apple.com/?daddr=' + encoded + '&dirflg=d',
+    };
   }
 
-  function stopRows(day, guests) {
+  function mapLink(stop, places) {
+    return mapUrls(stop, places).https || '';
+  }
+
+  function mapScheme(stop, places) {
+    return mapUrls(stop, places).scheme || '';
+  }
+
+  function stopRows(day, guests, places) {
     return ((day && day.blocks) || []).filter(function (stop) {
       return stop && (stop.type === 'handover' || String(stop.title || '').trim() || String(stop.time || '').trim() || String(stop.hotelName || '').trim());
     }).map(function (stop) {
@@ -123,8 +147,8 @@
         place: placeText(stop),
         guests: guestNames(stop, guests),
         cue: cue,
-        map: mapLink(stop),
-        scheme: mapScheme(stop),
+        map: mapLink(stop, places),
+        scheme: mapScheme(stop, places),
       };
     });
   }
@@ -151,7 +175,7 @@
         date: date,
         heading: (weekday(date) + ' ' + dayMon(date)).trim(),
         today: !!today && date === today,
-        stops: stopRows(stored, guests),
+        stops: stopRows(stored, guests, opts.places || []),
       };
     });
     if (days.length && !days.some(function (day) { return day.today; })) days[0].open = true;

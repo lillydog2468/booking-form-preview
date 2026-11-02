@@ -35,6 +35,9 @@ ALTER TABLE planner_places ADD COLUMN IF NOT EXISTS icon TEXT;
 ALTER TABLE planner_places ADD COLUMN IF NOT EXISTS first_visited DATE;
 ALTER TABLE planner_places ADD COLUMN IF NOT EXISTS visit_count INT NOT NULL DEFAULT 0;
 ALTER TABLE planner_places ADD COLUMN IF NOT EXISTS visit_years JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE planner_places ADD COLUMN IF NOT EXISTS pin_lat DOUBLE PRECISION;
+ALTER TABLE planner_places ADD COLUMN IF NOT EXISTS pin_lng DOUBLE PRECISION;
+ALTER TABLE planner_places ADD COLUMN IF NOT EXISTS pin_set_at TIMESTAMPTZ;
 COMMENT ON COLUMN planner_places.place_type IS
   'Primary category. Existing rows keep this single value. See place_types and sql/21_planner_place_categories.sql for a second category.';
 COMMENT ON COLUMN planner_places.place_types IS

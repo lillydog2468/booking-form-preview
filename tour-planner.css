@@ -1173,6 +1173,19 @@
     }
     .maps-btn-inline:hover, .maps-under-field .maps-btn:hover { border-color: var(--accent); }
     .maps-under-field { margin-top: 6px; min-height: 8px; }
+    .place-pin-map { margin-top: 10px; }
+    .place-pin-canvas {
+      height: 180px; border-radius: 12px; border: 1px solid var(--border);
+      overflow: hidden; background: #e7e4dc; touch-action: none;
+    }
+    .place-pin-status { margin: 6px 0 0; font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
+    .place-pin-clear {
+      margin-left: 8px; border: 0; background: none; padding: 0;
+      color: var(--accent); font: inherit; font-weight: 700; cursor: pointer;
+      text-decoration: underline;
+    }
+    .place-pin-credit { margin: 4px 0 0; font-size: 11px; color: var(--text-secondary); }
+    .place-pin-credit a { color: inherit; }
     .prague-field-actions {
       display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
       margin-top: 6px;
