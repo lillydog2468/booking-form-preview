@@ -296,6 +296,30 @@
     return String(fallback || '').trim();
   }
 
+  /** Open Apple Maps on a saved pin, labelled with the place name. */
+  function applePinHref(name, pin) {
+    var point = readPin(pin) || readPin({ pinLat: pin && pin.lat, pinLng: pin && pin.lng });
+    if (!point) return '';
+    var label = String(name || '').trim() || 'Pinned location';
+    return 'https://maps.apple.com/?ll=' + point.lat + ',' + point.lng + '&q=' + encodeURIComponent(label);
+  }
+
+  /**
+   * Link for Open in Apple Maps.
+   * A saved pin wins. A pasted map link or typed coordinates use the same
+   * address Navigate uses. A plain address returns '' so the caller keeps ?q=.
+   */
+  function openInAppleMapsHref(name, address, place) {
+    var pin = readPin(place);
+    if (pin) return applePinHref(name || (place && place.name), pin);
+    var text = String(address || '').trim();
+    var HS = root.HandoverStops;
+    if (!text || !HS || !HS.resolveMapTarget) return '';
+    var target = HS.resolveMapTarget(text);
+    if (target && (target.mode === 'directions' || target.mode === 'open')) return target.https || text;
+    return '';
+  }
+
   function pinStatusText(place) {
     var pin = readPin(place);
     if (!pin) return '';
@@ -409,6 +433,8 @@
     geocodeQuery: geocodeQuery,
     rememberGeocode: rememberGeocode,
     navigationQuery: navigationQuery,
+    applePinHref: applePinHref,
+    openInAppleMapsHref: openInAppleMapsHref,
     pinStatusText: pinStatusText,
     isMissingPinColumn: isMissingPinColumn,
     omitPinColumns: omitPinColumns,

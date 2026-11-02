@@ -325,11 +325,18 @@
     if (target.mode === 'directions' || target.mode === 'open') return target.https || text;
     return '';
   }
-  function appleMapsUrl(name, address) {
+  function openedAppleMapsHref(name, address, place) {
+    if (window.PlacePin && PlacePin.openInAppleMapsHref) {
+      const href = PlacePin.openInAppleMapsHref(name, address, place);
+      if (href) return href;
+    }
+    return directMapHref(address);
+  }
+  function appleMapsUrl(name, address, place) {
+    const opened = openedAppleMapsHref(name, address, place);
+    // A saved pin, a pasted map link, or typed coordinates open on that point.
+    if (opened) return opened;
     const addr = (address || '').trim();
-    const direct = directMapHref(addr);
-    // Pasted Apple or Google links, typed coordinates, and a saved pin open on that point.
-    if (direct) return direct;
     if (addressLooksLikeMapsUrl(addr)) return addr;
     const q = mapsQuery(name, address);
     // https works in browser; Apple devices hand off to Maps
@@ -344,7 +351,9 @@
     if (/\bprague\b|\bpraha\b/i.test(n)) return n;
     return n + ', Prague';
   }
-  function pragueHotelAppleMapsUrl(name, address) {
+  function pragueHotelAppleMapsUrl(name, address, place) {
+    const opened = openedAppleMapsHref(name, address, place);
+    if (opened) return opened;
     return 'https://maps.apple.com/?q=' + encodeURIComponent(pragueHotelMapsQuery(name, address));
   }
   function pragueHotelMapsButtonHtml(name, address, label, id) {
@@ -369,15 +378,15 @@
     const city = knownTourHotelCity(n) || 'Jablonec nad Nisou';
     return n + ', ' + city;
   }
-  function tourHotelAppleMapsUrl(name, address) {
+  function tourHotelAppleMapsUrl(name, address, place) {
+    const opened = openedAppleMapsHref(name, address, place);
+    if (opened) return opened;
     const addr = (address || '').trim();
-    const direct = directMapHref(addr);
-    if (direct) return direct;
     if (addressLooksLikeMapsUrl(addr)) return addr;
     return 'https://maps.apple.com/?q=' + encodeURIComponent(tourHotelMapsQuery(name, address));
   }
-  function tourHotelMapsButtonHtml(name, address, label, id) {
-    const href = tourHotelAppleMapsUrl(name, address);
+  function tourHotelMapsButtonHtml(name, address, label, id, place) {
+    const href = tourHotelAppleMapsUrl(name, address, place);
     const text = label || 'Open in Apple Maps';
     const q = tourHotelMapsQuery(name, address);
     const idAttr = id ? ` id="${escapeHtml(id)}"` : '';
@@ -426,10 +435,10 @@
         </label>
       </div>`;
   }
-  function mapsButtonHtml(name, address, label) {
+  function mapsButtonHtml(name, address, label, place) {
     const q = (address || '').trim() || mapsQuery(name, address);
-    if (!q) return '';
-    const href = appleMapsUrl(name, address);
+    const href = appleMapsUrl(name, address, place);
+    if (!href && !q) return '';
     const text = label || 'Open in Apple Maps';
     return `<a class="maps-btn maps-btn-inline" href="${href}" target="_blank" rel="noopener" title="Open address in Apple Maps">${escapeHtml(text)}</a>`;
   }
@@ -512,9 +521,9 @@
     const address = navigationAddressForStop(stop) || knownTourHotelAddress(placeName || name);
     const isTourHotel = (place && placeHasType(place, 'hotel')) || !!knownTourHotelAddress(placeName || name);
     if (isTourHotel) {
-      return tourHotelMapsButtonHtml(placeName || name, address, label || 'Open in Apple Maps');
+      return tourHotelMapsButtonHtml(placeName || name, address, label || 'Open in Apple Maps', '', place);
     }
-    return mapsButtonHtml(placeName || name, address, label || 'Open in Apple Maps');
+    return mapsButtonHtml(placeName || name, address, label || 'Open in Apple Maps', place);
   }
 
 
@@ -5904,7 +5913,7 @@
           <div>
             <label class="field-label">Address</label>
             <input type="text" data-place-address="${p.id}" value="${escapeHtml(p.address || '')}" placeholder="Village, town, or street">
-            <div class="maps-under-field">${(placeHasType(p, 'hotel') || knownTourHotelAddress(p.name)) ? tourHotelMapsButtonHtml(p.name, p.address || knownTourHotelAddress(p.name), 'Open in Apple Maps') : mapsButtonHtml(p.name, p.address, 'Open in Apple Maps')}</div>
+            <div class="maps-under-field">${(placeHasType(p, 'hotel') || knownTourHotelAddress(p.name)) ? tourHotelMapsButtonHtml(p.name, p.address || knownTourHotelAddress(p.name), 'Open in Apple Maps', '', p) : mapsButtonHtml(p.name, p.address, 'Open in Apple Maps', p)}</div>
           </div>
         </div>
         ${placeMapHtml(p)}
@@ -7660,7 +7669,7 @@ function renderDayTabs() {
         <div class="name">🏨 ${escapeHtml(name)}</div>
         <div class="meta">
           ${addr ? `<span>${escapeHtml(addr)}</span>` : '<span>No address saved</span>'}
-          ${tourHotelMapsButtonHtml(name, addr, 'Open in Apple Maps')}
+          ${tourHotelMapsButtonHtml(name, addr, 'Open in Apple Maps', '', place)}
         </div>
         ${pageHelp('<p>Tour hotel in the beading area. It is the start of today’s stops after arrival day.</p>')}
       </div>
@@ -7809,7 +7818,7 @@ function renderDayTabs() {
     const id = escapeHtml(place.id);
     const status = pin
       ? `Pin saved · ${escapeHtml(pin.lat)}, ${escapeHtml(pin.lng)} <button type="button" class="place-pin-clear" data-clear-pin="${id}">Clear pin</button>`
-      : 'Drag the pin to the exact spot.';
+      : 'Tap the map or drag the pin to the exact spot.';
     return `
       <div class="place-pin-map" data-place-map="${id}">
         <div class="field-label">Map</div>
@@ -7933,13 +7942,18 @@ function renderDayTabs() {
     }).addTo(map);
     placeLeafletMap = map;
     let moved = centre.source === 'pin';
-    marker.on('dragend', () => {
+    const dropPin = (latlng) => {
+      if (!latlng) return;
       moved = true;
-      const ll = marker.getLatLng();
-      PlacePin.writePin(place, ll.lat, ll.lng);
+      marker.setLatLng(latlng);
+      PlacePin.writePin(place, latlng.lat, latlng.lng);
       showPinSaved(place);
+      updatePlaceMapsLink(place.id);
       scheduleAutoSave({ placeId: place.id });
-    });
+    };
+    marker.on('dragend', () => dropPin(marker.getLatLng()));
+    // Leaflet does not fire click after a pan, so a tap drops the pin and a drag of the map does not.
+    map.on('click', (event) => dropPin(event && event.latlng));
     setTimeout(() => { if (token === placeMapToken) map.invalidateSize(); }, 80);
     if (!PlacePin.needsLookup(place)) return;
     setPinStatus(place.id, 'Looking up the address…');
@@ -7947,13 +7961,13 @@ function renderDayTabs() {
     PlacePin.geocodeAddress(addr).then(point => {
       if (token !== placeMapToken || moved || !canvas.isConnected) return;
       if (!point) {
-        setPinStatus(place.id, 'Could not look up that address. The map is on Jablonec nad Nisou. Drag the pin to the right spot.');
+        setPinStatus(place.id, 'Could not look up that address. The map is on Jablonec nad Nisou. Tap the map or drag the pin to the exact spot.');
         return;
       }
       PlacePin.rememberGeocode(place, point);
       marker.setLatLng([point.lat, point.lng]);
       map.setView([point.lat, point.lng], 16);
-      if (!PlacePin.readPin(place)) setPinStatus(place.id, 'Drag the pin to the exact spot.');
+      if (!PlacePin.readPin(place)) setPinStatus(place.id, 'Tap the map or drag the pin to the exact spot.');
     });
   }
 
@@ -7996,8 +8010,8 @@ function renderDayTabs() {
     const maps = item.querySelector('.maps-under-field');
     if (maps) {
       maps.innerHTML = (placeHasType(p, 'hotel') || knownTourHotelAddress(p.name))
-        ? tourHotelMapsButtonHtml(p.name, p.address || knownTourHotelAddress(p.name), 'Open in Apple Maps')
-        : mapsButtonHtml(p.name, p.address, 'Open in Apple Maps');
+        ? tourHotelMapsButtonHtml(p.name, p.address || knownTourHotelAddress(p.name), 'Open in Apple Maps', '', p)
+        : mapsButtonHtml(p.name, p.address, 'Open in Apple Maps', p);
     }
   }
 
