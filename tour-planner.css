@@ -1084,29 +1084,36 @@
     .repay-row input[type="number"] { width: 96px; min-height: 40px; font-size: 15px; }
     .repay-row input[type="date"] { width: 140px; min-height: 40px; font-size: 14px; }
     .repay-note { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 4px; }
-    .lent-lady { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-    .lent-summary {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      min-height: 44px; padding: 8px 12px; cursor: pointer; list-style: none;
-    }
-    .lent-summary::-webkit-details-marker { display: none; }
-    .lent-name { font-weight: 800; font-size: 16px; min-width: 0; }
-    .lent-owes { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 16px; flex: 0 0 auto; }
-    .lent-body { padding: 0 12px 10px; }
-    .lent-field { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
-    .lent-field input {
-      width: 7em; min-height: 36px; padding: 6px 8px;
+    .lent-lady { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 4px 8px; }
+    .lent-line { display: flex; align-items: center; gap: 6px; min-height: 36px; }
+    .lent-name { font-weight: 800; font-size: 15px; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lent-line input {
+      width: 4.6em; min-height: 32px; padding: 4px 6px; flex: 0 0 auto;
       border: 1px solid var(--border); border-radius: 8px;
       background: var(--input-bg); color: var(--text);
       font: inherit; font-size: 16px; font-variant-numeric: tabular-nums;
     }
-    .lent-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-    .lent-entry { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-    .lent-when { color: var(--text-secondary); font-weight: 700; }
-    .lent-amt { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
-    .lent-remove { min-width: 32px; min-height: 32px; }
-    .view-phone .lent-summary { min-height: 48px; }
-    .view-phone .lent-field input { min-height: 44px; }
+    .lent-enter {
+      min-height: 32px; padding: 4px 8px; flex: 0 0 auto;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+      font: inherit; font-size: 13px; font-weight: 800; cursor: pointer;
+    }
+    .lent-owes { font-weight: 700; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+    .lent-history-toggle {
+      border: 0; background: none; color: var(--text-secondary); cursor: pointer;
+      min-width: 28px; min-height: 28px; padding: 0; font-size: 16px; line-height: 1;
+    }
+    .lent-history-toggle.is-open { transform: rotate(90deg); }
+    .lent-history { padding: 4px 0 6px; }
+    .lent-list { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .lent-entry { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+    .lent-when { font-weight: 700; }
+    .lent-amt { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+    .lent-remove {
+      border: 0; background: none; color: var(--text-secondary); opacity: .55;
+      min-width: 24px; min-height: 24px; padding: 0; font-size: 13px; cursor: pointer;
+    }
+    .view-phone .lent-line input, .view-phone .lent-enter { min-height: 36px; }
     .lending-desk {
       margin: 8px 0 0;
       border: 1px solid var(--border);

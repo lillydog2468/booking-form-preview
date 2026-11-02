@@ -570,6 +570,16 @@
     g.lent = loanTotal(g);
     return true;
   }
+  function commitVisibleLoan(id, raw) {
+    const guest = (state.plan && state.plan.guests || []).find(x => String(x.id) === String(id));
+    if (!recordGuestLoan(guest, raw)) return false;
+    if (document.querySelector('.lending-desk')) state.lendingOpen = true;
+    scheduleAutoSave();
+    render();
+    const again = document.querySelector(`[data-lent-entry="${id}"]`);
+    if (again) again.focus();
+    return true;
+  }
   function removeGuestLoan(g, loanId) {
     if (!g) return false;
     ensureGuestDebt(g);
@@ -5513,18 +5523,17 @@
           <span class="lent-amt">${escapeHtml(formatAmount(row.amount))}</span>
           <button type="button" class="icon-btn lent-remove" data-remove-loan="${escapeHtml(g.id)}" data-loan-id="${escapeHtml(row.id)}" aria-label="Remove this lending">×</button>
         </li>`).join('') || `<li class="muted lent-empty">Nothing lent yet.</li>`;
-      const lentOpen = state.openLentRows[String(g.id)] ? ' open' : '';
+      const historyOpen = !!state.openLentRows[String(g.id)];
       return `
-        <details class="lent-lady"${lentOpen} data-lent-guest="${escapeHtml(g.id)}">
-          <summary class="lent-summary">
+        <div class="lent-lady" data-lent-guest="${escapeHtml(g.id)}">
+          <div class="lent-line">
             <span class="lent-name">${escapeHtml(displayName)}</span>
+            <input type="number" inputmode="decimal" min="0" step="0.01" enterkeyhint="done" data-lent-entry="${escapeHtml(g.id)}" aria-label="Amount to add for ${escapeHtml(displayName)}">
+            <button type="button" class="lent-enter" data-lent-add="${escapeHtml(g.id)}">Enter</button>
             <span class="lent-owes" data-lent-owes="${escapeHtml(g.id)}">${escapeHtml(formatAmount(owes))}</span>
-          </summary>
-          <div class="lent-body">
-            <label class="lent-field">
-              <span>Lent</span>
-              <input type="number" inputmode="decimal" min="0" step="0.01" enterkeyhint="done" data-lent-entry="${escapeHtml(g.id)}" placeholder="0.00" aria-label="Amount lent. Press Enter to add it.">
-            </label>
+            <button type="button" class="lent-history-toggle${historyOpen ? ' is-open' : ''}" data-lent-history="${escapeHtml(g.id)}" aria-expanded="${historyOpen ? 'true' : 'false'}" aria-label="History" title="History"><span aria-hidden="true">›</span></button>
+          </div>
+          <div class="lent-history"${historyOpen ? '' : ' hidden'}>
             <ul class="lent-list">${loanRows}</ul>
             <div class="row-between">
               <span class="muted" style="font-weight:700;">Daily repayments</span>
@@ -5532,7 +5541,7 @@
             </div>
             <div class="repay-list">${repayRows}</div>
           </div>
-        </details>`;
+        </div>`;
     }
     function renderLendingSection() {
       const rows = (state.plan.guests || []).map(g => {
@@ -8915,8 +8924,7 @@ function renderDayTabs() {
     const arrivalMissing = markEmpties && !String(state.plan.arrivalDate || '').trim();
     const departureMissing = markEmpties && !String(state.plan.departureDate || '').trim();
     const hotelMissingMeta = markEmpties && tourHotelIsMissing(state.plan);
-    const datesRow = `
-      <div class="stack">
+    const groupIdentity = `
         <label class="field-label">Organiser${orgPersonMissing ? missingBadgeHtml('People link missing') : ''}</label>
         <input type="text" id="organiserName" class="${missingFieldClass(orgPersonMissing).trim()}" list="organiserPeopleList" value="${escapeHtml(organiserDisplay)}" placeholder="Search People or type a name" autocomplete="off" aria-invalid="${orgPersonMissing ? 'true' : 'false'}">
         <datalist id="organiserPeopleList">
@@ -8936,7 +8944,8 @@ function renderDayTabs() {
             <label class="field-label">Departure${departureMissing ? missingBadgeHtml('Date missing') : ''}</label>
             <input type="text" id="departureDate" class="${missingFieldClass(departureMissing).trim()}" value="${escapeHtml(state.plan.departureDate ? formatDateDMY(state.plan.departureDate) : '')}" placeholder="DD/MM/YYYY" aria-invalid="${departureMissing ? 'true' : 'false'}">
           </div>
-        </div>
+        </div>`;
+    const groupTools = `
         ${renderTourHotelSelect()}
         ${renderSharedAlbumsEditor()}
         <button type="button" class="btn btn-outline btn-sm" id="btnRebuildDays">Rebuild days from dates</button>
@@ -8946,9 +8955,7 @@ function renderDayTabs() {
           <button type="button" class="btn btn-outline btn-sm" id="btnFourNight" title="Arrive Monday, 4 nights, Park hotel in Smržovka, 3 guests">4-night template</button>
         </div>
         ${pageHelp('<p>Day trips are usually 2 people. Multi-day tours are usually 2 or 3, and a 4-night tour arrives on a Monday.</p>')}
-        ${renderBookingDetailsCard()}
-      </div>
-    `;
+        ${renderBookingDetailsCard()}`;
 
     const tripOrgName = state.plan.organiserName || (findPersonById(state.plan.organiserPersonId) || {}).name || '';
     const emptyBanner = markEmpties
@@ -9040,7 +9047,7 @@ function renderDayTabs() {
       <div style="height:12px;"></div>
       <div class="card">
         <h2>Dates &amp; hotel</h2>
-        ${datesRow}
+        <div class="stack">${groupIdentity}${groupTools}</div>
       </div>
     `;
 
@@ -9051,7 +9058,7 @@ function renderDayTabs() {
         <div class="stack">
           <div class="card">
             <h2>Group</h2>
-            ${datesRow}
+            <div class="stack">${groupTools}</div>
           </div>
           ${renderGuestsCard(false)}
           ${renderLendingSection()}
@@ -9649,26 +9656,35 @@ function renderDayTabs() {
       inp.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
-        const id = inp.getAttribute('data-lent-entry');
-        const guest = (state.plan.guests || []).find(x => String(x.id) === String(id));
-        if (!recordGuestLoan(guest, inp.value)) return;
-        state.openLentRows[String(id)] = 1;
-        if (document.querySelector('.lending-desk')) state.lendingOpen = true;
-        scheduleAutoSave();
-        render();
-        const again = document.querySelector(`[data-lent-entry="${id}"]`);
-        if (again) again.focus();
+        commitVisibleLoan(inp.getAttribute('data-lent-entry'), inp.value);
+      });
+    });
+    document.querySelectorAll('[data-lent-add]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-lent-add');
+        const inp = document.querySelector(`[data-lent-entry="${id}"]`);
+        commitVisibleLoan(id, inp ? inp.value : '');
       });
     });
     document.querySelector('.lending-desk')?.addEventListener('toggle', (e) => {
       state.lendingOpen = !!e.currentTarget.open;
     });
-    document.querySelectorAll('.lent-lady').forEach(el => {
-      el.addEventListener('toggle', () => {
-        const id = el.getAttribute('data-lent-guest');
-        if (!id) return;
-        if (el.open) state.openLentRows[id] = 1;
-        else delete state.openLentRows[id];
+    document.querySelectorAll('[data-lent-history]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-lent-history');
+        const lady = btn.closest('.lent-lady');
+        const panel = lady && lady.querySelector('.lent-history');
+        if (!panel) return;
+        const open = panel.hasAttribute('hidden');
+        if (open) {
+          panel.removeAttribute('hidden');
+          state.openLentRows[id] = 1;
+        } else {
+          panel.setAttribute('hidden', '');
+          delete state.openLentRows[id];
+        }
+        btn.classList.toggle('is-open', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
     });
     document.querySelectorAll('[data-remove-loan]').forEach(btn => {
