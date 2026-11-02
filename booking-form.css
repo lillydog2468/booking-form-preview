@@ -1608,6 +1608,58 @@
       align-items: center;
       flex-wrap: wrap;
     }
+    .guest-sync-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      align-items: center;
+      margin: 0 0 8px;
+    }
+    .guest-sync-bar .day-trip-toggle { margin: 0; }
+    #shared_prague, .guest-sync-bar [id$="_shared_prague"] { flex: 1 1 100%; }
+    .guest-fold {
+      flex: 1 1 100%;
+      margin: 2px 0 0;
+      border: none;
+      background: transparent;
+    }
+    .guest-fold > summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: baseline;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0;
+      padding: 2px 0;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .guest-flight-summary, .guest-prague-summary {
+      font-weight: 650;
+      color: #243044;
+    }
+    .guest-mini-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 8px;
+      align-items: flex-end;
+    }
+    .guest-mini-fields .field { margin: 0; width: auto; }
+    .guest-mini-fields .field label, .guest-mini-fields > .field { font-size: 12px; }
+    .guest-mini-fields input[type="text"] { width: 8.5em; }
+    .guest-mini-fields input[type="time"] { width: 6.6em; }
+    .guest-mini-fields .guest-note { width: 12em; }
+    .guest-stay-nights { font-size: 12px; font-weight: 700; white-space: nowrap; padding-bottom: 6px; }
+    .own-prague-line { grid-column: 1 / -1; margin: 4px 0 0; font-size: 13px; }
+    .own-prague-fill { align-self: end; }
+    .member-row[data-guest-tone] .guest-fold,
+    .member-row[data-guest-tone] .guest-fold summary,
+    .member-row[data-guest-tone] .guest-flight-summary,
+    .member-row[data-guest-tone] .guest-prague-summary,
+    .member-row[data-guest-tone] .guest-stay-nights { color: #243044; }
+    .member-row[data-guest-tone] .guest-mini-fields input { background: #fff; color: #1a1d26; }
     /* Soft guest tints. A different family from the hotel pastels and the calendar grey. */
     .guest-tone[data-guest-tone="0"] { --guest-tint: #f3eefb; --guest-edge: #7d64b8; }
     .guest-tone[data-guest-tone="1"] { --guest-tint: #fde8ef; --guest-edge: #c45d7c; }

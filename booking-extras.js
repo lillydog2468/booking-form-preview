@@ -118,7 +118,9 @@
       tourPlace: '',
       leaderHalfPrice: false,
       organiserBooksHotels: false,
-      groupPrice: null
+      groupPrice: null,
+      sameFlights: false,
+      samePrague: false
     };
   }
 
@@ -311,6 +313,8 @@
     base.tourPlace = src.tourPlace === 'other' ? 'other' : (src.tourPlace === 'beading' ? 'beading' : '');
     base.leaderHalfPrice = src.leaderHalfPrice === true;
     base.organiserBooksHotels = src.organiserBooksHotels === true;
+    base.sameFlights = src.sameFlights === true;
+    base.samePrague = src.samePrague === true;
     base.groupPrice = src.groupPrice === true ? true : (src.groupPrice === false ? false : null);
     if (base.groupPrice == null) delete base.groupPrice;
     return base;
@@ -343,6 +347,8 @@
     if (x.tourPlace === 'beading' || x.tourPlace === 'other') return true;
     if (x.leaderHalfPrice === true) return true;
     if (x.organiserBooksHotels === true) return true;
+    if (x.sameFlights === true) return true;
+    if (x.samePrague === true) return true;
     if (x.groupPrice === true) return true;
     return false;
   }

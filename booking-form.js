@@ -247,7 +247,15 @@
           final_payment_date: row.querySelector('.member-paid-date')?.value ?? '',
           paidBy: paidBySel?.value || paidBySel?.dataset.value || '',
           payMethod: row.querySelector('.member-pay-method')?.value || '',
-          price: row.querySelector('.member-price')?.value ?? ''
+          price: row.querySelector('.member-price')?.value ?? '',
+          arrival_flight: row.querySelector('.guest-arr-flight')?.value ?? '',
+          arrival_date: row.querySelector('.guest-arr-date')?.value ?? '',
+          arrival_time: row.querySelector('.guest-arr-time')?.value ?? '',
+          departure_flight: row.querySelector('.guest-dep-flight')?.value ?? '',
+          departure_date: row.querySelector('.guest-dep-date')?.value ?? '',
+          departure_time: row.querySelector('.guest-dep-time')?.value ?? '',
+          flight_note: row.querySelector('.guest-flight-note')?.value ?? '',
+          prague_stays: readPragueStays(row),
         });
       });
     }
@@ -280,6 +288,7 @@
       });
     }
 
+    state.sharedPragueStays = readPragueStays(document.getElementById('t' + tabId + '_shared_prague_list'));
     state.sharedAlbums = getSharedAlbumsData(tabId);
     state.extras = collectBookingExtras(tabId);
     const payList = document.getElementById(`t${tabId}_members_list`);
@@ -396,6 +405,14 @@
         paidBy: m.paidBy,
         payMethod: m.payMethod || '',
         price: m.price || '',
+        arrival_flight: m.arrival_flight,
+        arrival_date: m.arrival_date,
+        arrival_time: m.arrival_time,
+        departure_flight: m.departure_flight,
+        departure_date: m.departure_date,
+        departure_time: m.departure_time,
+        flight_note: m.flight_note,
+        prague_stays: m.prague_stays,
       });
       const row = membersList?.lastElementChild;
       const firstEl = row && row.querySelector('.member-first');
@@ -404,6 +421,7 @@
       if (lastEl && (m.lastSource === 'organiser' || m.lastSource === 'typed')) lastEl.dataset.nameSource = m.lastSource;
     });
     if ((state.members || []).length === 0) addMemberRow(tabId);
+    writePragueStays(document.getElementById('t' + tabId + '_shared_prague_list'), state.sharedPragueStays || [], tabId);
 
     const flightsList = document.getElementById(`t${tabId}_flights_list`);
     if (flightsList) flightsList.innerHTML = '';
@@ -1229,6 +1247,8 @@
             <div class="grid grid-4">
               <div class="field"><label>Prague nights</label><input type="text" id="t${t}_prague_nights" placeholder="e.g. 1"></div>
               <div class="field"><label>Prague hotel</label><input type="text" id="t${t}_prague_hotel" placeholder="Hotel name"></div>
+              <div class="field own-prague-fill"><button type="button" class="btn btn-outline btn-sm" id="t${t}_fill_prague" hidden onclick="fillPragueFromGuests('${t}')">Fill from guests</button></div>
+              <p class="own-prague-line" id="t${t}_own_prague_line"></p>
               <div class="field"><label>Airport nights</label><input type="text" id="t${t}_airport_nights" placeholder="e.g. 1"></div>
               <div class="field"><label>Airport hotel</label><input type="text" id="t${t}_airport_hotel" placeholder="Hotel name"></div>
             </div>
@@ -1611,6 +1631,14 @@
             <div class="layout-panel-title">Guests</div>
             ${pageHelp('<p>First name, surname and email for every person coming, including the organiser if they are travelling.</p>')}
             ${memberPaymentsBarHTML(t)}
+            <div class="guest-sync-bar">
+              <label class="day-trip-toggle"><input type="checkbox" id="t${t}_same_flights" onchange="toggleSameFlights('${t}')"> Everyone on the same flights</label>
+              <label class="day-trip-toggle"><input type="checkbox" id="t${t}_same_prague" onchange="toggleSamePrague('${t}')"> Whole group in the same Prague hotel</label>
+              <div id="t${t}_shared_prague" hidden>
+                <div id="t${t}_shared_prague_list"></div>
+                <button type="button" class="member-add" onclick="addSharedPragueStay('${t}')">Add another stay</button>
+              </div>
+            </div>
             <div class="members-list member-pay-closed resizable-box" id="t${t}_members_list"></div>
             <button type="button" class="member-add" onclick="addMemberRow('${t}', '', '', '', '', true)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -3079,6 +3107,257 @@
     }
   }
 
+  const GUEST_FLIGHT_KEYS = ['arrival_flight', 'arrival_date', 'arrival_time', 'departure_flight', 'departure_date', 'departure_time', 'flight_note'];
+
+  function guestShortDate(value) {
+    const iso = toStorageISO(value);
+    if (!iso) return '';
+    const shown = formatDateDMY(iso);
+    return shown && shown.length >= 5 ? shown.slice(0, 5) : '';
+  }
+
+  function guestDayMonth(value) {
+    const iso = toStorageISO(value);
+    const d = iso ? parseISODateUTC(iso) : null;
+    if (!d) return '';
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return d.getUTCDate() + ' ' + months[d.getUTCMonth()];
+  }
+
+  function guestClock(value) {
+    const s = String(value || '').trim();
+    return /^\d{2}:\d{2}/.test(s) ? s.slice(0, 5) : '';
+  }
+
+  function pragueStayNights(checkIn, checkOut) {
+    const start = parseISODateUTC(toStorageISO(checkIn) || '');
+    const end = parseISODateUTC(toStorageISO(checkOut) || '');
+    if (!start || !end || end.getTime() < start.getTime()) return 0;
+    return Math.round((end.getTime() - start.getTime()) / 86400000);
+  }
+
+  function pragueNightPhrase(nights) {
+    const n = Number(nights) || 0;
+    return n === 1 ? '1 night' : n + ' nights';
+  }
+
+  function guestFlightSummary(flight) {
+    const f = flight || {};
+    const arrivalFlight = String(f.arrival_flight || f.arrivalFlight || '').trim();
+    const departureFlight = String(f.departure_flight || f.departureFlight || '').trim();
+    const arrivalWhen = [guestShortDate(f.arrival_date || f.arrivalDate), guestClock(f.arrival_time || f.arrivalTime)].filter(Boolean).join(' ');
+    const departureWhen = [guestShortDate(f.departure_date || f.departureDate), guestClock(f.departure_time || f.departureTime)].filter(Boolean).join(' ');
+    const bits = [];
+    if (arrivalFlight || arrivalWhen) bits.push((arrivalFlight ? arrivalFlight + ' arr' : 'arr') + (arrivalWhen ? ' ' + arrivalWhen : ''));
+    if (departureFlight || departureWhen) bits.push((departureFlight ? departureFlight + ' dep' : 'dep') + (departureWhen ? ' ' + departureWhen : ''));
+    if (bits.length) return bits.join(' · ');
+    const note = String(f.flight_note || f.flightNote || '').trim();
+    return note || 'No flights yet';
+  }
+
+  function normalisePragueStay(stay) {
+    const row = stay || {};
+    return {
+      hotel: String(row.hotel || '').trim(),
+      check_in: toStorageISO(row.check_in || row.checkIn || '') || '',
+      check_out: toStorageISO(row.check_out || row.checkOut || '') || '',
+      note: String(row.note || '').trim(),
+    };
+  }
+
+  function pragueStayHasDetail(stay) {
+    return !!(stay && (stay.hotel || stay.check_in || stay.check_out || stay.note));
+  }
+
+  function guestPragueSummary(stays) {
+    const rows = (Array.isArray(stays) ? stays : []).map(normalisePragueStay).filter(pragueStayHasDetail);
+    if (!rows.length) return 'No own Prague stay';
+    const chunks = [];
+    rows.forEach(stay => {
+      const nights = pragueStayNights(stay.check_in, stay.check_out);
+      const when = guestDayMonth(stay.check_in) || guestDayMonth(stay.check_out);
+      const bit = when ? when + ' (' + pragueNightPhrase(nights) + ')' : pragueNightPhrase(nights);
+      const hotel = stay.hotel || 'Hotel';
+      const last = chunks[chunks.length - 1];
+      if (last && last.hotel === hotel) last.bits.push(bit);
+      else chunks.push({ hotel, bits: [bit] });
+    });
+    return 'Own Prague hotel: ' + chunks.map(chunk => chunk.hotel + ' ' + chunk.bits.join(', ')).join(', ');
+  }
+
+  function guestPersonName(guest) {
+    return [guest && (guest.first_name || guest.firstName), guest && (guest.last_name || guest.lastName)].filter(Boolean).join(' ').trim();
+  }
+
+  function ownPragueStaysLine(guests) {
+    const parts = [];
+    (guests || []).forEach(guest => {
+      const stays = (Array.isArray(guest && guest.prague_stays) ? guest.prague_stays : []).map(normalisePragueStay).filter(pragueStayHasDetail);
+      if (!stays.length) return;
+      const nights = stays.reduce((sum, stay) => sum + pragueStayNights(stay.check_in, stay.check_out), 0);
+      const dates = stays.map(stay => guestDayMonth(stay.check_in)).filter(Boolean);
+      const name = guestPersonName(guest) || 'Guest';
+      parts.push(name + ', ' + pragueNightPhrase(nights) + (dates.length ? ' (' + dates.join(', ') + ')' : ''));
+    });
+    if (!parts.length) return '';
+    return 'Own Prague stays: ' + parts.join(' · ');
+  }
+
+  function guestFlightKey(guest) {
+    const row = guest || {};
+    return GUEST_FLIGHT_KEYS.map(key => String(row[key] == null ? '' : row[key]).trim()).join('|');
+  }
+
+  function pragueStayKey(stays) {
+    return (Array.isArray(stays) ? stays : []).map(normalisePragueStay).filter(pragueStayHasDetail)
+      .map(stay => [stay.hotel, stay.check_in, stay.check_out, stay.note].join('~')).join(';');
+  }
+
+  function joinedNames(names) {
+    const list = (names || []).filter(Boolean);
+    if (list.length <= 1) return list[0] || '';
+    if (list.length === 2) return list[0] + ' and ' + list[1];
+    return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+  }
+
+  function sharedFlightPrompt(guests) {
+    const people = guests || [];
+    if (people.length < 2) return '';
+    const firstKey = guestFlightKey(people[0]);
+    const names = people.slice(1).filter(guest => {
+      const key = guestFlightKey(guest);
+      return key.replace(/\|/g, '') !== '' && key !== firstKey;
+    }).map(guestPersonName).filter(Boolean);
+    if (!names.length) return '';
+    const first = guestPersonName(people[0]) || 'the first guest';
+    const verb = names.length === 1 ? 'has their own flights' : 'have their own flights';
+    return joinedNames(names) + ' ' + verb + '. Replace them with ' + first + "'s?";
+  }
+
+  function sharedPraguePrompt(guests) {
+    const people = guests || [];
+    if (people.length < 2) return '';
+    const firstKey = pragueStayKey(people[0] && people[0].prague_stays);
+    const names = people.slice(1).filter(guest => {
+      const key = pragueStayKey(guest && guest.prague_stays);
+      return key !== '' && key !== firstKey;
+    }).map(guestPersonName).filter(Boolean);
+    if (!names.length) return '';
+    const verb = names.length === 1 ? 'has their own Prague stays' : 'have their own Prague stays';
+    return joinedNames(names) + ' ' + verb + '. Replace them with the group\'s?';
+  }
+
+  function copyFlightFields(fromGuest, toGuest) {
+    const next = Object.assign({}, toGuest);
+    GUEST_FLIGHT_KEYS.forEach(key => { next[key] = fromGuest && fromGuest[key] ? fromGuest[key] : ''; });
+    return next;
+  }
+
+  function copyFlightsFromFirst(guests) {
+    const people = guests || [];
+    if (!people.length) return people;
+    return people.map((guest, index) => index === 0 ? guest : copyFlightFields(people[0], guest));
+  }
+
+  function copyPragueToEveryGuest(guests, stays) {
+    const shared = (Array.isArray(stays) ? stays : []).map(normalisePragueStay).filter(pragueStayHasDetail);
+    return (guests || []).map(guest => Object.assign({}, guest, { prague_stays: shared.map(stay => Object.assign({}, stay)) }));
+  }
+
+  function unseenSavedRows(dbRows, loadedIds) {
+    const known = new Set((loadedIds || []).map(id => String(id)));
+    return (dbRows || []).filter(row => row && row.id != null && String(row.id) !== '' && !known.has(String(row.id)));
+  }
+
+  function pragueFillFromGuests(nightsValue, hotelValue, guests, shared) {
+    const nightsEmpty = !String(nightsValue || '').trim();
+    const hotelEmpty = !String(hotelValue || '').trim();
+    if (!nightsEmpty && !hotelEmpty) return null;
+    const people = guests || [];
+    const counted = shared && people.length ? [people[0]] : people;
+    let nights = 0;
+    const hotels = [];
+    counted.forEach(guest => {
+      (guest.prague_stays || []).forEach(stay => {
+        const row = normalisePragueStay(stay);
+        if (!pragueStayHasDetail(row)) return;
+        nights += pragueStayNights(row.check_in, row.check_out);
+        if (row.hotel && !hotels.includes(row.hotel)) hotels.push(row.hotel);
+      });
+    });
+    if (!nights && !hotels.length) return null;
+    const patch = {};
+    if (nightsEmpty && nights) patch.nights = String(nights);
+    if (hotelEmpty && hotels.length) patch.hotel = hotels.join(', ');
+    return Object.keys(patch).length ? patch : null;
+  }
+
+  function memberTimeForInput(value) {
+    const s = String(value || '').trim();
+    return /^\d{2}:\d{2}/.test(s) ? s.slice(0, 5) : '';
+  }
+
+  function memberTimeOrNull(value) {
+    const s = String(value || '').trim();
+    const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+    if (!match) return null;
+    return match[1] + ':' + match[2] + ':' + (match[3] || '00');
+  }
+
+  function guestTravelFromPay(pay) {
+    const src = pay || {};
+    const stays = Array.isArray(src.prague_stays) ? src.prague_stays : (Array.isArray(src.pragueStays) ? src.pragueStays : []);
+    return {
+      arrival_flight: src.arrival_flight || '',
+      arrival_date: src.arrival_date || '',
+      arrival_time: src.arrival_time || '',
+      departure_flight: src.departure_flight || '',
+      departure_date: src.departure_date || '',
+      departure_time: src.departure_time || '',
+      flight_note: src.flight_note || '',
+      prague_stays: stays,
+    };
+  }
+
+  function pragueStayRowHTML(stay) {
+    const row = normalisePragueStay(stay);
+    const nights = pragueStayNights(row.check_in, row.check_out);
+    return `
+      <div class="guest-prague-stay guest-mini-fields">
+        <label class="field">Hotel <input type="text" class="guest-stay-hotel" value="${escapeAttr(row.hotel)}" placeholder="Hotel"></label>
+        <label class="field">Check-in ${datePickerControl({ extraClass: 'guest-stay-in', value: toDisplayDMY(row.check_in), ariaLabel: 'Open calendar for check-in' })}</label>
+        <label class="field">Check-out ${datePickerControl({ extraClass: 'guest-stay-out', value: toDisplayDMY(row.check_out), ariaLabel: 'Open calendar for check-out' })}</label>
+        <span class="guest-stay-nights">${pragueNightPhrase(nights)}</span>
+        <label class="field">Note <input type="text" class="guest-stay-note guest-note" value="${escapeAttr(row.note)}" placeholder="Note"></label>
+        <button type="button" class="member-remove guest-stay-remove" title="Remove this stay">&times;</button>
+      </div>`;
+  }
+
+  function guestTravelFoldsHTML(pay) {
+    const travel = guestTravelFromPay(pay);
+    const stays = (travel.prague_stays || []).map(pragueStayRowHTML).join('');
+    return `
+      <details class="fold guest-fold" data-fold="guest-flights">
+        <summary><span class="guest-fold-label">Flights</span> <span class="guest-flight-summary"></span></summary>
+        <div class="fold-body guest-flight-editor guest-mini-fields">
+          <label class="field">Arrival flight <input type="text" class="guest-arr-flight" value="${escapeAttr(travel.arrival_flight)}" placeholder="e.g. KL1353"></label>
+          <label class="field">Arrival date ${datePickerControl({ extraClass: 'guest-arr-date', value: toDisplayDMY(travel.arrival_date), ariaLabel: 'Open calendar for this arrival flight' })}</label>
+          <label class="field">Arrival time <input type="time" class="guest-arr-time" value="${escapeAttr(memberTimeForInput(travel.arrival_time))}"></label>
+          <label class="field">Departure flight <input type="text" class="guest-dep-flight" value="${escapeAttr(travel.departure_flight)}" placeholder="e.g. KL1356"></label>
+          <label class="field">Departure date ${datePickerControl({ extraClass: 'guest-dep-date', value: toDisplayDMY(travel.departure_date), ariaLabel: 'Open calendar for this departure flight' })}</label>
+          <label class="field">Departure time <input type="time" class="guest-dep-time" value="${escapeAttr(memberTimeForInput(travel.departure_time))}"></label>
+          <label class="field">Note <input type="text" class="guest-flight-note guest-note" value="${escapeAttr(travel.flight_note)}" placeholder="Note"></label>
+        </div>
+      </details>
+      <details class="fold guest-fold" data-fold="guest-prague">
+        <summary><span class="guest-fold-label">Prague hotel</span> <span class="guest-prague-summary"></span></summary>
+        <div class="fold-body guest-prague-editor">
+          <div class="guest-prague-list">${stays}</div>
+          <button type="button" class="member-add guest-prague-add">Add another stay</button>
+        </div>
+      </details>`;
+  }
+
   function addMemberRow(tabId, firstName = '', memberId = '', lastName = '', email = '', reveal, pay) {
     if (reveal && tourFullOn(tabId)) return;
     const list = document.getElementById(`t${tabId}_members_list`);
@@ -3107,6 +3386,7 @@
         <button type="button" class="member-unshare" hidden>Unshare</button>
       </div>
       ${memberPayBlockHTML(pay)}
+      ${guestTravelFoldsHTML(pay)}
       <div class="member-albums" hidden></div>
     `;
 
@@ -3131,9 +3411,13 @@
 
     row.querySelectorAll('input, select').forEach(inp => {
       const fire = () => {
-        if (inp.classList.contains('member-deposit-date') || inp.classList.contains('member-paid-date')) {
+        if (inp.classList.contains('date-dmy') || inp.classList.contains('member-deposit-date') || inp.classList.contains('member-paid-date')) {
           const parsed = parseFlexibleDateUTC(inp.value || '');
           if (parsed) inp.value = formatDateDMY(toISODateUTC(parsed));
+        }
+        if (inp.closest('.guest-prague-stay')) updatePragueStayNights(inp.closest('.guest-prague-stay'));
+        if (sameFlightsOn(tabId) && row.parentElement && row.parentElement.firstElementChild === row && inp.closest('.guest-flight-editor')) {
+          copyFirstGuestFlights(tabId);
         }
         if ((inp.classList.contains('member-first') || inp.classList.contains('member-last')) && list.firstElementChild === row) {
           inp.dataset.nameSource = String(inp.value || '').trim() ? 'typed' : '';
@@ -3153,6 +3437,18 @@
     if (String(lastName || '').trim()) row.querySelector('.member-last').dataset.nameSource = 'typed';
 
     list.appendChild(row);
+    row.querySelectorAll('.guest-prague-stay').forEach(stay => bindPragueStayRow(stay, tabId));
+    row.querySelector('.guest-prague-add')?.addEventListener('click', () => {
+      const stayList = row.querySelector('.guest-prague-list');
+      if (!stayList || samePragueOn(tabId)) return;
+      stayList.insertAdjacentHTML('beforeend', pragueStayRowHTML({}));
+      bindPragueStayRow(stayList.lastElementChild, tabId);
+      const fold = row.querySelector('details[data-fold="guest-prague"]');
+      if (fold) fold.open = true;
+      refreshGuestTravel(tabId);
+      onTabInput(tabId);
+    });
+    refreshGuestTravel(tabId);
     paintEmptyFields(row);
     paintGuestTones(tabId);
     paintRoomShares(tabId);
@@ -3254,10 +3550,238 @@
           personId: (row.dataset.personId || '').trim(),
           sharesWith,
           roomType: sharesWith ? ((row.dataset.roomType || '') === 'twin' ? 'twin' : 'double') : '',
+          arrival_flight: row.querySelector('.guest-arr-flight')?.value.trim() || '',
+          arrival_date: toStorageISO(row.querySelector('.guest-arr-date')?.value || '') || '',
+          arrival_time: row.querySelector('.guest-arr-time')?.value || '',
+          departure_flight: row.querySelector('.guest-dep-flight')?.value.trim() || '',
+          departure_date: toStorageISO(row.querySelector('.guest-dep-date')?.value || '') || '',
+          departure_time: row.querySelector('.guest-dep-time')?.value || '',
+          flight_note: row.querySelector('.guest-flight-note')?.value.trim() || '',
+          prague_stays: readPragueStays(row),
         });
       }
     });
+    if (sameFlightsOn(tabId) && members.length) members = copyFlightsFromFirst(members);
+    if (samePragueOn(tabId)) {
+      const shared = readPragueStays(document.getElementById('t' + tabId + '_shared_prague_list'));
+      members = members.map(member => Object.assign({}, member, { prague_stays: shared.map(stay => Object.assign({}, stay)) }));
+    }
     return members;
+  }
+
+  function memberRows(tabId) {
+    const list = document.getElementById('t' + tabId + '_members_list');
+    return list ? [...list.querySelectorAll('.member-row')] : [];
+  }
+
+  function sameFlightsOn(tabId) {
+    return !!document.getElementById('t' + tabId + '_same_flights')?.checked;
+  }
+
+  function samePragueOn(tabId) {
+    return !!document.getElementById('t' + tabId + '_same_prague')?.checked;
+  }
+
+  function readGuestFlight(row) {
+    if (!row) return {};
+    return {
+      arrival_flight: row.querySelector('.guest-arr-flight')?.value.trim() || '',
+      arrival_date: row.querySelector('.guest-arr-date')?.value.trim() || '',
+      arrival_time: row.querySelector('.guest-arr-time')?.value || '',
+      departure_flight: row.querySelector('.guest-dep-flight')?.value.trim() || '',
+      departure_date: row.querySelector('.guest-dep-date')?.value.trim() || '',
+      departure_time: row.querySelector('.guest-dep-time')?.value || '',
+      flight_note: row.querySelector('.guest-flight-note')?.value.trim() || '',
+    };
+  }
+
+  function readPragueStays(root) {
+    if (!root) return [];
+    const stays = [];
+    root.querySelectorAll('.guest-prague-stay').forEach(row => {
+      stays.push(normalisePragueStay({
+        hotel: row.querySelector('.guest-stay-hotel')?.value || '',
+        check_in: row.querySelector('.guest-stay-in')?.value || '',
+        check_out: row.querySelector('.guest-stay-out')?.value || '',
+        note: row.querySelector('.guest-stay-note')?.value || '',
+      }));
+    });
+    return stays.filter(pragueStayHasDetail);
+  }
+
+  function writePragueStays(container, stays, tabId) {
+    if (!container) return;
+    container.innerHTML = '';
+    (stays || []).forEach(stay => {
+      container.insertAdjacentHTML('beforeend', pragueStayRowHTML(stay));
+      bindPragueStayRow(container.lastElementChild, tabId);
+    });
+  }
+
+  function bindPragueStayRow(stayRow, tabId) {
+    if (!stayRow) return;
+    stayRow.querySelector('.guest-stay-remove')?.addEventListener('click', () => {
+      stayRow.remove();
+      refreshGuestTravel(tabId);
+      onTabInput(tabId);
+    });
+  }
+
+  function updatePragueStayNights(stayRow) {
+    if (!stayRow) return;
+    const label = stayRow.querySelector('.guest-stay-nights');
+    if (!label) return;
+    const nights = pragueStayNights(stayRow.querySelector('.guest-stay-in')?.value || '', stayRow.querySelector('.guest-stay-out')?.value || '');
+    label.textContent = pragueNightPhrase(nights);
+  }
+
+  function rowGuestName(row) {
+    if (!row) return '';
+    return [row.querySelector('.member-first')?.value, row.querySelector('.member-last')?.value].map(v => String(v || '').trim()).filter(Boolean).join(' ');
+  }
+
+  function writeGuestFlight(row, flight) {
+    if (!row || !flight) return;
+    const set = (sel, value) => {
+      const input = row.querySelector(sel);
+      if (input) input.value = value || '';
+    };
+    set('.guest-arr-flight', flight.arrival_flight);
+    set('.guest-arr-date', flight.arrival_date);
+    set('.guest-arr-time', memberTimeForInput(flight.arrival_time));
+    set('.guest-dep-flight', flight.departure_flight);
+    set('.guest-dep-date', flight.departure_date);
+    set('.guest-dep-time', memberTimeForInput(flight.departure_time));
+    set('.guest-flight-note', flight.flight_note);
+  }
+
+  function copyFirstGuestFlights(tabId) {
+    const rows = memberRows(tabId);
+    if (rows.length < 2) return;
+    const flight = readGuestFlight(rows[0]);
+    rows.slice(1).forEach(row => writeGuestFlight(row, flight));
+  }
+
+  function applySameFlightChrome(tabId) {
+    const on = sameFlightsOn(tabId);
+    const rows = memberRows(tabId);
+    const firstName = rowGuestName(rows[0]) || 'the first guest';
+    rows.forEach((row, index) => {
+      const locked = on && index > 0;
+      const editor = row.querySelector('.guest-flight-editor');
+      if (editor) editor.querySelectorAll('input, textarea, button').forEach(input => { input.disabled = locked; });
+      const summary = row.querySelector('.guest-flight-summary');
+      if (summary) summary.textContent = locked ? ('Same as ' + firstName) : guestFlightSummary(readGuestFlight(row));
+    });
+  }
+
+  function applySamePragueChrome(tabId) {
+    const on = samePragueOn(tabId);
+    const shared = readPragueStays(document.getElementById('t' + tabId + '_shared_prague_list'));
+    const sharedText = guestPragueSummary(shared).replace(/^Own Prague hotel: /, '');
+    const box = document.getElementById('t' + tabId + '_shared_prague');
+    if (box) box.hidden = !on;
+    memberRows(tabId).forEach(row => {
+      const editor = row.querySelector('.guest-prague-editor');
+      if (editor) editor.hidden = on;
+      const summary = row.querySelector('.guest-prague-summary');
+      if (!summary) return;
+      summary.textContent = on ? ('With the group: ' + (sharedText === 'No own Prague stay' ? 'No Prague stay yet' : sharedText)) : guestPragueSummary(readPragueStays(row));
+    });
+  }
+
+  function refreshGuestTravel(tabId) {
+    memberRows(tabId).forEach(row => {
+      row.querySelectorAll('.guest-prague-stay').forEach(updatePragueStayNights);
+    });
+    const shared = document.getElementById('t' + tabId + '_shared_prague_list');
+    if (shared) shared.querySelectorAll('.guest-prague-stay').forEach(updatePragueStayNights);
+    applySameFlightChrome(tabId);
+    applySamePragueChrome(tabId);
+    refreshOwnPragueLine(tabId);
+  }
+
+  function refreshOwnPragueLine(tabId) {
+    const line = document.getElementById('t' + tabId + '_own_prague_line');
+    const btn = document.getElementById('t' + tabId + '_fill_prague');
+    const nights = fieldVal(tabId, 'prague_nights');
+    const hotel = fieldVal(tabId, 'prague_hotel');
+    const guests = samePragueOn(tabId)
+      ? getMembersData(tabId)
+      : memberRows(tabId).map(row => ({
+        first_name: row.querySelector('.member-first')?.value.trim() || '',
+        last_name: row.querySelector('.member-last')?.value.trim() || '',
+        prague_stays: readPragueStays(row),
+      })).filter(guest => guest.first_name || guest.last_name);
+    const text = ownPragueStaysLine(guests);
+    if (line) line.textContent = text;
+    if (btn) btn.hidden = !((!nights || !hotel) && text);
+  }
+
+  function toggleSameFlights(tabId) {
+    const box = document.getElementById('t' + tabId + '_same_flights');
+    if (!box) return;
+    if (box.checked) {
+      const prompt = sharedFlightPrompt(memberRows(tabId).map(row => Object.assign({
+        first_name: row.querySelector('.member-first')?.value.trim() || '',
+        last_name: row.querySelector('.member-last')?.value.trim() || '',
+      }, readGuestFlight(row))));
+      if (prompt && !window.confirm(prompt)) {
+        box.checked = false;
+        return;
+      }
+      copyFirstGuestFlights(tabId);
+    } else {
+      copyFirstGuestFlights(tabId);
+    }
+    refreshGuestTravel(tabId);
+    onTabInput(tabId);
+  }
+
+  function toggleSamePrague(tabId) {
+    const box = document.getElementById('t' + tabId + '_same_prague');
+    if (!box) return;
+    if (box.checked) {
+      const prompt = sharedPraguePrompt(memberRows(tabId).map(row => ({
+        first_name: row.querySelector('.member-first')?.value.trim() || '',
+        last_name: row.querySelector('.member-last')?.value.trim() || '',
+        prague_stays: readPragueStays(row),
+      })));
+      if (prompt && !window.confirm(prompt)) {
+        box.checked = false;
+        return;
+      }
+      const sharedList = document.getElementById('t' + tabId + '_shared_prague_list');
+      if (sharedList && !readPragueStays(sharedList).length) {
+        const first = memberRows(tabId)[0];
+        writePragueStays(sharedList, first ? readPragueStays(first) : [], tabId);
+      }
+    } else {
+      const shared = readPragueStays(document.getElementById('t' + tabId + '_shared_prague_list'));
+      memberRows(tabId).forEach(row => writePragueStays(row.querySelector('.guest-prague-list'), shared, tabId));
+    }
+    refreshGuestTravel(tabId);
+    onTabInput(tabId);
+  }
+
+  function addSharedPragueStay(tabId) {
+    const stayList = document.getElementById('t' + tabId + '_shared_prague_list');
+    if (!stayList) return;
+    stayList.insertAdjacentHTML('beforeend', pragueStayRowHTML({}));
+    bindPragueStayRow(stayList.lastElementChild, tabId);
+    refreshGuestTravel(tabId);
+    onTabInput(tabId);
+  }
+
+  function fillPragueFromGuests(tabId) {
+    const nightsEl = tEl(tabId, 'prague_nights');
+    const hotelEl = tEl(tabId, 'prague_hotel');
+    const patch = pragueFillFromGuests(nightsEl?.value, hotelEl?.value, getMembersData(tabId), samePragueOn(tabId));
+    if (!patch) return;
+    if (patch.nights != null && nightsEl && !String(nightsEl.value || '').trim()) nightsEl.value = patch.nights;
+    if (patch.hotel != null && hotelEl && !String(hotelEl.value || '').trim()) hotelEl.value = patch.hotel;
+    refreshOwnPragueLine(tabId);
+    onTabInput(tabId);
   }
 
   function setField(tabId, key, value) {
@@ -3544,6 +4068,8 @@
     x.money.fxNote = fieldVal(tabId, 'fx_note');
     x.leaderHalfPrice = checkVal(tabId, 'leader_half_price');
     x.organiserBooksHotels = checkVal(tabId, 'organiser_books_hotels');
+    x.sameFlights = sameFlightsOn(tabId);
+    x.samePrague = samePragueOn(tabId);
     const groupBox = tEl(tabId, 'group_price');
     const groupOn = !!(groupBox && groupBox.checked);
     const groupLoaded = groupBox ? (groupBox.dataset.loadedGroupPrice || '') : '';
@@ -3635,6 +4161,17 @@
     setCheck(tabId, 'leader_half_price', x.leaderHalfPrice === true);
     applyGroupPriceTick(tabId, raw);
     setCheck(tabId, 'organiser_books_hotels', x.organiserBooksHotels === true);
+    const sameFlights = document.getElementById('t' + tabId + '_same_flights');
+    const samePrague = document.getElementById('t' + tabId + '_same_prague');
+    if (sameFlights) sameFlights.checked = x.sameFlights === true;
+    if (samePrague) samePrague.checked = x.samePrague === true;
+    if (x.samePrague === true) {
+      const firstStayRow = memberRows(tabId)[0];
+      const seeded = firstStayRow ? readPragueStays(firstStayRow) : [];
+      const sharedList = document.getElementById('t' + tabId + '_shared_prague_list');
+      if (sharedList && !readPragueStays(sharedList).length) writePragueStays(sharedList, seeded, tabId);
+    }
+    if (typeof refreshGuestTravel === 'function') refreshGuestTravel(tabId);
     const placeSel = tEl(tabId, 'tour_place');
     if (placeSel && (x.tourPlace === 'beading' || x.tourPlace === 'other')) placeSel.value = x.tourPlace;
     syncHotelPanel(tabId);
@@ -7166,6 +7703,7 @@
     if (changedId.endsWith('_day_pickup')) schedulePlanHotelSave(tabId);
     updateHotelNightsHint(tabId);
     refreshDateFoldSummaries(tabId);
+    if (typeof refreshGuestTravel === 'function') refreshGuestTravel(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
     refreshBookingLink(tabId);
     if (autoSaveEnabled) scheduleTabAutoSave(tabId);
@@ -7446,6 +7984,14 @@
           paidBy: g.paidBy || '',
           payMethod: g.payMethod || '',
           price: g.price || '',
+          arrival_flight: m.arrival_flight,
+          arrival_date: m.arrival_date,
+          arrival_time: m.arrival_time,
+          departure_flight: m.departure_flight,
+          departure_date: m.departure_date,
+          departure_time: m.departure_time,
+          flight_note: m.flight_note,
+          prague_stays: m.prague_stays,
         });
       });
     } else if (guestExtras.length) {
@@ -7483,6 +8029,9 @@
       tabData.rescheduledFromId = rescheduledFromIdOf(record);
       const extrasMethod = splitNotes.extras && splitNotes.extras.money && splitNotes.extras.money.method;
       tabData.paymentMethod = String(record.payment_method || extrasMethod || '').trim();
+      tabData.loadedFlightIds = [...document.querySelectorAll('#t' + tabId + '_flights_list .flight-row')]
+        .map(row => row.dataset.flightId).filter(Boolean);
+      tabData.loadedMemberIds = memberRows(tabId).map(row => row.dataset.memberId).filter(Boolean);
     }
     tEl(tabId, 'id').value = record.id || '';
     const title = record.group_name || (record.id ? 'Booking #' + record.id : 'New Booking');
@@ -7589,6 +8138,8 @@
       tabData.delayUntilYear = '';
       tabData.rescheduledFromId = '';
       tabData.orphanHotelExpenses = [];
+      tabData.loadedFlightIds = [];
+      tabData.loadedMemberIds = [];
       tabData.loadedDates = {};
       tabData.dateFieldsTouched = {};
     }
@@ -8209,8 +8760,16 @@
       final_payment: memberMoneyOrNull(m.final_payment),
       deposit_date: memberDateOrNull(m.deposit_date),
       final_payment_date: memberDateOrNull(m.final_payment_date),
+      arrival_flight: m.arrival_flight || null,
+      arrival_date: memberDateOrNull(m.arrival_date),
+      arrival_time: memberTimeOrNull(m.arrival_time),
+      departure_flight: m.departure_flight || null,
+      departure_date: memberDateOrNull(m.departure_date),
+      departure_time: memberTimeOrNull(m.departure_time),
+      flight_note: m.flight_note || null,
+      prague_stays: Array.isArray(m.prague_stays) && m.prague_stays.length ? m.prague_stays : null,
     }));
-    const optional = ['deposit_date', 'final_payment_date', 'deposit', 'final_payment', 'email'];
+    const optional = ['deposit_date', 'final_payment_date', 'deposit', 'final_payment', 'email', 'arrival_flight', 'arrival_date', 'arrival_time', 'departure_flight', 'departure_date', 'departure_time', 'flight_note', 'prague_stays'];
     const dropped = new Set();
     let res = await sb.from('members').insert(rows);
     while (res.error && isMissingColumnError(res.error) && dropped.size < optional.length) {
@@ -8228,6 +8787,17 @@
       res = await sb.from('members').insert(rows);
     }
     if (res.error) throw res.error;
+  }
+
+  async function guardSavedChildRows(bookingId, table, loadedIds) {
+    const known = Array.isArray(loadedIds) ? loadedIds : [];
+    try {
+      const { data, error } = await sb.from(table).select('id').eq('booking_id', bookingId);
+      if (error) return 'error';
+      return unseenSavedRows(data, known).length ? 'blocked' : '';
+    } catch (err) {
+      return 'error';
+    }
   }
 
   async function saveBooking(tabId, silent = false) {
@@ -8269,6 +8839,20 @@
       const bid = tabData.bookingId;
 
       if (bid) {
+        const flightGuard = await guardSavedChildRows(bid, 'flights', tabData.loadedFlightIds);
+        if (flightGuard) {
+          toast(flightGuard === 'error'
+            ? 'Could not check saved flights before saving. Reload the page and try again.'
+            : 'This booking has flights saved that aren\'t loaded on this screen. Reload the page before saving so they aren\'t lost.', 'error');
+          return;
+        }
+        const memberGuard = await guardSavedChildRows(bid, 'members', tabData.loadedMemberIds);
+        if (memberGuard) {
+          toast(memberGuard === 'error'
+            ? 'Could not check saved guests before saving. Reload the page and try again.'
+            : 'This booking has guests saved that aren\'t loaded on this screen. Reload the page before saving so they aren\'t lost.', 'error');
+          return;
+        }
         const { error } = await saveBookingRow(bookingData, _extras || extras, bid);
         if (error) throw error;
 
