@@ -1126,6 +1126,7 @@
     const id = pendingDeepLinkBookingId;
     const record = (allBookings || []).find(r => bookingIdsMatch(r.id, id));
     if (record) {
+      if (!bookingChildrenReady(record)) return;
       bookingLinkSettled = true;
       pendingDeepLinkBookingId = null;
       openBookingInTab(record.id);
@@ -3267,6 +3268,26 @@
   function unseenSavedRows(dbRows, loadedIds) {
     const known = new Set((loadedIds || []).map(id => String(id)));
     return (dbRows || []).filter(row => row && row.id != null && String(row.id) !== '' && !known.has(String(row.id)));
+  }
+
+  function bookingChildrenReady(record) {
+    return !record || record._childrenLoaded !== false;
+  }
+
+  function screenGuestsLackLoadedIds(screenMembers, dbRows) {
+    const saved = (dbRows || []).filter(row => row && row.id != null && String(row.id) !== '');
+    if (!saved.length) return false;
+    const onScreen = (screenMembers || []).filter(member => member && member.id != null && String(member.id) !== '');
+    return onScreen.length === 0;
+  }
+
+  function tabMissedSavedChildren(tabData, fresh) {
+    if (!tabData || tabData.dirty || !fresh || fresh._childrenLoaded !== true) return false;
+    const missing = (rows, loaded) => {
+      const known = new Set((loaded || []).map(id => String(id)));
+      return (rows || []).some(row => row && row.id != null && String(row.id) !== '' && !known.has(String(row.id)));
+    };
+    return missing(fresh._members, tabData.loadedMemberIds) || missing(fresh._flights, tabData.loadedFlightIds) || tabData.childrenPending === true;
   }
 
   function pragueFillFromGuests(nightsValue, hotelValue, guests, shared) {
@@ -7382,6 +7403,11 @@
   // ═══════════════════════════════════════════════════════════════
 
   function openNewTab(bookingRecord) {
+    if (bookingRecord && !bookingChildrenReady(bookingRecord)) {
+      pendingDeepLinkBookingId = Number(bookingRecord.id) || bookingRecord.id;
+      bookingLinkSettled = false;
+      return;
+    }
     // Opening a form here retires the address-bar booking. A later list
     // reload must not jump back to the tour the page was opened on.
     bookingLinkSettled = true;
@@ -7392,6 +7418,11 @@
     if (bookingId) {
       for (const [existingTabId, tabData] of tabs) {
         if (bookingIdsMatch(tabData.bookingId, bookingId)) {
+          if (!tabData.dirty && bookingChildrenReady(bookingRecord) && tabMissedSavedChildren(tabData, bookingRecord)) {
+            populateTab(existingTabId, bookingRecord);
+            tabData.childrenPending = false;
+            tabData.dirty = false;
+          }
           switchToTab(existingTabId);
           return;
         }
@@ -7994,6 +8025,8 @@
           prague_stays: m.prague_stays,
         });
       });
+    } else if (record._childrenLoaded === false) {
+      addMemberRow(tabId);
     } else if (guestExtras.length) {
       guestExtras.forEach(g => addMemberRow(tabId, g.firstName || '', '', g.lastName || '', g.email || '', false, {
         paidBy: g.paidBy || '',
@@ -8032,6 +8065,8 @@
       tabData.loadedFlightIds = [...document.querySelectorAll('#t' + tabId + '_flights_list .flight-row')]
         .map(row => row.dataset.flightId).filter(Boolean);
       tabData.loadedMemberIds = memberRows(tabId).map(row => row.dataset.memberId).filter(Boolean);
+      tabData.childrenPending = record._childrenLoaded === false;
+      if (record._childrenLoaded !== false) tabData.dirty = false;
     }
     tEl(tabId, 'id').value = record.id || '';
     const title = record.group_name || (record.id ? 'Booking #' + record.id : 'New Booking');
@@ -8484,6 +8519,11 @@
       if (Number.isFinite(pending) && pending > 0) pendingDeepLinkBookingId = pending;
       return;
     }
+    if (!bookingChildrenReady(record)) {
+      pendingDeepLinkBookingId = Number(record.id) || record.id;
+      bookingLinkSettled = false;
+      return;
+    }
     openNewTab(record);
     showView('form');
     if (window.innerWidth <= 600) {
@@ -8615,6 +8655,7 @@
         _hotel_stays: [],
         _expenses: [],
         _additional_expenses: [],
+        _childrenLoaded: false,
       }));
       if (globalSearchApi) globalSearchApi.refresh();
       highlightSidebarRecords();
@@ -8639,6 +8680,7 @@
           _hotel_stays: stays.data || [],
           _expenses: hotelExps,
           _additional_expenses: addlExps,
+          _childrenLoaded: true,
         });
 	      }));
 	      allBookings = enriched;
@@ -8649,6 +8691,7 @@
       if (currentView === 'year') renderYearTours(allBookings);
 	      updateGlobalAnalytics();
 	      refreshAllYearCalendars();
+      refreshUneditedBookingTabs();
       for (const [tabId] of tabs) {
         fillCompanionSelect(tabId);
         populateHotelSelects(tabId);
@@ -8789,11 +8832,26 @@
     if (res.error) throw res.error;
   }
 
-  async function guardSavedChildRows(bookingId, table, loadedIds) {
+  function refreshUneditedBookingTabs() {
+    for (const [tabId, tabData] of tabs) {
+      if (!tabData || tabData.dirty || !tabData.bookingId) continue;
+      const fresh = (allBookings || []).find(b => bookingIdsMatch(b.id, tabData.bookingId));
+      if (!tabMissedSavedChildren(tabData, fresh)) continue;
+      populateTab(tabId, fresh);
+      const refreshed = tabs.get(tabId);
+      if (refreshed) {
+        refreshed.childrenPending = false;
+        refreshed.dirty = false;
+      }
+    }
+  }
+
+  async function guardSavedChildRows(bookingId, table, loadedIds, screenRows) {
     const known = Array.isArray(loadedIds) ? loadedIds : [];
     try {
       const { data, error } = await sb.from(table).select('id').eq('booking_id', bookingId);
       if (error) return 'error';
+      if (table === 'members' && screenGuestsLackLoadedIds(screenRows, data)) return 'blocked';
       return unseenSavedRows(data, known).length ? 'blocked' : '';
     } catch (err) {
       return 'error';
@@ -8846,7 +8904,7 @@
             : 'This booking has flights saved that aren\'t loaded on this screen. Reload the page before saving so they aren\'t lost.', 'error');
           return;
         }
-        const memberGuard = await guardSavedChildRows(bid, 'members', tabData.loadedMemberIds);
+        const memberGuard = await guardSavedChildRows(bid, 'members', tabData.loadedMemberIds, data._members);
         if (memberGuard) {
           toast(memberGuard === 'error'
             ? 'Could not check saved guests before saving. Reload the page and try again.'
