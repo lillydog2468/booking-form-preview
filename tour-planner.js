@@ -21,6 +21,7 @@
 
   const state = {
     viewPref: localStorage.getItem('planner_view') || 'auto',
+    phoneWeek: false,
     bookingKey: '',
     yearFilter: (function () {
       try {
@@ -814,6 +815,26 @@
     return materializeBlankDays(days, plan).filter(d => d && typeof d === 'object' && !Array.isArray(d));
   }
 
+  function ensureTourSpanDays(plan) {
+    if (!plan) return;
+    const dates = enumerateDates(plan.arrivalDate, plan.departureDate);
+    if (!dates.length) return;
+    const byDate = {};
+    (plan.days || []).forEach(day => {
+      if (!day || typeof day !== 'object' || Array.isArray(day)) return;
+      const key = String(day.date || '').slice(0, 10);
+      if (key && !byDate[key]) byDate[key] = day;
+    });
+    if (dates.every(date => byDate[date])) return;
+    const span = dates.map(date => byDate[date] ? storedPlanDay(byDate[date], date) : emptyStoredDay(date));
+    const extras = (plan.days || []).filter(day => {
+      if (!day || typeof day !== 'object' || Array.isArray(day)) return false;
+      const key = String(day.date || '').slice(0, 10);
+      return key && dates.indexOf(key) < 0;
+    });
+    plan.days = span.concat(extras);
+  }
+
   function normalizePlan(plan) {
     if (!plan) return plan;
     if (plan.organiserPersonId == null) plan.organiserPersonId = '';
@@ -867,6 +888,7 @@
         };
       }).filter(Boolean);
     }
+    ensureTourSpanDays(plan);
     plan.days = materializeBlankDays(plan.days, plan);
     plan.days = (Array.isArray(plan.days) ? plan.days : [])
       .filter(d => d && typeof d === 'object')
@@ -3967,7 +3989,26 @@
     document.getElementById('btnDetailedView')?.classList.toggle('active', view === 'detailed');
     document.getElementById('btnLookView')?.classList.toggle('active', view === 'week');
   }
+  function setPhoneWeekUrl(on) {
+    try {
+      const url = new URL(location.href);
+      if (on) url.searchParams.set('view', 'phone');
+      else if (url.searchParams.get('view') === 'phone') url.searchParams.delete('view');
+      history.replaceState({}, '', url);
+    } catch (_) { /* ignore */ }
+  }
+  function openPhoneWeek() {
+    state.phoneWeek = true;
+    setPhoneWeekUrl(true);
+    render();
+  }
   function setViewPref(v) {
+    if (v === 'phone') {
+      openPhoneWeek();
+      return;
+    }
+    state.phoneWeek = false;
+    setPhoneWeekUrl(false);
     const leavingWeek = effectiveView() === 'week' && v !== 'week';
     if (v === 'week') state.weekZoomDay = null;
     state.viewPref = v;
@@ -4430,8 +4471,17 @@
 
   function updateGroupHeading() {
     const el = document.getElementById('groupHeading');
-    if (!el) return;
-    el.textContent = currentGroupHeading();
+    if (el) el.textContent = currentGroupHeading();
+    const dates = document.getElementById('groupDates');
+    if (!dates) return;
+    const plan = state.plan;
+    if (!plan || (!plan.arrivalDate && !plan.departureDate)) {
+      dates.textContent = '';
+      return;
+    }
+    const start = plan.arrivalDate ? formatDateDMY(plan.arrivalDate) : '—';
+    const end = plan.departureDate ? formatDateDMY(plan.departureDate) : '—';
+    dates.textContent = start + ' – ' + end;
   }
 
   function currentDay() {
@@ -4655,14 +4705,11 @@
     return kind === 'dropoff' ? Math.max(0, days.length - 1) : 0;
   }
 
-  function addHotelHandovers(kind) {
+  function insertMissingHotelHandovers(kind) {
     const HS = window.HandoverStops;
-    if (!state.plan || !HS || !HS.hotelHandoverStops) return;
+    if (!state.plan || !HS || !HS.hotelHandoverStops) return 0;
     const days = state.plan.days || [];
-    if (!days.length) {
-      toast('Add the tour days first.');
-      return;
-    }
+    if (!days.length) return 0;
     const handoverKind = kind === 'dropoff' ? 'dropoff' : 'pickup';
     const booking = bookingRecordForPlan(state.plan);
     const guests = hotelGuestsForPlan(booking);
@@ -4674,13 +4721,9 @@
     });
     const index = dayIndexForHotelHandover(handoverKind);
     const day = days[index];
-    if (!day || typeof day !== 'object') return;
+    if (!day || typeof day !== 'object') return 0;
     if (!Array.isArray(day.blocks)) day.blocks = [];
     const fresh = HS.hotelStopsToAdd(day.blocks, proposals);
-    if (!fresh.length) {
-      toast(proposals.length ? 'Those hotel stops are already on the plan.' : 'No Prague hotel stays to add.');
-      return;
-    }
     fresh.forEach(proposal => {
       const stop = ensureHandoverFields({
         id: uid('s'),
@@ -4705,14 +4748,49 @@
       refreshHandoverTitle(stop);
       day.blocks.push(stop);
     });
-    sortDayBlocks(day);
-    state.selectedDay = index;
+    return fresh.length;
+  }
+
+  function seedMissingHotelHandovers() {
+    if (!state.plan || state.plan.hotelStopsSeeded) return 0;
+    const booking = bookingRecordForPlan(state.plan);
+    const guests = hotelGuestsForPlan(booking);
+    const ready = guests.some(guest => (guest.prague_stays || []).some(stay => String((stay && (stay.hotel || stay.hotelName)) || '').trim()));
+    const membersReady = !!(booking && booking._membersLoaded);
+    if (!ready && !membersReady && !(state.plan.guests || []).some(guest => (guest.prague_stays || []).length)) return 0;
+    const added = insertMissingHotelHandovers('pickup') + insertMissingHotelHandovers('dropoff');
+    state.plan.hotelStopsSeeded = true;
+    if (added) scheduleAutoSave();
+    return added;
+  }
+
+  function addHotelHandovers(kind) {
+    if (!state.plan) return;
+    if (!(state.plan.days || []).length) {
+      toast('Add the tour days first.');
+      return;
+    }
+    const added = insertMissingHotelHandovers(kind);
+    if (!added) {
+      const booking = bookingRecordForPlan(state.plan);
+      const guests = hotelGuestsForPlan(booking);
+      const proposals = window.HandoverStops ? HandoverStops.hotelHandoverStops(guests, {
+        kind: kind === 'dropoff' ? 'dropoff' : 'pickup',
+        arrival: state.plan.arrivalDate || '',
+        departure: state.plan.departureDate || '',
+        samePrague: samePragueForPlan(booking),
+      }) : [];
+      toast(proposals.length ? 'Those hotel stops are already on the plan.' : 'No Prague hotel stays to add.');
+      return;
+    }
+    state.plan.hotelStopsSeeded = true;
+    state.selectedDay = dayIndexForHotelHandover(kind === 'dropoff' ? 'dropoff' : 'pickup');
     scheduleAutoSave();
     closeSheet();
     render();
-    toast(fresh.length === 1
+    toast(added === 1
       ? 'Added 1 hotel stop. Stops already on the plan were left as they are.'
-      : ('Added ' + fresh.length + ' hotel stops. Stops already on the plan were left as they are.'));
+      : ('Added ' + added + ' hotel stops. Stops already on the plan were left as they are.'));
   }
 
   function addHandoverStop() {
@@ -4873,6 +4951,15 @@
     const id = escapeHtml(stop.id);
     return `<button type="button" class="handover-toggle" data-handover-toggle="${id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Hide details' : 'Show details'}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`;
   }
+  function navigateButtonHtml(address) {
+    const HS = window.HandoverStops;
+    const text = String(address || '').trim();
+    if (!HS || !HS.appleDirectionsUrl || !text) return '';
+    const urls = HS.appleDirectionsUrl(text);
+    if (!urls.https) return '';
+    return `<button type="button" class="btn btn-outline btn-sm navigate-stop" data-navigate="1" data-navigate-scheme="${escapeHtml(urls.scheme)}" data-navigate-https="${escapeHtml(urls.https)}">Navigate</button>`;
+  }
+
   function handoverMapLinks(stop) {
     const HS = window.HandoverStops;
     if (!HS || !HS.googleMapsSearchUrl || !stop || stop.placeKind === 'airport') return '';
@@ -4880,11 +4967,11 @@
     const google = HS.googleMapsSearchUrl(text);
     if (!google) return '';
     const apple = HS.appleMapsSearchUrl ? HS.appleMapsSearchUrl(text) : '';
-    return `<p class="handover-maps"><span class="handover-address">${escapeHtml(text)}</span> <a href="${escapeHtml(google)}" target="_blank" rel="noopener">Google Maps</a>${apple ? ` · <a href="${escapeHtml(apple)}" target="_blank" rel="noopener">Apple Maps</a>` : ''}</p>`;
+    return `<p class="handover-maps"><span class="handover-address">${escapeHtml(text)}</span> <a href="${escapeHtml(google)}" target="_blank" rel="noopener">Google Maps</a>${apple ? ` · <a href="${escapeHtml(apple)}" target="_blank" rel="noopener">Apple Maps</a>` : ''} ${navigateButtonHtml(text)}</p>`;
   }
 
   function renderHandoverBar(stop) {
-    return `<div class="handover-bar">${renderHandoverToggle(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p></div>${handoverMapLinks(stop)}`;
+    return `<div class="handover-bar">${renderHandoverToggle(stop)}${renderStopCue(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p></div>${handoverMapLinks(stop)}`;
   }
 
   function renderHandoverTerminal(stop) {
@@ -5332,8 +5419,6 @@
     const markEmpties = planShowsEmptyMarkers(state.plan);
     return (state.plan.guests || []).map(g => {
       ensureGuestDebt(g);
-      const paid = guestPaidBack(g);
-      const owes = guestOwes(g);
       const nameMissing = markEmpties && guestNameIsMissing(g.name);
       const emailMissing = markEmpties && !String(g.email || '').trim();
       const person = resolvePersonForGuest(g, state.plan);
@@ -5367,14 +5452,6 @@
           <div class="debt-field">
             <label for="lent_${g.id}">Lent (£)</label>
             <input type="number" inputmode="decimal" min="0" step="0.01" id="lent_${g.id}" data-guest-lent="${g.id}" value="${escapeHtml(String(g.lent ?? 0))}" placeholder="0.00">
-          </div>
-          <div class="debt-field">
-            <label>Paid back (£)</label>
-            <div class="debt-balance" data-debt-paid="${g.id}">${formatAmount(paid)}</div>
-          </div>
-          <div class="debt-field">
-            <label>Owes (balance, £)</label>
-            <div class="debt-balance ${owes > 0.004 ? 'owes' : 'clear'}" data-debt-balance="${g.id}">${formatAmount(owes)}</div>
           </div>
         </div>
         <div class="row-between">
@@ -5768,6 +5845,33 @@
     }
     if (list.length === 1) return renderTypeIconBadge(list[0], custom || null);
     return `<span class="type-icon-row">${list.map(id => renderTypeIconBadge(id)).join('')}</span>`;
+  }
+
+  function placePictureHtml(place) {
+    if (!place) return '';
+    const raw = place.image || place.photo || place.thumbnail || place.picture || '';
+    const src = String(raw || '').trim();
+    if (!src || /^https?:/i.test(src) || src.indexOf('//') === 0) return '';
+    if (src.indexOf('data:image/') !== 0 && src.charAt(0) !== '/') return '';
+    return `<img class="stop-cue-thumb" alt="" src="${escapeHtml(src)}">`;
+  }
+
+  function renderStopCue(stop) {
+    const PC = window.PlaceCategories;
+    if (!PC || !PC.stopCue) return '';
+    const place = stop ? placeById(stop.placeId || stop.place_id) : null;
+    const cue = PC.stopCue({
+      type: stop && stop.type,
+      types: place ? placeTypesOf(place) : [],
+      title: stop && stop.title,
+      name: place && place.name,
+      hotelName: stop && stop.hotelName,
+      notes: stop && stop.notes,
+      handoverKind: stop && stop.handoverKind,
+      placeKind: stop && stop.placeKind,
+    });
+    const thumb = placePictureHtml(place);
+    return `<span class="stop-cue type-icon-badge type-${escapeHtml(cue.tone)}" title="${escapeHtml(cue.label)}">${thumb || escapeHtml(cue.emoji)}<span class="stop-cue-label">${escapeHtml(cue.label)}</span></span>`;
   }
 
   function renderStopTypeIcon(stop) {
@@ -6505,6 +6609,73 @@
     removeStop(stopId);
   }
 
+  function moveStopToDay(stopId, toDayIndex, beforeId) {
+    if (!state.plan || !stopId) return false;
+    const days = state.plan.days || [];
+    const dest = days[toDayIndex];
+    if (!dest || typeof dest !== 'object') return false;
+    let stop = null;
+    days.forEach(day => {
+      if (!day || !Array.isArray(day.blocks) || stop) return;
+      const at = day.blocks.findIndex(item => item && String(item.id) === String(stopId));
+      if (at >= 0) stop = day.blocks.splice(at, 1)[0];
+    });
+    if (!stop) return false;
+    if (!Array.isArray(dest.blocks)) dest.blocks = [];
+    const before = beforeId && String(beforeId) !== String(stopId)
+      ? dest.blocks.findIndex(item => item && String(item.id) === String(beforeId))
+      : -1;
+    if (before >= 0) dest.blocks.splice(before, 0, stop);
+    else dest.blocks.push(stop);
+    scheduleAutoSave();
+    render();
+    return true;
+  }
+
+  function bindRoughStopDrag() {
+    document.querySelectorAll('.rough-drag').forEach(handle => {
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button != null && event.button !== 0) return;
+        const card = handle.closest('[data-rough-stop-id]');
+        if (!card) return;
+        event.preventDefault();
+        const drag = {
+          id: card.getAttribute('data-rough-stop-id'),
+          pointer: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          moved: false,
+        };
+        const move = (e) => {
+          if (e.pointerId !== drag.pointer) return;
+          if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
+          drag.moved = true;
+          const under = document.elementFromPoint(e.clientX, e.clientY);
+          document.querySelectorAll('.rough-day').forEach(day => day.classList.remove('drag-over'));
+          const lane = under && under.closest ? under.closest('[data-rough-day-drop]') : null;
+          if (lane) lane.classList.add('drag-over');
+        };
+        const up = (e) => {
+          if (e.pointerId !== drag.pointer) return;
+          handle.removeEventListener('pointermove', move);
+          handle.removeEventListener('pointerup', up);
+          handle.removeEventListener('pointercancel', up);
+          document.querySelectorAll('.rough-day').forEach(day => day.classList.remove('drag-over'));
+          if (!drag.moved) return;
+          const under = document.elementFromPoint(e.clientX, e.clientY);
+          const lane = under && under.closest ? under.closest('[data-rough-day-drop]') : null;
+          if (!lane) return;
+          const over = under.closest ? under.closest('[data-rough-stop-id]') : null;
+          moveStopToDay(drag.id, Number(lane.getAttribute('data-rough-day-drop')), over ? over.getAttribute('data-rough-stop-id') : '');
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', up);
+        handle.addEventListener('pointercancel', up);
+        try { handle.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+      });
+    });
+  }
+
   function moveRoughStop(dayIndex, stopId, dir) {
     const day = state.plan && state.plan.days ? state.plan.days[dayIndex] : null;
     if (!day || !Array.isArray(day.blocks)) return;
@@ -6608,7 +6779,6 @@
       const time = String(s.time || '').trim();
       const label = roughStopLabel(s);
       const noteSnip = roughStopNoteSnippet(s);
-      const icon = renderStopTypeIcon(s);
       const upDis = idx === 0 ? ' disabled' : '';
       const downDis = idx === stops.length - 1 ? ' disabled' : '';
       const placeId = s.placeId || s.place_id || '';
@@ -6628,8 +6798,10 @@
         return `<li class="rough-stop handover-rough${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
           <div class="handover-card">
             <div class="handover-bar">
+              <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag to another day">⠿</button>
               ${renderHandoverToggle(s)}
               ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
+              ${renderStopCue(s)}
               <p class="handover-oneline">${escapeHtml(handoverCompactLine(s))}</p>
               <div class="rough-stop-actions">
                 <button type="button" data-rough-move="${escapeHtml(s.id)}" data-rough-day="${dayIndex}" data-dir="-1" aria-label="Move up"${upDis}>↑</button>
@@ -6644,8 +6816,9 @@
       }
       return `<li class="rough-stop${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
         <div class="rough-stop-top">
+          <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag to another day">⠿</button>
           ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
-          <span class="rough-stop-icon" aria-hidden="true">${icon}</span>
+          <span class="rough-stop-icon" aria-hidden="true">${renderStopCue(s)}</span>
           <div class="rough-stop-actions">
             <button type="button" data-rough-move="${escapeHtml(s.id)}" data-rough-day="${dayIndex}" data-dir="-1" aria-label="Move up"${upDis}>↑</button>
             <button type="button" data-rough-move="${escapeHtml(s.id)}" data-rough-day="${dayIndex}" data-dir="1" aria-label="Move down"${downDis}>↓</button>
@@ -6686,13 +6859,14 @@
             </button>
           </div>
         </div>
-        <ul class="rough-day-list">${rows}</ul>
+        <ul class="rough-day-list">${dayIndex === 0 ? '<li class="rough-hotel-add"><button type="button" class="btn btn-outline btn-sm" data-add-hotel-handover="pickup">Add hotel pick-ups</button></li>' : ''}${rows}${dayIndex === ((state.plan && state.plan.days || []).length - 1) ? '<li class="rough-hotel-add"><button type="button" class="btn btn-outline btn-sm" data-add-hotel-handover="dropoff">Add hotel drop-offs</button></li>' : ''}</ul>
         ${empty}
       </section>
     `;
   }
 
   function renderRoughPlanPanel() {
+    seedMissingHotelHandovers();
     const days = (state.plan && state.plan.days) || [];
     // Clamp focus if days were rebuilt shorter
     if (state.roughFocusDayIndex != null) {
@@ -6765,6 +6939,7 @@
   }
 
   function bindRoughPlan() {
+    bindRoughStopDrag();
     const notesEl = document.getElementById('roughNotes');
     if (notesEl) {
       notesEl.addEventListener('input', () => {
@@ -6946,7 +7121,6 @@
       const time = String(s.time || '').trim();
       const label = glanceLabelForStop(s);
       const fullTitle = String(s.title || '').trim();
-      const icon = renderStopTypeIcon(s);
       const tip = fullTitle && fullTitle !== label ? (fullTitle + ' — jump to this stop') : 'Jump to this stop';
       const upDis = idx === 0 ? ' disabled' : '';
       const downDis = idx === stops.length - 1 ? ' disabled' : '';
@@ -6957,7 +7131,7 @@
       return `<li class="day-glance-item${ticks ? ' has-ticks' : ''}${missingMarkerClass(mark)}" draggable="true" data-glance-index="${idx}" data-glance-stop-id="${escapeHtml(s.id)}">
         <span class="day-glance-handle" title="Drag to reorder on desktop" aria-hidden="true">⠿</span>
         ${renderTimeWheelControl(s, 'glance', 'Time for ' + label)}
-        <span class="day-glance-icon" aria-hidden="true">${icon}</span>
+        <span class="day-glance-icon" aria-hidden="true">${renderStopCue(s)}</span>
         <button type="button" class="day-glance-row" data-glance-stop="${escapeHtml(s.id)}" title="${escapeHtml(tip)}">
           <span class="day-glance-title"><span class="glance-nick">${escapeHtml(label)}</span>${noPlace ? missingBadgeHtml('No placeId') : ''}${flagged ? missingBadgeHtml('FLAG') : ''}</span>
         </button>
@@ -7021,11 +7195,12 @@
           <div class="rail"><div class="dot ${escapeHtml(placeTypeForStop(s))}"></div></div>
           <div>
             <div><span class="badge">${escapeHtml(s.period || periodForTime(s.time))}</span><span class="badge">${escapeHtml(stopCategoriesLabel(s))}</span>${flagged ? missingBadgeHtml('FLAG / GAP') : ''}${noPlace ? missingBadgeHtml('No placeId') : ''}</div>
-            <div class="stop-title"><input type="text" data-stop-title="${s.id}" value="${escapeHtml(s.title || '')}"></div>
+            <div class="stop-title">${renderStopCue(s)}<input type="text" data-stop-title="${s.id}" value="${escapeHtml(s.title || '')}"></div>
             <div class="stop-notes"><input type="text" class="${flagged ? 'field-flagged' : ''}" data-stop-notes="${s.id}" value="${escapeHtml(s.notes || '')}" placeholder="Notes" aria-invalid="${flagged ? 'true' : 'false'}"></div>
             <div class="stop-notes address-row">
               <input type="text" data-stop-address="${s.id}" value="${escapeHtml(resolveStopAddress(s))}" placeholder="Address (village/town or street) or Apple Maps link" aria-label="Address">
               ${stopMapsButtonHtml(s, 'Open in Apple Maps')}
+              ${navigateButtonHtml(resolveStopAddress(s))}
             </div>
             ${placeHint}
             ${stopNeedsBookingTicks(s) ? renderBookingTicksHtml(s) : `<p class="muted tick-skip">No message / booked ticks for ${escapeHtml(typeLabel(s.type).toLowerCase())}.</p>`}
@@ -8207,13 +8382,12 @@ function renderDayTabs() {
         ? stops.map(s => {
           const time = String(s.time || '').trim();
           const label = lookStopLabel(s);
-          const type = placeTypeForStop(s);
           const timeHtml = (zoom != null && s.id)
             ? renderTimeWheelControl(s, 'week', 'Time for ' + label)
             : (time
               ? `<span class="look-time">${escapeHtml(time)}</span>`
               : '<span class="look-time is-blank" aria-label="Time not set">—</span>');
-          return `<li class="look-stop">${timeHtml}<span class="dot ${escapeHtml(type)}" aria-hidden="true"></span><span class="look-name">${escapeHtml(label)}</span></li>`;
+          return `<li class="look-stop">${timeHtml}${renderStopCue(s)}<span class="look-name">${escapeHtml(label)}</span></li>`;
         }).join('')
         : '<li class="look-empty">No stops this day</li>';
       const zoomBtn = zoom == null
@@ -8333,6 +8507,52 @@ function renderDayTabs() {
     }, { passive: true });
   }
 
+  function weekNoteForBooking(id) {
+    const key = String(id == null || id === '' ? (state.bookingKey || '') : id);
+    const open = state.plan && String(state.bookingKey) === key ? state.plan : null;
+    const plan = open || (state.plans && state.plans[key]) || null;
+    if (!plan || !window.WeekNote) return null;
+    return WeekNote.build(plan, { today: todayISO() });
+  }
+  function copyWeekText(note) {
+    const blob = note.title + '\n\n' + note.text;
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(blob);
+    const box = document.createElement('textarea');
+    box.value = blob;
+    document.body.appendChild(box);
+    box.select();
+    document.execCommand('copy');
+    box.remove();
+    return Promise.resolve();
+  }
+  function bindPhoneWeek(note) {
+    document.getElementById('btnSendWeekToNotes')?.addEventListener('click', () => {
+      const payload = { title: note.title, text: note.title + '\n\n' + note.text };
+      if (navigator.share) {
+        navigator.share(payload).catch(err => {
+          if (err && err.name === 'AbortError') return;
+          copyWeekText(note).then(() => toast('Copied the week. Paste it into Notes.'));
+        });
+        return;
+      }
+      copyWeekText(note).then(() => toast('Copied the week. Paste it into Notes.'));
+    });
+    document.getElementById('btnCopyWeek')?.addEventListener('click', () => {
+      copyWeekText(note).then(() => toast('Copied the week.'));
+    });
+    document.querySelectorAll('[data-phone-scheme]').forEach(link => {
+      link.addEventListener('click', (event) => {
+        const scheme = link.getAttribute('data-phone-scheme') || '';
+        const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (!ios || !scheme) return;
+        event.preventDefault();
+        window.location.href = scheme;
+      });
+    });
+  }
+  if (window.WeekNote) window.WeekNote.forBooking = weekNoteForBooking;
+  window.WeekNoteForBooking = weekNoteForBooking;
+
   function bindWeekLook() {
     document.querySelectorAll('[data-look-zoom]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -8349,6 +8569,36 @@ function renderDayTabs() {
       window.__weekLookScrollBound = true;
       window.addEventListener('scroll', () => updateWeekProgress(), { passive: true });
     }
+  }
+
+  function renderMainTabs() {
+    if (state.plan) syncPayloadIssues(state.plan);
+    const issuesCount = state.plan ? openIssuesCount(state.plan) : 0;
+    const issuesBadge = issuesCount
+      ? `<span class="tab-badge" aria-label="${issuesCount} open issue${issuesCount === 1 ? '' : 's'}">${issuesCount}</span>`
+      : '';
+    const tab = (name, label) => `
+      <button type="button" class="main-tab ${state.mainTab === name ? 'active' : ''}" data-main-tab="${name}" role="tab" aria-selected="${state.mainTab === name}">
+        ${label}
+      </button>`;
+    return `
+      <div class="main-tabs" role="tablist" aria-label="Planner sections">
+        ${tab('planner', 'Planner')}
+        ${tab('rough', 'Rough plan')}
+        ${tab('places', 'Places')}
+        <button type="button" class="main-tab ${state.mainTab === 'visits' ? 'active' : ''}" data-main-tab="visits" role="tab" aria-selected="${state.mainTab === 'visits'}">Visits</button>
+        ${tab('people', 'People')}
+        ${hotelsUsedTabButton()}
+        ${tab('issues', 'Issues' + issuesBadge)}
+      </div>`;
+  }
+
+  function mountPlannerNav() {
+    const mount = document.getElementById('plannerNavMount');
+    if (mount) mount.innerHTML = renderMainTabs();
+    document.querySelectorAll('[data-main-tab]').forEach(btn => {
+      btn.addEventListener('click', () => setMainTab(btn.getAttribute('data-main-tab')));
+    });
   }
 
   function renderWithoutPlan() {
@@ -8368,20 +8618,6 @@ function renderDayTabs() {
     const auth = state.sessionEmail
       ? `<span class="pill">${escapeHtml(state.sessionEmail)}</span>`
       : '';
-    const tab = (name, label) => `
-      <button type="button" class="main-tab ${state.mainTab === name ? 'active' : ''}" data-main-tab="${name}" role="tab" aria-selected="${state.mainTab === name}">
-        ${label}
-      </button>`;
-    const mainTabs = `
-      <div class="main-tabs" role="tablist" aria-label="Planner sections">
-        ${tab('planner', 'Planner')}
-        ${tab('rough', 'Rough plan')}
-        ${tab('places', 'Places')}
-        ${tab('visits', 'Visits')}
-        ${tab('people', 'People')}
-        ${hotelsUsedTabButton()}
-        ${tab('issues', 'Issues')}
-      </div>`;
     const emptyCard = `<div class="card"><h2>Tour planner</h2><p>${escapeHtml(emptyTourMessage())}</p></div>`;
     let body = emptyCard;
     if (state.mainTab === 'places') {
@@ -8410,7 +8646,7 @@ function renderDayTabs() {
       body = renderVisitsPanel();
     }
     const app = document.getElementById('app');
-    if (app) app.innerHTML = `<div class="status-row">${live}${auth}</div>${mainTabs}${body}`;
+    if (app) app.innerHTML = `<div class="status-row">${live}${auth}</div>${body}`;
     bindDynamic();
     if (state.mainTab === 'people') bindPeopleDirectory();
   }
@@ -8422,6 +8658,22 @@ function renderDayTabs() {
 
     const view = effectiveView();
     syncViewChrome(view);
+    if (state.phoneWeek) {
+      document.body.classList.add('phone-week');
+      const app = document.getElementById('app');
+      if (!state.plan || !window.WeekNote) {
+        if (app) app.innerHTML = '<p class="phone-week-wait">Opening the week…</p>';
+        return;
+      }
+      updateGroupHeading();
+      const note = WeekNote.build(state.plan, { today: todayISO() });
+      window.weekNote = note;
+      if (app) app.innerHTML = WeekNote.render(state.plan, { today: todayISO() });
+      bindPhoneWeek(note);
+      return;
+    }
+    document.body.classList.remove('phone-week');
+    mountPlannerNav();
     if (!state.plan) {
       renderWithoutPlan();
       return;
@@ -8558,35 +8810,6 @@ function renderDayTabs() {
       </div>
     `;
 
-    if (state.plan) syncPayloadIssues(state.plan);
-    const issuesCount = openIssuesCount(state.plan);
-    const issuesBadge = issuesCount
-      ? `<span class="tab-badge" aria-label="${issuesCount} open issue${issuesCount === 1 ? '' : 's'}">${issuesCount}</span>`
-      : '';
-    const mainTabs = `
-      <div class="main-tabs" role="tablist" aria-label="Planner sections">
-        <button type="button" class="main-tab ${state.mainTab === 'planner' ? 'active' : ''}" data-main-tab="planner" role="tab" aria-selected="${state.mainTab === 'planner'}">
-          Planner
-        </button>
-        <button type="button" class="main-tab ${state.mainTab === 'rough' ? 'active' : ''}" data-main-tab="rough" role="tab" aria-selected="${state.mainTab === 'rough'}">
-          Rough plan
-        </button>
-        <button type="button" class="main-tab ${state.mainTab === 'places' ? 'active' : ''}" data-main-tab="places" role="tab" aria-selected="${state.mainTab === 'places'}">
-          Places
-        </button>
-        <button type="button" class="main-tab ${state.mainTab === 'visits' ? 'active' : ''}" data-main-tab="visits" role="tab" aria-selected="${state.mainTab === 'visits'}">
-          Visits
-        </button>
-        <button type="button" class="main-tab ${state.mainTab === 'people' ? 'active' : ''}" data-main-tab="people" role="tab" aria-selected="${state.mainTab === 'people'}">
-          People
-        </button>
-        ${hotelsUsedTabButton()}
-        <button type="button" class="main-tab ${state.mainTab === 'issues' ? 'active' : ''}" data-main-tab="issues" role="tab" aria-selected="${state.mainTab === 'issues'}">
-          Issues${issuesBadge}
-        </button>
-      </div>
-    `;
-
     const placesPanel = `
       <div class="card">
         <div class="row-between">
@@ -8612,7 +8835,6 @@ function renderDayTabs() {
     const plannerPhone = `
       <button type="button" class="btn btn-outline week-open" id="btnOpenWeekLook">Look at the whole week</button>
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${tripSummary}
       ${renderHotelCard()}
       <div style="height:12px;"></div>
@@ -8628,7 +8850,6 @@ function renderDayTabs() {
 
     const plannerDesktop = `
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${tripSummary}
       <div class="grid-3">
         <div class="stack">
@@ -8648,37 +8869,31 @@ function renderDayTabs() {
 
     const placesView = `
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${placesPanel}
     `;
 
     const peopleView = `
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${peoplePanel}
     `;
 
     const issuesView = `
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${renderIssuesPanel()}
     `;
 
     const roughView = `
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${renderRoughPlanPanel()}
     `;
 
     const hotelsUsedView = `
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${renderHotelsUsedPanel()}
     `;
 
     const visitsView = `
       <div class="status-row">${live}${auth}</div>
-      ${mainTabs}
       ${renderVisitsPanel()}
     `;
 
@@ -9182,9 +9397,6 @@ function renderDayTabs() {
       hotelsUsedYear = e.target.value || 'all';
       render();
     });
-    document.querySelectorAll('[data-main-tab]').forEach(btn => {
-      btn.addEventListener('click', () => setMainTab(btn.getAttribute('data-main-tab')));
-    });
     bindVisitLinks();
     document.querySelectorAll('[data-guest-name]').forEach(inp => {
       inp.addEventListener('input', () => {
@@ -9362,6 +9574,21 @@ function renderDayTabs() {
     });
     document.querySelectorAll('#app [data-add-hotel-handover]').forEach(btn => {
       btn.addEventListener('click', () => addHotelHandovers(btn.getAttribute('data-add-hotel-handover')));
+    });
+    document.querySelectorAll('[data-navigate]').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const scheme = btn.getAttribute('data-navigate-scheme') || '';
+        const https = btn.getAttribute('data-navigate-https') || '';
+        const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (ios && scheme) {
+          window.location.href = scheme;
+          setTimeout(() => { if (https) window.open(https, '_blank', 'noopener'); }, 800);
+          return;
+        }
+        if (https) window.open(https, '_blank', 'noopener');
+      });
     });
     document.querySelectorAll('[data-handover-kind]').forEach(sel => {
       sel.addEventListener('change', () => commitHandoverKind(sel.getAttribute('data-handover-kind'), sel.value));
@@ -10661,7 +10888,8 @@ function renderDayTabs() {
     const params = new URLSearchParams(location.search);
     const requested = params.get('booking');
     const viewParam = params.get('view');
-    if (viewParam === 'phone' || viewParam === 'detailed' || viewParam === 'week') state.viewPref = viewParam;
+    if (viewParam === 'phone') state.phoneWeek = true;
+    else if (viewParam === 'detailed' || viewParam === 'week') state.viewPref = viewParam;
     const tabParam = (params.get('tab') || '').toLowerCase();
     if (tabParam === 'people' || tabParam === 'places' || tabParam === 'issues' || tabParam === 'rough' || tabParam === 'planner' || tabParam === 'hotels' || tabParam === 'visits') {
       state.mainTab = tabParam;
@@ -10808,7 +11036,7 @@ function renderDayTabs() {
   document.getElementById('btnForceCloudSave').addEventListener('click', () => forceSaveToCloud());
   document.getElementById('btnExportPlan').addEventListener('click', () => exportPlanJson());
   document.getElementById('btnLookView').addEventListener('click', () => setViewPref('week'));
-  document.getElementById('btnPhoneView').addEventListener('click', () => setViewPref('phone'));
+  document.getElementById('btnPhoneView').addEventListener('click', () => openPhoneWeek());
   // ---- Simple plan: read-only, big-text list of each day's places and times ----
   function simplePlanStopTime(st) {
     const t = String((st && st.time) || '').trim();

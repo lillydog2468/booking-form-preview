@@ -327,6 +327,38 @@
     return 'https://maps.apple.com/?q=' + encodeURIComponent(query);
   }
 
+  /** Driving directions. iOS uses the maps scheme; other devices use the https link. */
+  function appleDirectionsUrl(text) {
+    var query = String(text || '').trim();
+    if (!query) return { scheme: '', https: '' };
+    var encoded = encodeURIComponent(query);
+    return {
+      scheme: 'maps://?daddr=' + encoded + '&dirflg=d',
+      https: 'https://maps.apple.com/?daddr=' + encoded + '&dirflg=d',
+    };
+  }
+
+  /** Move a stop between days or within a day. Time, guests and notes stay on the stop. */
+  function relocateStop(days, stopId, toIndex, beforeId) {
+    var list = (days || []).map(function (day) {
+      return {
+        date: day && day.date,
+        blocks: ((day && day.blocks) || []).slice(),
+      };
+    });
+    var stop = null;
+    list.forEach(function (day) {
+      var i = day.blocks.findIndex(function (item) { return item && String(item.id) === String(stopId); });
+      if (i >= 0) stop = day.blocks.splice(i, 1)[0];
+    });
+    if (!stop || !list[toIndex]) return list;
+    var dest = list[toIndex].blocks;
+    var at = beforeId ? dest.findIndex(function (item) { return item && String(item.id) === String(beforeId); }) : -1;
+    if (at >= 0 && String(beforeId) !== String(stopId)) dest.splice(at, 0, stop);
+    else dest.push(stop);
+    return list;
+  }
+
   root.HandoverStops = {
     guestNameMissing: guestNameMissing,
     namedGuests: namedGuests,
@@ -352,5 +384,7 @@
     hotelStopsToAdd: hotelStopsToAdd,
     googleMapsSearchUrl: googleMapsSearchUrl,
     appleMapsSearchUrl: appleMapsSearchUrl,
+    appleDirectionsUrl: appleDirectionsUrl,
+    relocateStop: relocateStop,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

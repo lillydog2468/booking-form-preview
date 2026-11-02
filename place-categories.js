@@ -126,6 +126,57 @@
     return placeCategories(place).map(singularLabel).join(' · ');
   }
 
+  // Glance cues. First stored category wins, then the name tests, in this order.
+  // Add a row here to cover another kind of place.
+  var STOP_CUES = [
+    { id: 'airport', emoji: '✈️', label: 'Airport', tone: 'pickup', types: ['airport'], test: function (blob) { return /airport|terminal/.test(blob); } },
+    { id: 'dropoff', emoji: '🏁', label: 'Drop-off', tone: 'pickup', types: ['dropoff'], test: function (blob) { return /drop-?off/.test(blob); } },
+    { id: 'pickup', emoji: '🚐', label: 'Pick-up', tone: 'pickup', types: ['pickup', 'handover'], test: function (blob) { return /pick-?up/.test(blob); } },
+    { id: 'travel', emoji: '🚌', label: 'Travel', tone: 'travel', types: ['travel'], test: function (blob) { return /\bdrive\b|\btravel\b/.test(blob); } },
+    { id: 'hotel', emoji: '🏨', label: 'Hotel', tone: 'hotel', types: ['hotel'], test: function (blob) { return /\bhotel\b/.test(blob); } },
+    { id: 'glass', emoji: '💎', label: 'Glass', tone: 'factory', test: function (blob) { return /glass/.test(blob); } },
+    { id: 'factory', emoji: '🏭', label: 'Factory', tone: 'factory', types: ['factory'], test: function (blob) { return /factory|\bworks\b/.test(blob); } },
+    { id: 'shop', emoji: '🏪', label: 'Bead shop', tone: 'shop', types: ['shop', 'antique'], test: function (blob) { return /bead|antik|\bshop\b/.test(blob); } },
+    { id: 'museum', emoji: '🏛️', label: 'Museum', tone: 'museum', types: ['museum'], test: function (blob) { return /museum/.test(blob); } },
+    { id: 'restaurant', emoji: '🍽️', label: 'Lunch', tone: 'restaurant', types: ['restaurant', 'meal'], test: function (blob) { return /lunch|dinner|restaurant|cafe|café/.test(blob); } },
+    { id: 'snack', emoji: '🥐', label: 'Snack', tone: 'snack', types: ['snack'] },
+    { id: 'sightseeing', emoji: '🗺️', label: 'Town', tone: 'viewpoint', types: ['viewpoint', 'experience'], test: function (blob) { return /town|square|castle|church|sight/.test(blob); } },
+    { id: 'school', emoji: '🏫', label: 'School', tone: 'school', types: ['school'] },
+  ];
+  var STOP_PIN = { id: 'other', emoji: '📍', label: 'Place', tone: 'other' };
+
+  function cueFrom(cue) {
+    return { id: cue.id, emoji: cue.emoji, label: cue.label, tone: cue.tone };
+  }
+
+  function stopCue(info) {
+    var row = info || {};
+    var types = [];
+    function addType(id) {
+      var clean = cleanId(id);
+      if (clean && types.indexOf(clean) === -1) types.push(clean);
+    }
+    addType(row.placeKind === 'airport' ? 'airport' : '');
+    if (row.handoverKind === 'dropoff') addType('dropoff');
+    if (row.handoverKind === 'pickup' || row.type === 'handover') addType('pickup');
+    addType(row.type);
+    asList(row.types).forEach(addType);
+    var blob = [row.title, row.name, row.hotelName, row.notes].join(' ').toLowerCase();
+    var i;
+    var cue;
+    for (i = 0; i < STOP_CUES.length; i++) {
+      cue = STOP_CUES[i];
+      if (cue.types && cue.types.some(function (id) { return types.indexOf(id) !== -1; })) return cueFrom(cue);
+    }
+    if (blob.trim()) {
+      for (i = 0; i < STOP_CUES.length; i++) {
+        cue = STOP_CUES[i];
+        if (cue.test && cue.test(blob)) return cueFrom(cue);
+      }
+    }
+    return cueFrom(STOP_PIN);
+  }
+
   function foodCategory(place) {
     return placeCategories(place).some(function (id) {
       return id === 'restaurant' || id === 'snack';
@@ -142,5 +193,7 @@
     categoriesLabel: categoriesLabel,
     foodCategory: foodCategory,
     knownCatalogueId: knownCatalogueId,
+    STOP_CUES: STOP_CUES,
+    stopCue: stopCue,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -1600,16 +1600,6 @@
     <div class="pair-stats" id="t${t}_pairStats" hidden></div>
     <form id="t${t}_form" class="layout-form" onsubmit="return false;">
       <input type="hidden" id="t${t}_id">
-      <div class="section" style="padding:12px 14px;background:var(--accent-soft);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div style="font-weight:800;font-size:15px;">Day planner for this group</div>
-            <div style="font-size:13px;color:var(--text-secondary);margin-top:2px;">Opens the tour planner with this booking’s dates, hotel and guest names.</div>
-          </div>
-          <button type="button" class="btn btn-primary" onclick="openTourPlanner('${t}')" title="Open the day planner for this group">Start planning</button>
-        </div>
-      </div>
-
       <div class="layout-viewport">
       <div class="layout-zoom-inner" id="t${t}_zoomInner">
       <div class="layout-grid">

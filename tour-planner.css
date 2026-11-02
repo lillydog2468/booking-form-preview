@@ -101,12 +101,67 @@
     }
     .topbar-inner {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 10px 16px;
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      padding: 8px 16px 10px;
     }
+    .planner-options {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 8px 16px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .page-links { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .page-links a {
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .group-dates {
+      margin: 2px 0 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-secondary);
+    }
+    .topbar .main-tabs { margin: 0; }
+    .rough-drag {
+      flex: 0 0 auto;
+      min-width: 44px;
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      font-size: 18px;
+      cursor: grab;
+      touch-action: none;
+    }
+    .navigate-stop { min-height: 44px; }
+    body.phone-week .planner-options,
+    body.phone-week #plannerNavMount,
+    body.phone-week .wip-banner { display: none !important; }
+    body.phone-week .topbar { position: sticky; top: 0; }
+    .phone-week { max-width: 520px; margin: 0 auto; padding: 8px 12px 32px; }
+    .phone-week-title { font-size: 20px; font-weight: 800; line-height: 1.25; margin: 8px 0 12px; }
+    .phone-week-actions { display: flex; gap: 8px; margin-bottom: 14px; }
+    .phone-week-send, .phone-week-copy, .phone-week-nav {
+      min-height: 48px; border-radius: 12px; font: inherit; font-weight: 800; font-size: 17px;
+    }
+    .phone-week-send { flex: 1 1 auto; border: 0; background: #1d4ed8; color: #fff; padding: 10px 14px; }
+    .phone-week-copy { border: 1px solid var(--border); background: var(--surface); padding: 10px 14px; }
+    .phone-week-day { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); margin: 0 0 10px; }
+    .phone-week-day summary { min-height: 52px; padding: 12px 14px; font-size: 20px; font-weight: 800; cursor: pointer; }
+    .phone-week-day.is-today { background: #fff7e6; border: 2px solid #d97706; }
+    .phone-week-stop { padding: 8px 14px 14px; border-top: 1px solid var(--border); }
+    .phone-week-time { margin: 0; font-size: 22px; font-weight: 800; }
+    .phone-week-place { margin: 4px 0; font-size: 18px; font-weight: 700; line-height: 1.3; }
+    .phone-week-guests { margin: 0 0 8px; font-size: 16px; color: var(--text-secondary); }
+    .phone-week-nav { display: inline-flex; align-items: center; text-decoration: none; background: #111827; color: #fff; padding: 8px 14px; }
+    .phone-week-empty, .phone-week-wait { padding: 12px 14px; font-size: 16px; }
     .topbar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
     .topbar h1 { font-size: 16px; font-weight: 800; letter-spacing: -.3px; }
     .topbar .sub { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
@@ -753,6 +808,25 @@
       box-sizing: border-box;
       flex-shrink: 0;
       vertical-align: middle;
+    }
+    .stop-cue.type-icon-badge {
+      width: auto;
+      height: auto;
+      min-height: 28px;
+      padding: 2px 8px 2px 6px;
+      gap: 4px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 800;
+    }
+    .stop-cue-label { font-size: 11px; line-height: 1.1; white-space: nowrap; }
+    .stop-cue-thumb { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; display: block; }
+    .look-stop, .rough-stop-top, .stop-title, .handover-bar { align-items: center; }
+    .stop-title { display: flex; align-items: center; gap: 6px; }
+    .stop-title input { flex: 1 1 auto; min-width: 0; }
+    @media (max-width: 700px) {
+      .stop-cue.type-icon-badge { min-height: 32px; font-size: 16px; }
+      .stop-cue-label { font-size: 12px; }
     }
     .type-icon-badge svg {
       width: 0.92em;
@@ -2368,7 +2442,6 @@
        and slides off as the days scroll. It is not pinned.
        The week still scrolls. A zoomed day can change stop times. */
     body.view-week .topbar {
-      position: static;
       display: flex;
       flex-direction: column;
     }
@@ -2388,7 +2461,7 @@
     body.view-week #autosaveStatus,
     body.view-week #btnForceCloudSave,
     body.view-week #btnExportPlan,
-    body.view-week nav.view-nav,
+    body.view-week .page-links,
     body.view-week #globalSearchMount,
     body.view-week #btnTheme,
     body.view-week .wip-banner { display: none !important; }

@@ -16,6 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="place-categories.js"></script>
+  <script src="phone-week.js"></script>
   <script src="global-search.js"></script>
   <script src="booking-config.js"></script>
   <script src="booking-format.js"></script>
@@ -34,52 +35,48 @@
   <div class="wip-banner">Work in progress — day planner for Keith Dudman’s beading tours around Jablonec nad Nisou</div>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="topbar-left">
-        <div>
-          <h1>Tour planner</h1>
-          <details class="page-help">
-            <summary>Help</summary>
-            <div class="page-help-body">
-              <p>Week scrolls the days. Zoom in for one day. On that day, tap a time to change it. Detailed view is where stops are moved. Phone and Detailed show that day’s plan. Rough plan, Places, People, Hotels used, and Issues are the other sections.</p>
-            </div>
-          </details>
-        </div>
-        <nav class="view-nav" aria-label="Main">
-          <a href="booking-form.html" id="navBookings">Bookings</a>
-          <a href="analytics.html" id="navAnalytics">Analytics</a>
-          <a href="tour-planner.html" class="active">Planner</a>
-          <a href="hotels.html" id="navHotels">Hotels</a>
-          <a href="places-stats.html" id="navPlacesStats">Places stats</a>
-        </nav>
+      <div class="group-heading-bar" id="groupHeadingBar">
+        <p class="group-heading" id="groupHeading" aria-live="polite">Tour group</p>
+        <p class="group-dates" id="groupDates"></p>
       </div>
-      <div class="topbar-actions">
-        <div id="globalSearchMount" class="global-search-mount" aria-live="polite"></div>
-        <label class="autosave-toggle" title="Auto-save changes after 2 seconds of inactivity">
-          <input type="checkbox" id="autosaveToggle" onchange="toggleAutoSave(this.checked)">
-          <span class="toggle-track"></span>
-          Auto-save
-        </label>
-        <span class="autosave-status" id="autosaveStatus"></span>
-        <button type="button" class="btn btn-outline btn-sm" id="btnForceCloudSave" title="Upload the plan open on this device to Supabase now">Force save to cloud</button>
-        <button type="button" class="btn btn-outline btn-sm" id="btnExportPlan" title="Download current plan as JSON backup">Export JSON</button>
-        <div class="year-filter-wrap">
-          <label class="field-label" for="yearFilter">Year</label>
-          <select id="yearFilter" class="year-select" aria-label="Filter tours by year"></select>
-        </div>
-        <select id="groupSelect" class="group-select" aria-label="Tour group"></select>
-        <div class="view-nav" role="group" aria-label="Planner view">
-          <button type="button" id="btnLookView">Week</button>
-          <button type="button" id="btnPhoneView">Phone</button>
-          <button type="button" id="btnSimplePlan" title="Big, read-only list of each day's places and times">Simple plan</button>
-          <button type="button" id="btnDetailedView">Detailed</button>
-        </div>
-        <button type="button" class="btn btn-outline btn-sm" id="btnTheme">Theme</button>
-      </div>
-    </div>
-    <div class="group-heading-bar" id="groupHeadingBar">
-      <p class="group-heading" id="groupHeading" aria-live="polite">Tour group</p>
+      <div id="plannerNavMount"></div>
     </div>
   </header>
+  <div class="planner-options">
+    <nav class="page-links" aria-label="Other pages">
+      <a href="booking-form.html" id="navBookings">Bookings</a>
+      <a href="analytics.html" id="navAnalytics">Analytics</a>
+      <a href="hotels.html" id="navHotels">Hotels</a>
+      <a href="places-stats.html" id="navPlacesStats">Places stats</a>
+    </nav>
+    <div id="globalSearchMount" class="global-search-mount" aria-live="polite"></div>
+    <label class="autosave-toggle" title="Auto-save changes after 2 seconds of inactivity">
+      <input type="checkbox" id="autosaveToggle" onchange="toggleAutoSave(this.checked)">
+      <span class="toggle-track"></span>
+      Auto-save
+    </label>
+    <span class="autosave-status" id="autosaveStatus"></span>
+    <button type="button" class="btn btn-outline btn-sm" id="btnForceCloudSave" title="Upload the plan open on this device to Supabase now">Force save to cloud</button>
+    <button type="button" class="btn btn-outline btn-sm" id="btnExportPlan" title="Download current plan as JSON backup">Export JSON</button>
+    <div class="year-filter-wrap">
+      <label class="field-label" for="yearFilter">Year</label>
+      <select id="yearFilter" class="year-select" aria-label="Filter tours by year"></select>
+    </div>
+    <select id="groupSelect" class="group-select" aria-label="Tour group"></select>
+    <div class="view-nav" role="group" aria-label="How this plan is shown">
+      <button type="button" id="btnLookView">Week</button>
+      <button type="button" id="btnPhoneView">Phone</button>
+      <button type="button" id="btnSimplePlan" title="Big, read-only list of each day's places and times">Simple plan</button>
+      <button type="button" id="btnDetailedView">Detailed</button>
+    </div>
+    <button type="button" class="btn btn-outline btn-sm" id="btnTheme">Theme</button>
+    <details class="page-help">
+      <summary>Help</summary>
+      <div class="page-help-body">
+        <p>The top bar is the tour and the sections. Week, Phone, Simple plan and Detailed change how the open section looks. Drag a stop by the handle to another day. Navigate opens directions and leaves the stop editable.</p>
+      </div>
+    </details>
+  </div>
 
   <main class="wrap" id="app">
     <p class="muted">Loading…</p>
