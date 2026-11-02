@@ -399,15 +399,14 @@
   function renderBookingTicksHtml(s, opts) {
     if (!s || !stopNeedsBookingTicks(s)) return '';
     ensureStopTicks(s);
-    const compact = !!(opts && opts.compact);
     const id = escapeHtml(s.id);
     return `
-      <div class="booking-ticks${compact ? ' compact' : ''}" role="group" aria-label="Booking status">
-        <label class="tick${compact ? ' compact' : ''} ${s.messageSent ? 'on-message' : ''}">
+      <div class="booking-ticks" role="group" aria-label="Booking status">
+        <label class="tick ${s.messageSent ? 'on-message' : ''}">
           <input type="checkbox" data-tick-message="${id}" ${s.messageSent ? 'checked' : ''}>
-          ${compact ? 'Messaged' : 'Message sent'}
+          Messaged
         </label>
-        <label class="tick${compact ? ' compact' : ''} ${s.booked ? 'on-booked' : ''}">
+        <label class="tick ${s.booked ? 'on-booked' : ''}">
           <input type="checkbox" data-tick-booked="${id}" ${s.booked ? 'checked' : ''}>
           Booked
         </label>
@@ -4002,6 +4001,32 @@
     setPhoneWeekUrl(true);
     render();
   }
+  function leavePhoneWeek() {
+    state.phoneWeek = false;
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete('view');
+      if (state.bookingKey) url.searchParams.set('booking', String(state.bookingKey));
+      history.replaceState({}, '', url);
+    } catch (_) { /* ignore */ }
+    document.body.classList.remove('phone-week');
+    markPhoneHeading(false);
+    render();
+  }
+  function markPhoneHeading(on) {
+    const el = document.getElementById('groupHeading');
+    if (!el) return;
+    el.classList.toggle('is-phone-back', !!on);
+    if (on) {
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+      el.setAttribute('aria-label', 'Back to planner, ' + (el.textContent || 'tour'));
+      return;
+    }
+    el.removeAttribute('role');
+    el.removeAttribute('tabindex');
+    el.removeAttribute('aria-label');
+  }
   function setViewPref(v) {
     if (v === 'phone') {
       openPhoneWeek();
@@ -5076,7 +5101,7 @@
     const kind = s.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
     const open = handoverIsOpen(s.id);
     return `
-      <article class="stop handover-stop" id="stop-block-${id}">
+      <article class="stop handover-stop ${stopToneClass(s)}" id="stop-block-${id}" data-plan-stop-id="${id}">
         <div class="stop-time">
           <input type="time" data-stop-time="${id}" data-time-src="timeline" value="${escapeHtml(s.time || '')}" aria-label="Time">
         </div>
@@ -5097,6 +5122,7 @@
           ${renderHandoverGuests(s)}` : ''}
         </div>
         <div class="stop-actions">
+          <button type="button" class="plan-drag" aria-label="Drag to reorder" title="Drag up or down">⠿</button>
           <button type="button" class="icon-btn" data-move="${id}" data-dir="-1" aria-label="Move up">↑</button>
           <button type="button" class="icon-btn" data-move="${id}" data-dir="1" aria-label="Move down">↓</button>
           <button type="button" class="icon-btn" data-remove-stop="${id}" aria-label="Remove stop">×</button>
@@ -5148,6 +5174,39 @@
     });
   }
 
+  function dropInsertIndex(ids, draggedId, targetId, after) {
+    const list = (ids || []).map(id => String(id));
+    const from = list.indexOf(String(draggedId));
+    if (from < 0) return -1;
+    const rest = list.slice();
+    rest.splice(from, 1);
+    if (targetId == null || targetId === '' || String(targetId) === String(draggedId)) return from;
+    let to = rest.indexOf(String(targetId));
+    if (to < 0) return rest.length;
+    if (after) to += 1;
+    return to;
+  }
+
+  function reorderStopsByDrop(blocks, draggedId, targetId, after) {
+    if (!Array.isArray(blocks)) return false;
+    const insertAt = dropInsertIndex(blocks.map(block => block && block.id), draggedId, targetId, !!after);
+    if (insertAt < 0) return false;
+    const from = blocks.findIndex(block => block && String(block.id) === String(draggedId));
+    if (from < 0 || insertAt === from) return false;
+    const [item] = blocks.splice(from, 1);
+    blocks.splice(insertAt, 0, item);
+    return true;
+  }
+
+  function reorderDayByDrop(day, draggedId, targetId, after) {
+    if (!day || !reorderStopsByDrop(day.blocks, draggedId, targetId, after)) return false;
+    redistributeBlockTimes(day);
+    day.blocks.forEach((_, i) => {
+      if (day.blocks[i] && day.blocks[i].travelMinutes == null) seedTravelMinutes(day, i);
+    });
+    return true;
+  }
+
   function reorderDayBlocks(day, fromIdx, toIdx) {
     if (!day || !Array.isArray(day.blocks)) return false;
     const n = day.blocks.length;
@@ -5172,73 +5231,40 @@
     render();
   }
 
+  function finishSameDayDrop(day, draggedId, target) {
+    if (!day || !draggedId) return false;
+    const targetId = target ? target.targetId : '';
+    const after = !!(target && target.after);
+    if (!reorderDayByDrop(day, draggedId, targetId, after)) return false;
+    scheduleAutoSave();
+    render();
+    toast('Stops reordered');
+    return true;
+  }
+
   function bindDayGlanceDrag() {
     const list = document.getElementById('dayGlanceList');
     if (!list) return;
-    let dragFrom = null;
-    let dragFromHandle = false;
-    list.querySelectorAll('.day-glance-handle').forEach(h => {
-      const arm = () => { dragFromHandle = true; };
-      h.addEventListener('mousedown', arm);
-      h.addEventListener('touchstart', arm, { passive: true });
+    bindPointerReorder(list.querySelectorAll('.day-glance-handle'), {
+      card: '.day-glance-item',
+      idAttr: 'data-glance-stop-id',
+      root: () => document.getElementById('dayGlanceList'),
+      onDrop(card, where) {
+        finishSameDayDrop(currentDay(), card.getAttribute('data-glance-stop-id'), where.target);
+      },
     });
-    // Keep ↑↓ / time taps reliable — do not let the parent li start a drag from controls
-    list.querySelectorAll('.day-glance-move, .day-glance-time-input, .booking-ticks').forEach(el => {
-      el.addEventListener('mousedown', (e) => { e.stopPropagation(); dragFromHandle = false; });
-      el.addEventListener('pointerdown', (e) => { e.stopPropagation(); dragFromHandle = false; });
-      el.addEventListener('click', (e) => e.stopPropagation());
-    });
-    list.querySelectorAll('.day-glance-item').forEach(item => {
-      item.addEventListener('dragstart', (e) => {
-        // Prefer ⠿ handle; ↑↓ / row clicks must not start HTML5 DnD (fiddly on Mac/phone)
-        if (!dragFromHandle && !e.target.closest('.day-glance-handle')) {
-          e.preventDefault();
-          return;
-        }
-        dragFromHandle = false;
-        dragFrom = Number(item.getAttribute('data-glance-index'));
-        item.classList.add('dragging');
-        try {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', String(dragFrom));
-        } catch (_) {}
-      });
-      item.addEventListener('dragend', () => {
-        item.classList.remove('dragging');
-        list.querySelectorAll('.day-glance-item').forEach(el => el.classList.remove('drag-over'));
-        dragFrom = null;
-        dragFromHandle = false;
-      });
-      item.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
-        list.querySelectorAll('.day-glance-item').forEach(el => el.classList.remove('drag-over'));
-        item.classList.add('drag-over');
-      });
-      item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
-      item.addEventListener('drop', (e) => {
-        e.preventDefault();
-        item.classList.remove('drag-over');
-        const toIdx = Number(item.getAttribute('data-glance-index'));
-        let fromIdx = dragFrom;
-        if (fromIdx == null || Number.isNaN(fromIdx)) {
-          try { fromIdx = Number(e.dataTransfer.getData('text/plain')); } catch (_) { fromIdx = NaN; }
-        }
-        if (Number.isNaN(fromIdx) || Number.isNaN(toIdx) || fromIdx === toIdx) return;
-        const day = currentDay();
-        if (!day) return;
-        // Indices are on the filtered titled-stops list — map via stop ids
-        const titled = (day.blocks || []).filter(s => s && String(s.title || '').trim());
-        const fromStop = titled[fromIdx];
-        const toStop = titled[toIdx];
-        if (!fromStop || !toStop) return;
-        const realFrom = day.blocks.findIndex(s => s && s.id === fromStop.id);
-        const realTo = day.blocks.findIndex(s => s && s.id === toStop.id);
-        if (!reorderDayBlocks(day, realFrom, realTo)) return;
-        scheduleAutoSave();
-        render();
-        toast('Stops reordered');
-      });
+  }
+
+  function bindPlanStopDrag() {
+    const timeline = document.querySelector('.timeline');
+    if (!timeline) return;
+    bindPointerReorder(timeline.querySelectorAll('.plan-drag'), {
+      card: '[data-plan-stop-id]',
+      idAttr: 'data-plan-stop-id',
+      root: () => document.querySelector('.timeline'),
+      onDrop(card, where) {
+        finishSameDayDrop(currentDay(), card.getAttribute('data-plan-stop-id'), where.target);
+      },
     });
   }
   function addManualDay() {
@@ -5856,20 +5882,30 @@
     return `<img class="stop-cue-thumb" alt="" src="${escapeHtml(src)}">`;
   }
 
-  function renderStopCue(stop) {
+  function cueForStop(stop) {
     const PC = window.PlaceCategories;
-    if (!PC || !PC.stopCue) return '';
-    const place = stop ? placeById(stop.placeId || stop.place_id) : null;
-    const cue = PC.stopCue({
-      type: stop && stop.type,
+    if (!PC || !PC.stopCue || !stop) return null;
+    const place = placeById(stop.placeId || stop.place_id);
+    return PC.stopCue({
+      type: stop.type,
       types: place ? placeTypesOf(place) : [],
-      title: stop && stop.title,
+      title: stop.title,
       name: place && place.name,
-      hotelName: stop && stop.hotelName,
-      notes: stop && stop.notes,
-      handoverKind: stop && stop.handoverKind,
-      placeKind: stop && stop.placeKind,
+      hotelName: stop.hotelName,
+      notes: stop.notes,
+      handoverKind: stop.handoverKind,
+      placeKind: stop.placeKind,
     });
+  }
+  function stopToneClass(stop) {
+    const cue = cueForStop(stop);
+    const id = cue && String(cue.id || '').replace(/[^a-z0-9-]/g, '');
+    return id ? ('stop-tone-' + id) : '';
+  }
+  function renderStopCue(stop) {
+    const cue = cueForStop(stop);
+    if (!cue) return '';
+    const place = stop ? placeById(stop.placeId || stop.place_id) : null;
     const thumb = placePictureHtml(place);
     return `<span class="stop-cue type-icon-badge type-${escapeHtml(cue.tone)}" title="${escapeHtml(cue.label)}">${thumb || escapeHtml(cue.emoji)}<span class="stop-cue-label">${escapeHtml(cue.label)}</span></span>`;
   }
@@ -6609,70 +6645,141 @@
     removeStop(stopId);
   }
 
-  function moveStopToDay(stopId, toDayIndex, beforeId) {
+  function moveStopToDay(stopId, toDayIndex, targetId, after) {
     if (!state.plan || !stopId) return false;
     const days = state.plan.days || [];
     const dest = days[toDayIndex];
     if (!dest || typeof dest !== 'object') return false;
-    let stop = null;
-    days.forEach(day => {
-      if (!day || !Array.isArray(day.blocks) || stop) return;
+    let fromDay = -1;
+    days.forEach((day, index) => {
+      if (fromDay >= 0 || !day || !Array.isArray(day.blocks)) return;
       const at = day.blocks.findIndex(item => item && String(item.id) === String(stopId));
-      if (at >= 0) stop = day.blocks.splice(at, 1)[0];
+      if (at >= 0) fromDay = index;
     });
+    if (fromDay < 0) return false;
+    if (fromDay === Number(toDayIndex)) {
+      if (!reorderDayByDrop(days[fromDay], stopId, targetId, !!after)) return false;
+      scheduleAutoSave();
+      render();
+      return true;
+    }
+    const stop = days[fromDay].blocks.splice(
+      days[fromDay].blocks.findIndex(item => item && String(item.id) === String(stopId)),
+      1
+    )[0];
     if (!stop) return false;
     if (!Array.isArray(dest.blocks)) dest.blocks = [];
-    const before = beforeId && String(beforeId) !== String(stopId)
-      ? dest.blocks.findIndex(item => item && String(item.id) === String(beforeId))
-      : -1;
-    if (before >= 0) dest.blocks.splice(before, 0, stop);
-    else dest.blocks.push(stop);
+    let insertAt = dest.blocks.length;
+    if (targetId) {
+      const at = dest.blocks.findIndex(item => item && String(item.id) === String(targetId));
+      if (at >= 0) insertAt = after ? at + 1 : at;
+    }
+    dest.blocks.splice(insertAt, 0, stop);
     scheduleAutoSave();
     render();
     return true;
   }
 
-  function bindRoughStopDrag() {
-    document.querySelectorAll('.rough-drag').forEach(handle => {
+  function dropTargetAt(cards, draggedEl, y, idAttr) {
+    const others = Array.from(cards || []).filter(el => el && el !== draggedEl);
+    let index;
+    for (index = 0; index < others.length; index++) {
+      const rect = others[index].getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom) {
+        return {
+          el: others[index],
+          targetId: others[index].getAttribute(idAttr) || '',
+          after: y > rect.top + rect.height / 2,
+        };
+      }
+    }
+    let above = null;
+    let below = null;
+    others.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom <= y && (!above || rect.bottom > above.getBoundingClientRect().bottom)) above = el;
+      if (rect.top >= y && (!below || rect.top < below.getBoundingClientRect().top)) below = el;
+    });
+    const chosen = above && (!below || (y - above.getBoundingClientRect().bottom) <= (below.getBoundingClientRect().top - y))
+      ? { el: above, after: true }
+      : (below ? { el: below, after: false } : null);
+    if (!chosen) return null;
+    return { el: chosen.el, targetId: chosen.el.getAttribute(idAttr) || '', after: chosen.after };
+  }
+
+  function bindPointerReorder(handles, spec) {
+    handles.forEach(handle => {
       handle.addEventListener('pointerdown', (event) => {
         if (event.button != null && event.button !== 0) return;
-        const card = handle.closest('[data-rough-stop-id]');
+        const card = handle.closest(spec.card);
         if (!card) return;
         event.preventDefault();
         const drag = {
-          id: card.getAttribute('data-rough-stop-id'),
           pointer: event.pointerId,
           x: event.clientX,
           y: event.clientY,
           moved: false,
         };
+        const clearMarks = () => {
+          document.querySelectorAll(spec.card).forEach(el => el.classList.remove('drop-before', 'drop-after', 'dragging'));
+          if (spec.lane) document.querySelectorAll(spec.lane).forEach(el => el.classList.remove('drag-over'));
+        };
+        const placed = (x, y) => {
+          const under = document.elementFromPoint(x, y);
+          const self = card.getBoundingClientRect();
+          if (y >= self.top && y <= self.bottom && x >= self.left && x <= self.right) {
+            const laneOnly = spec.lane && under && under.closest ? under.closest(spec.lane) : null;
+            return { lane: laneOnly, target: null };
+          }
+          const lane = spec.lane && under && under.closest ? under.closest(spec.lane) : (spec.root ? spec.root() : null);
+          const root = lane || (spec.root ? spec.root() : document);
+          const target = dropTargetAt(root.querySelectorAll(spec.card), card, y, spec.idAttr);
+          return { lane, target };
+        };
         const move = (e) => {
           if (e.pointerId !== drag.pointer) return;
           if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
           drag.moved = true;
-          const under = document.elementFromPoint(e.clientX, e.clientY);
-          document.querySelectorAll('.rough-day').forEach(day => day.classList.remove('drag-over'));
-          const lane = under && under.closest ? under.closest('[data-rough-day-drop]') : null;
-          if (lane) lane.classList.add('drag-over');
+          e.preventDefault();
+          clearMarks();
+          card.classList.add('dragging');
+          const where = placed(e.clientX, e.clientY);
+          if (where.lane && spec.lane) where.lane.classList.add('drag-over');
+          if (where.target) where.target.el.classList.add(where.target.after ? 'drop-after' : 'drop-before');
         };
         const up = (e) => {
           if (e.pointerId !== drag.pointer) return;
           handle.removeEventListener('pointermove', move);
           handle.removeEventListener('pointerup', up);
           handle.removeEventListener('pointercancel', up);
-          document.querySelectorAll('.rough-day').forEach(day => day.classList.remove('drag-over'));
+          const where = drag.moved ? placed(e.clientX, e.clientY) : { lane: null, target: null };
+          clearMarks();
           if (!drag.moved) return;
-          const under = document.elementFromPoint(e.clientX, e.clientY);
-          const lane = under && under.closest ? under.closest('[data-rough-day-drop]') : null;
-          if (!lane) return;
-          const over = under.closest ? under.closest('[data-rough-stop-id]') : null;
-          moveStopToDay(drag.id, Number(lane.getAttribute('data-rough-day-drop')), over ? over.getAttribute('data-rough-stop-id') : '');
+          spec.onDrop(card, where);
         };
-        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointermove', move, { passive: false });
         handle.addEventListener('pointerup', up);
         handle.addEventListener('pointercancel', up);
         try { handle.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
       });
+    });
+  }
+
+  function bindRoughStopDrag() {
+    bindPointerReorder(document.querySelectorAll('.rough-drag'), {
+      card: '[data-rough-stop-id]',
+      idAttr: 'data-rough-stop-id',
+      lane: '[data-rough-day-drop]',
+      onDrop(card, where) {
+        if (!where.lane) return;
+        const target = where.target;
+        moveStopToDay(
+          card.getAttribute('data-rough-stop-id'),
+          Number(where.lane.getAttribute('data-rough-day-drop')),
+          target ? target.targetId : '',
+          !!(target && target.after)
+        );
+      },
     });
   }
 
@@ -6795,10 +6902,10 @@
       const noPlace = markEmpties && !system && stopNeedsPlaceLink(s);
       const flagged = notesAreFlagged(s.notes);
       if (s.type === 'handover') {
-        return `<li class="rough-stop handover-rough${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
+        return `<li class="rough-stop handover-rough ${stopToneClass(s)}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
           <div class="handover-card">
             <div class="handover-bar">
-              <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag to another day">⠿</button>
+              <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag up or down, or to another day">⠿</button>
               ${renderHandoverToggle(s)}
               ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
               ${renderStopCue(s)}
@@ -6814,9 +6921,9 @@
           </div>
         </li>`;
       }
-      return `<li class="rough-stop${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
+      return `<li class="rough-stop ${stopToneClass(s)}${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
         <div class="rough-stop-top">
-          <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag to another day">⠿</button>
+          <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag up or down, or to another day">⠿</button>
           ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
           <span class="rough-stop-icon" aria-hidden="true">${renderStopCue(s)}</span>
           <div class="rough-stop-actions">
@@ -6826,9 +6933,11 @@
             ${removeBtn}
           </div>
         </div>
-        <span class="rough-stop-nick">${escapeHtml(label)}${noPlace ? missingBadgeHtml('No placeId') : ''}${flagged ? missingBadgeHtml('FLAG') : ''}</span>
+        <div class="rough-stop-line">
+          <span class="rough-stop-nick">${escapeHtml(label)}${noPlace ? missingBadgeHtml('No placeId') : ''}${flagged ? missingBadgeHtml('FLAG') : ''}</span>
+          ${system || s.type === 'handover' ? '' : renderBookingTicksHtml(s)}
+        </div>
         ${noteSnip ? `<span class="rough-stop-note">${escapeHtml(noteSnip)}</span>` : ''}
-        ${system || s.type === 'handover' ? '' : renderBookingTicksHtml(s, { compact: true })}
       </li>`;
     }).join('');
     const empty = placeStops.length
@@ -7128,18 +7237,20 @@
       const flagged = notesAreFlagged(s.notes);
       const mark = noPlace || flagged;
       const ticks = renderBookingTicksHtml(s, { compact: true });
-      return `<li class="day-glance-item${ticks ? ' has-ticks' : ''}${missingMarkerClass(mark)}" draggable="true" data-glance-index="${idx}" data-glance-stop-id="${escapeHtml(s.id)}">
-        <span class="day-glance-handle" title="Drag to reorder on desktop" aria-hidden="true">⠿</span>
+      return `<li class="day-glance-item ${stopToneClass(s)}${ticks ? ' has-ticks' : ''}${missingMarkerClass(mark)}" data-glance-index="${idx}" data-glance-stop-id="${escapeHtml(s.id)}">
+        <span class="day-glance-handle" title="Drag up or down" aria-hidden="true">⠿</span>
         ${renderTimeWheelControl(s, 'glance', 'Time for ' + label)}
         <span class="day-glance-icon" aria-hidden="true">${renderStopCue(s)}</span>
-        <button type="button" class="day-glance-row" data-glance-stop="${escapeHtml(s.id)}" title="${escapeHtml(tip)}">
-          <span class="day-glance-title"><span class="glance-nick">${escapeHtml(label)}</span>${noPlace ? missingBadgeHtml('No placeId') : ''}${flagged ? missingBadgeHtml('FLAG') : ''}</span>
-        </button>
+        <div class="day-glance-main">
+          <button type="button" class="day-glance-row" data-glance-stop="${escapeHtml(s.id)}" title="${escapeHtml(tip)}">
+            <span class="day-glance-title"><span class="glance-nick">${escapeHtml(label)}</span>${noPlace ? missingBadgeHtml('No placeId') : ''}${flagged ? missingBadgeHtml('FLAG') : ''}</span>
+          </button>
+          ${ticks}
+        </div>
         <div class="day-glance-moves">
           <button type="button" class="day-glance-move" data-move="${escapeHtml(s.id)}" data-dir="-1" aria-label="Move up"${upDis}>↑</button>
           <button type="button" class="day-glance-move" data-move="${escapeHtml(s.id)}" data-dir="1" aria-label="Move down"${downDis}>↓</button>
         </div>
-        ${ticks}
       </li>`;
     }).join('');
     return `<div class="day-glance" aria-label="Day at a glance">
@@ -7188,13 +7299,13 @@
         ? '<p class="muted address-places-hint">Saved to Places directory too</p>'
         : (noPlace ? ('<p class="muted address-places-hint">' + missingBadgeHtml('No placeId') + '</p>') : '');
       html += `
-        <article class="stop${missingMarkerClass(stopMark)}" id="stop-block-${escapeHtml(s.id)}">
+        <article class="stop ${stopToneClass(s)}${missingMarkerClass(stopMark)}" id="stop-block-${escapeHtml(s.id)}" data-plan-stop-id="${escapeHtml(s.id)}">
           <div class="stop-time">
             <input type="time" data-stop-time="${s.id}" data-time-src="timeline" value="${escapeHtml(s.time || '')}" aria-label="Time">
           </div>
           <div class="rail"><div class="dot ${escapeHtml(placeTypeForStop(s))}"></div></div>
           <div>
-            <div><span class="badge">${escapeHtml(s.period || periodForTime(s.time))}</span><span class="badge">${escapeHtml(stopCategoriesLabel(s))}</span>${flagged ? missingBadgeHtml('FLAG / GAP') : ''}${noPlace ? missingBadgeHtml('No placeId') : ''}</div>
+            <div class="stop-kicker"><span class="badge">${escapeHtml(s.period || periodForTime(s.time))}</span><span class="badge">${escapeHtml(stopCategoriesLabel(s))}</span>${flagged ? missingBadgeHtml('FLAG / GAP') : ''}${noPlace ? missingBadgeHtml('No placeId') : ''}${stopNeedsBookingTicks(s) ? renderBookingTicksHtml(s) : ''}</div>
             <div class="stop-title">${renderStopCue(s)}<input type="text" data-stop-title="${s.id}" value="${escapeHtml(s.title || '')}"></div>
             <div class="stop-notes"><input type="text" class="${flagged ? 'field-flagged' : ''}" data-stop-notes="${s.id}" value="${escapeHtml(s.notes || '')}" placeholder="Notes" aria-invalid="${flagged ? 'true' : 'false'}"></div>
             <div class="stop-notes address-row">
@@ -7203,9 +7314,9 @@
               ${navigateButtonHtml(resolveStopAddress(s))}
             </div>
             ${placeHint}
-            ${stopNeedsBookingTicks(s) ? renderBookingTicksHtml(s) : `<p class="muted tick-skip">No message / booked ticks for ${escapeHtml(typeLabel(s.type).toLowerCase())}.</p>`}
           </div>
           <div class="stop-actions">
+            <button type="button" class="plan-drag" aria-label="Drag to reorder" title="Drag up or down">⠿</button>
             <button type="button" class="icon-btn" data-move="${s.id}" data-dir="-1" aria-label="Move up">↑</button>
             <button type="button" class="icon-btn" data-move="${s.id}" data-dir="1" aria-label="Move down">↓</button>
             <button type="button" class="icon-btn" data-remove-stop="${s.id}" aria-label="Remove stop">×</button>
@@ -8387,7 +8498,7 @@ function renderDayTabs() {
             : (time
               ? `<span class="look-time">${escapeHtml(time)}</span>`
               : '<span class="look-time is-blank" aria-label="Time not set">—</span>');
-          return `<li class="look-stop">${timeHtml}${renderStopCue(s)}<span class="look-name">${escapeHtml(label)}</span></li>`;
+          return `<li class="look-stop ${stopToneClass(s)}">${timeHtml}${renderStopCue(s)}<span class="look-name">${escapeHtml(label)}</span></li>`;
         }).join('')
         : '<li class="look-empty">No stops this day</li>';
       const zoomBtn = zoom == null
@@ -8666,6 +8777,7 @@ function renderDayTabs() {
         return;
       }
       updateGroupHeading();
+      markPhoneHeading(true);
       const note = WeekNote.build(state.plan, { today: todayISO() });
       window.weekNote = note;
       if (app) app.innerHTML = WeekNote.render(state.plan, { today: todayISO() });
@@ -8673,6 +8785,7 @@ function renderDayTabs() {
       return;
     }
     document.body.classList.remove('phone-week');
+    markPhoneHeading(false);
     mountPlannerNav();
     if (!state.plan) {
       renderWithoutPlan();
@@ -9506,6 +9619,7 @@ function renderDayTabs() {
       btn.addEventListener('click', () => focusStopFromGlance(btn.getAttribute('data-glance-stop')));
     });
     bindDayGlanceDrag();
+    bindPlanStopDrag();
     document.querySelectorAll('[data-stop-time]').forEach(inp => {
       // Safari / mobile: bind input+change+blur, but NEVER commit from a detached node
       // (render() destroys the input; its empty blur/input was wiping real times to cloud).
@@ -11037,6 +11151,15 @@ function renderDayTabs() {
   document.getElementById('btnExportPlan').addEventListener('click', () => exportPlanJson());
   document.getElementById('btnLookView').addEventListener('click', () => setViewPref('week'));
   document.getElementById('btnPhoneView').addEventListener('click', () => openPhoneWeek());
+  document.getElementById('groupHeading')?.addEventListener('click', () => {
+    if (state.phoneWeek) leavePhoneWeek();
+  });
+  document.getElementById('groupHeading')?.addEventListener('keydown', (event) => {
+    if (!state.phoneWeek) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    leavePhoneWeek();
+  });
   // ---- Simple plan: read-only, big-text list of each day's places and times ----
   function simplePlanStopTime(st) {
     const t = String((st && st.time) || '').trim();

@@ -129,7 +129,7 @@
       color: var(--text-secondary);
     }
     .topbar .main-tabs { margin: 0; }
-    .rough-drag {
+    .rough-drag, .plan-drag {
       flex: 0 0 auto;
       min-width: 44px;
       min-height: 44px;
@@ -140,11 +140,24 @@
       cursor: grab;
       touch-action: none;
     }
+    .rough-stop.drop-before, .stop.drop-before, .day-glance-item.drop-before { box-shadow: inset 0 3px 0 #1d4ed8; }
+    .rough-stop.drop-after, .stop.drop-after, .day-glance-item.drop-after { box-shadow: inset 0 -3px 0 #1d4ed8; }
+    .rough-stop.dragging, .stop.dragging { opacity: .55; }
     .navigate-stop { min-height: 44px; }
     body.phone-week .planner-options,
     body.phone-week #plannerNavMount,
     body.phone-week .wip-banner { display: none !important; }
-    body.phone-week .topbar { position: sticky; top: 0; }
+    body.phone-week .topbar { position: sticky; top: 0; z-index: 40; }
+    body.phone-week .group-heading.is-phone-back {
+      cursor: pointer;
+      min-height: 44px;
+    }
+    body.phone-week .group-heading.is-phone-back::before {
+      content: '‹';
+      margin-right: 6px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
     .phone-week { max-width: 520px; margin: 0 auto; padding: 8px 12px 32px; }
     .phone-week-title { font-size: 20px; font-weight: 800; line-height: 1.25; margin: 8px 0 12px; }
     .phone-week-actions { display: flex; gap: 8px; margin-bottom: 14px; }
@@ -156,7 +169,7 @@
     .phone-week-day { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); margin: 0 0 10px; }
     .phone-week-day summary { min-height: 52px; padding: 12px 14px; font-size: 20px; font-weight: 800; cursor: pointer; }
     .phone-week-day.is-today { background: #fff7e6; border: 2px solid #d97706; }
-    .phone-week-stop { padding: 8px 14px 14px; border-top: 1px solid var(--border); }
+    .phone-week-stop { padding: 8px 14px 14px; border-top: 1px solid var(--border); border-radius: 12px; }
     .phone-week-time { margin: 0; font-size: 22px; font-weight: 800; }
     .phone-week-place { margin: 4px 0; font-size: 18px; font-weight: 700; line-height: 1.3; }
     .phone-week-guests { margin: 0 0 8px; font-size: 16px; color: var(--text-secondary); }
@@ -536,7 +549,7 @@
     .timeline { display: flex; flex-direction: column; gap: 0; }
     .stop {
       display: grid;
-      grid-template-columns: 108px 18px 1fr auto;
+      grid-template-columns: 108px 18px minmax(0, 1fr) auto;
       gap: 10px;
       align-items: start;
       padding: 10px 0;
@@ -571,7 +584,7 @@
     .dot.pickup { background: var(--pickup); box-shadow: 0 0 0 2px var(--pickup); }
 
     .stop-title { font-weight: 800; font-size: 15px; }
-    .stop-title input, .stop-notes input { border: none; background: transparent; padding: 2px 0; }
+    .stop-title input, .stop-notes input { border: none; background: transparent; padding: 2px 0; min-width: 0; }
     .stop-title input:focus, .stop-notes input:focus { outline: none; background: var(--input-bg); border: 1px solid var(--border); }
     .badge {
       display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .04em;
@@ -694,6 +707,7 @@
       border-radius: 10px; font-size: 13px; font-weight: 700; box-shadow: var(--shadow-lg);
     }
 
+    .view-phone .stop { grid-template-columns: 78px 14px minmax(0, 1fr) auto; gap: 6px; }
     .view-phone .stop-title { font-size: 20px; }
     .view-phone .stop-time { font-size: 18px; }
     .view-phone .hotel-card .name { font-size: 20px; }
@@ -822,8 +836,8 @@
     .stop-cue-label { font-size: 11px; line-height: 1.1; white-space: nowrap; }
     .stop-cue-thumb { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; display: block; }
     .look-stop, .rough-stop-top, .stop-title, .handover-bar { align-items: center; }
-    .stop-title { display: flex; align-items: center; gap: 6px; }
-    .stop-title input { flex: 1 1 auto; min-width: 0; }
+    .stop-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+    .stop-title input { flex: 1 1 8em; min-width: 0; }
     @media (max-width: 700px) {
       .stop-cue.type-icon-badge { min-height: 32px; font-size: 16px; }
       .stop-cue-label { font-size: 12px; }
@@ -833,67 +847,6 @@
       height: 0.92em;
       display: block;
       flex-shrink: 0;
-    }
-    .type-icon-badge.type-factory {
-      color: var(--factory);
-      background: color-mix(in srgb, var(--factory) 22%, #fff);
-      border-color: var(--factory);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--factory) 35%, transparent);
-    }
-    .type-icon-badge.type-shop {
-      color: var(--shop);
-      background: color-mix(in srgb, var(--shop) 22%, #fff);
-      border-color: var(--shop);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--shop) 35%, transparent);
-    }
-    .type-icon-badge.type-restaurant,
-    .type-icon-badge.type-meal {
-      color: var(--restaurant);
-      background: color-mix(in srgb, var(--restaurant) 24%, #fff);
-      border-color: var(--restaurant);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--restaurant) 35%, transparent);
-    }
-    .type-icon-badge.type-hotel {
-      color: var(--hotel);
-      background: color-mix(in srgb, var(--hotel) 24%, #fff);
-      border-color: var(--hotel);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--hotel) 35%, transparent);
-    }
-    .type-icon-badge.type-museum {
-      color: var(--museum);
-      background: color-mix(in srgb, var(--museum) 24%, #fff);
-      border-color: var(--museum);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--museum) 35%, transparent);
-    }
-    .type-icon-badge.type-school {
-      color: var(--school);
-      background: color-mix(in srgb, var(--school) 22%, #fff);
-      border-color: var(--school);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--school) 35%, transparent);
-    }
-    .type-icon-badge.type-experience {
-      color: var(--experience);
-      background: color-mix(in srgb, var(--experience) 22%, #fff);
-      border-color: var(--experience);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--experience) 35%, transparent);
-    }
-    .type-icon-badge.type-antique {
-      color: var(--antique);
-      background: color-mix(in srgb, var(--antique) 22%, #fff);
-      border-color: var(--antique);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--antique) 35%, transparent);
-    }
-    .type-icon-badge.type-snack {
-      color: var(--snack);
-      background: color-mix(in srgb, var(--snack) 22%, #fff);
-      border-color: var(--snack);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--snack) 35%, transparent);
-    }
-    .type-icon-badge.type-viewpoint {
-      color: var(--viewpoint);
-      background: color-mix(in srgb, var(--viewpoint) 22%, #fff);
-      border-color: var(--viewpoint);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--viewpoint) 35%, transparent);
     }
     .type-icon-row { display: inline-flex; align-items: center; gap: 2px; }
     .type-checks { display: flex; flex-wrap: wrap; gap: 6px 8px; }
@@ -908,51 +861,6 @@
       border-color: var(--accent); background: var(--accent-soft);
     }
     .type-hint { font-size: 12px; color: var(--text-secondary); margin: 6px 0 0; line-height: 1.35; }
-    .type-icon-badge.type-travel {
-      color: var(--travel);
-      background: color-mix(in srgb, var(--travel) 22%, #fff);
-      border-color: var(--travel);
-    }
-    .type-icon-badge.type-pickup {
-      color: var(--pickup);
-      background: color-mix(in srgb, var(--pickup) 22%, #fff);
-      border-color: var(--pickup);
-    }
-    .type-icon-badge.type-other {
-      color: var(--accent);
-      background: color-mix(in srgb, var(--accent) 16%, #fff);
-      border-color: var(--accent);
-    }
-    [data-theme="dark"] .type-icon-badge.type-factory,
-    [data-theme="dark"] .type-icon-badge.type-shop,
-    [data-theme="dark"] .type-icon-badge.type-restaurant,
-    [data-theme="dark"] .type-icon-badge.type-meal,
-    [data-theme="dark"] .type-icon-badge.type-hotel,
-    [data-theme="dark"] .type-icon-badge.type-museum,
-    [data-theme="dark"] .type-icon-badge.type-school,
-    [data-theme="dark"] .type-icon-badge.type-experience,
-    [data-theme="dark"] .type-icon-badge.type-antique,
-    [data-theme="dark"] .type-icon-badge.type-snack,
-    [data-theme="dark"] .type-icon-badge.type-viewpoint,
-    [data-theme="dark"] .type-icon-badge.type-travel,
-    [data-theme="dark"] .type-icon-badge.type-pickup,
-    [data-theme="dark"] .type-icon-badge.type-other {
-      background: color-mix(in srgb, currentColor 18%, var(--surface-alt));
-    }
-    [data-theme="dark"] .type-icon-badge.type-factory { color: var(--factory); background: rgba(124, 58, 237, .28); }
-    [data-theme="dark"] .type-icon-badge.type-shop { color: var(--shop); background: rgba(29, 78, 216, .28); }
-    [data-theme="dark"] .type-icon-badge.type-restaurant,
-    [data-theme="dark"] .type-icon-badge.type-meal { color: var(--restaurant); background: rgba(194, 65, 12, .28); }
-    [data-theme="dark"] .type-icon-badge.type-hotel { color: var(--hotel); background: rgba(180, 83, 9, .28); }
-    [data-theme="dark"] .type-icon-badge.type-museum { color: var(--museum); background: rgba(161, 98, 7, .28); }
-    [data-theme="dark"] .type-icon-badge.type-school { color: var(--school); background: rgba(190, 24, 93, .28); }
-    [data-theme="dark"] .type-icon-badge.type-experience { color: var(--experience); background: rgba(15, 118, 110, .28); }
-    [data-theme="dark"] .type-icon-badge.type-antique { color: var(--antique); background: rgba(120, 53, 15, .38); }
-    [data-theme="dark"] .type-icon-badge.type-snack { color: var(--snack); background: rgba(77, 124, 15, .32); }
-    [data-theme="dark"] .type-icon-badge.type-viewpoint { color: var(--viewpoint); background: rgba(3, 105, 161, .32); }
-    [data-theme="dark"] .type-icon-badge.type-travel { color: var(--travel); background: rgba(107, 114, 128, .28); }
-    [data-theme="dark"] .type-icon-badge.type-pickup { color: var(--pickup); background: rgba(79, 70, 229, .28); }
-    [data-theme="dark"] .type-icon-badge.type-other { color: var(--accent); background: rgba(99, 102, 241, .22); }
     .day-glance-title .glance-nick { font-weight: 800; }
     .day-glance-hint {
       font-size: 11px; font-weight: 600; color: var(--text-secondary);
@@ -961,7 +869,7 @@
     .day-glance-item {
       display: grid;
       /* handle | time | icon | nickname | ↑↓ — nickname shrinks; controls never clip */
-      grid-template-columns: 18px auto auto minmax(0, 1fr) max-content;
+      grid-template-columns: 44px auto auto minmax(0, 1fr) max-content;
       gap: 4px 6px;
       align-items: center;
       border-radius: 8px;
@@ -975,11 +883,16 @@
     .day-glance-handle {
       cursor: grab;
       color: var(--text-secondary);
-      font-size: 13px;
+      font-size: 16px;
       line-height: 1;
       text-align: center;
       user-select: none;
-      padding: 8px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+      touch-action: none;
       -webkit-user-select: none;
     }
     .day-glance-handle:active { cursor: grabbing; }
@@ -1172,41 +1085,30 @@
     .repay-row input[type="date"] { width: 140px; min-height: 40px; font-size: 14px; }
     .repay-note { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 4px; }
 
-    /* Booking ticks */
-    .booking-ticks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-    .tick {
-      display: inline-flex; align-items: center; gap: 8px;
-      border: 1px solid var(--border); background: var(--surface);
-      border-radius: 10px; padding: 8px 12px; min-height: 44px;
-      font-size: 16px; font-weight: 800; cursor: pointer; user-select: none; color: var(--text);
+    /* Booking ticks — small pills, still a finger-sized tap */
+    .stop-kicker, .rough-stop-line, .day-glance-main {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0;
     }
-    .tick input { width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
+    .day-glance-main .day-glance-row { flex: 1 1 auto; min-width: 0; }
+    .booking-ticks { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 0; align-items: center; }
+    .tick {
+      display: inline-flex; align-items: center; gap: 4px;
+      border: 1px solid var(--border); background: var(--surface);
+      border-radius: 999px; padding: 2px 8px; min-height: 32px;
+      font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer;
+      user-select: none; color: var(--text);
+    }
+    .tick input, .view-phone .tick input {
+      width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0;
+      accent-color: var(--accent); flex-shrink: 0;
+    }
     .tick.on-message { border-color: var(--warning); background: #fffbeb; }
     .tick.on-booked { border-color: var(--success); background: #ecfdf5; }
     [data-theme="dark"] .tick.on-message { background: rgba(245,158,11,.14); }
     [data-theme="dark"] .tick.on-booked { background: rgba(34,197,94,.14); }
-    .view-phone .tick { font-size: 17px; min-height: 48px; padding: 10px 14px; }
-    /* Compact ticks — Day at a glance + Rough chips (same messageSent / booked fields) */
-    .booking-ticks.compact {
-      display: flex; flex-wrap: wrap; gap: 6px;
-      margin-top: 2px; min-width: 0;
-    }
-    .tick.compact {
-      padding: 6px 10px; min-height: 44px;
-      font-size: 15px; font-weight: 800; gap: 6px; border-radius: 9px;
-    }
-    .tick.compact input { width: 20px; height: 20px; }
-    .view-phone .tick.compact,
-    .rough-day.rough-focus-day .tick.compact {
-      font-size: 16px; min-height: 46px; padding: 8px 12px;
-    }
-    .day-glance-item .booking-ticks.compact {
-      grid-column: 2 / 5;
-      align-self: start;
-    }
-    .day-glance-item.has-ticks { align-items: start; padding-bottom: 2px; }
-    .day-glance-item.has-ticks .day-glance-handle { align-self: start; }
-    .rough-stop .booking-ticks.compact { margin-top: 2px; }
+    .view-phone .tick, .rough-day.rough-focus-day .tick { font-size: 13px; min-height: 36px; padding: 4px 10px; }
+    .day-glance-item.has-ticks { align-items: center; }
+    .rough-stop-line .rough-stop-nick { min-width: 0; }
 
     .address-row {
       display: flex; flex-wrap: wrap; gap: 8px; align-items: center;

@@ -224,7 +224,7 @@
           var map = stop.map
             ? '<a class="phone-week-nav" href="' + esc(stop.map) + '" data-phone-scheme="' + esc(stop.scheme) + '">Navigate</a>'
             : '';
-          return '<article class="phone-week-stop"><p class="phone-week-time">' + esc(stop.time || '—') + '</p><p class="phone-week-place"><span class="stop-cue type-icon-badge type-' + esc(stop.cue.tone) + '">' + esc(stop.cue.emoji) + ' <span class="stop-cue-label">' + esc(stop.cue.label) + '</span></span> ' + esc(stop.place) + '</p>' + guests + map + '</article>';
+          return '<article class="phone-week-stop stop-tone-' + esc(stop.cue.id) + '"><p class="phone-week-time">' + esc(stop.time || '—') + '</p><p class="phone-week-place"><span class="stop-cue type-icon-badge type-' + esc(stop.cue.tone) + '">' + esc(stop.cue.emoji) + ' <span class="stop-cue-label">' + esc(stop.cue.label) + '</span></span> ' + esc(stop.place) + '</p>' + guests + map + '</article>';
         }).join('')
         : '<p class="phone-week-empty">Nothing on this day</p>';
       return '<details class="phone-week-day' + (day.today ? ' is-today' : '') + '"' + (day.open ? ' open' : '') + '><summary>' + esc(day.heading) + (day.today ? ' · Today' : '') + '</summary>' + stops + '</details>';

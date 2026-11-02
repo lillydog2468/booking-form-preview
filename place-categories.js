@@ -146,7 +146,61 @@
   var STOP_PIN = { id: 'other', emoji: '📍', label: 'Place', tone: 'other' };
 
   function cueFrom(cue) {
-    return { id: cue.id, emoji: cue.emoji, label: cue.label, tone: cue.tone };
+    return { id: cue.id, emoji: cue.emoji, label: cue.label, tone: cue.id };
+  }
+
+  // Soft card wash, left stripe, and chip. Ink is for the chip text.
+  // Dark values stay deep so the page’s light text still reads.
+  var STOP_PALETTE = {
+    airport:     { wash: '#e7f2fb', stripe: '#7eb0d6', chip: '#d6eaf8', ink: '#1a3d5c', darkWash: '#163044', darkStripe: '#8eb8dc', darkChip: '#1c3c56', darkInk: '#e7f2fb' },
+    dropoff:     { wash: '#e7f6ef', stripe: '#7dbea0', chip: '#d7f0e4', ink: '#1a4a38', darkWash: '#14382c', darkStripe: '#8dccb0', darkChip: '#1a4636', darkInk: '#e7f6ef' },
+    pickup:      { wash: '#eceeff', stripe: '#9aa3e8', chip: '#e0e3fb', ink: '#2c3270', darkWash: '#22264a', darkStripe: '#b0b6f0', darkChip: '#2c3260', darkInk: '#eceeff' },
+    travel:      { wash: '#eef1f4', stripe: '#9aa6b4', chip: '#e4e9ee', ink: '#2f3a46', darkWash: '#2a3138', darkStripe: '#b4c0cc', darkChip: '#343c46', darkInk: '#eef1f4' },
+    hotel:       { wash: '#fbf3e4', stripe: '#e0b56a', chip: '#f8e8c8', ink: '#5c3d12', darkWash: '#3a2e18', darkStripe: '#e8c48a', darkChip: '#4a3a1e', darkInk: '#fbf3e4' },
+    glass:       { wash: '#f3eefb', stripe: '#b59ad6', chip: '#ebe3f7', ink: '#3d2a5c', darkWash: '#2c2440', darkStripe: '#c8b4e4', darkChip: '#382e52', darkInk: '#f3eefb' },
+    factory:     { wash: '#f1eefc', stripe: '#a894e0', chip: '#e6e0f8', ink: '#33245c', darkWash: '#261f3e', darkStripe: '#c0b0ec', darkChip: '#322850', darkInk: '#f1eefc' },
+    shop:        { wash: '#e8f0ff', stripe: '#8aade0', chip: '#dce8fb', ink: '#1c3a6e', darkWash: '#1a2c4a', darkStripe: '#a8c4ee', darkChip: '#223860', darkInk: '#e8f0ff' },
+    antique:     { wash: '#f6efe6', stripe: '#c4a882', chip: '#f0e4d4', ink: '#4a3418', darkWash: '#3a2c1c', darkStripe: '#d4bc9a', darkChip: '#4a3824', darkInk: '#f6efe6' },
+    museum:      { wash: '#fbf6e6', stripe: '#d4bc6a', chip: '#f6edd0', ink: '#5a4810', darkWash: '#3a3418', darkStripe: '#e0cc86', darkChip: '#4a421e', darkInk: '#fbf6e6' },
+    restaurant:  { wash: '#fbeee8', stripe: '#e0a08a', chip: '#f8e0d6', ink: '#6a3220', darkWash: '#3e261e', darkStripe: '#ecc0b0', darkChip: '#523026', darkInk: '#fbeee8' },
+    meal:        { wash: '#fbeee8', stripe: '#e0a08a', chip: '#f8e0d6', ink: '#6a3220', darkWash: '#3e261e', darkStripe: '#ecc0b0', darkChip: '#523026', darkInk: '#fbeee8' },
+    snack:       { wash: '#f3f6e4', stripe: '#b4c56e', chip: '#e8f0cc', ink: '#3d4a14', darkWash: '#2c3418', darkStripe: '#c8d890', darkChip: '#384420', darkInk: '#f3f6e4' },
+    sightseeing: { wash: '#e7f6f6', stripe: '#7ebdbd', chip: '#d6f0f0', ink: '#164848', darkWash: '#143838', darkStripe: '#96d0d0', darkChip: '#1c4848', darkInk: '#e7f6f6' },
+    viewpoint:   { wash: '#e7f4f8', stripe: '#7eb4c8', chip: '#d6eef4', ink: '#164454', darkWash: '#143440', darkStripe: '#96c8d8', darkChip: '#1c4454', darkInk: '#e7f4f8' },
+    experience:  { wash: '#e8f6f2', stripe: '#7eb8a8', chip: '#d8f0e8', ink: '#164838', darkWash: '#14382e', darkStripe: '#96d0bc', darkChip: '#1c483c', darkInk: '#e8f6f2' },
+    school:      { wash: '#fbeaf1', stripe: '#dba0b8', chip: '#f6dce8', ink: '#5c2440', darkWash: '#3a2030', darkStripe: '#e8b8cc', darkChip: '#4c2a3c', darkInk: '#fbeaf1' },
+    other:       { wash: '#f3f2f4', stripe: '#b3aeb8', chip: '#eae8ec', ink: '#3a3640', darkWash: '#2e2c32', darkStripe: '#c4c0c8', darkChip: '#3c3942', darkInk: '#f3f2f4' },
+  };
+
+  function paletteFor(id) {
+    return STOP_PALETTE[id] || STOP_PALETTE.other;
+  }
+
+  function paletteCss() {
+    var cardBits = '.rough-stop,.day-glance-item,.stop,.phone-week-stop,.look-stop';
+    var light = [];
+    var dark = [];
+    Object.keys(STOP_PALETTE).forEach(function (id) {
+      var tone = STOP_PALETTE[id];
+      var cards = cardBits.split(',').map(function (sel) { return sel + '.stop-tone-' + id; }).join(',');
+      light.push(cards + '{background:' + tone.wash + ';box-shadow:inset 4px 0 0 ' + tone.stripe + ';}');
+      light.push('.type-icon-badge.type-' + id + '{color:' + tone.ink + ';background:' + tone.chip + ';border-color:' + tone.stripe + ';}');
+      var darkCards = cardBits.split(',').map(function (sel) { return '[data-theme="dark"] ' + sel + '.stop-tone-' + id; }).join(',');
+      dark.push(darkCards + '{background:' + tone.darkWash + ';box-shadow:inset 4px 0 0 ' + tone.darkStripe + ';}');
+      dark.push('[data-theme="dark"] .type-icon-badge.type-' + id + '{color:' + tone.darkInk + ';background:' + tone.darkChip + ';border-color:' + tone.darkStripe + ';}');
+    });
+    return light.concat(dark).join('\n');
+  }
+
+  function installStopPalette() {
+    if (typeof document === 'undefined' || !document.head) return;
+    var style = document.getElementById('stop-palette');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'stop-palette';
+      document.head.appendChild(style);
+    }
+    style.textContent = paletteCss();
   }
 
   function stopCue(info) {
@@ -194,6 +248,10 @@
     foodCategory: foodCategory,
     knownCatalogueId: knownCatalogueId,
     STOP_CUES: STOP_CUES,
+    STOP_PALETTE: STOP_PALETTE,
     stopCue: stopCue,
+    paletteFor: paletteFor,
+    paletteCss: paletteCss,
   };
+  installStopPalette();
 })(typeof globalThis !== 'undefined' ? globalThis : this);
