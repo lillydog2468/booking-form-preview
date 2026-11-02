@@ -560,11 +560,33 @@
   function loanTotal(g) {
     return roundPounds((g && g.loans || []).reduce((sum, row) => sum + (Number(row && row.amount) || 0), 0));
   }
+  function lendingIsoDay(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim());
+    if (!m) return '';
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+    return m[1] + '-' + m[2] + '-' + m[3];
+  }
+  /** Short history date. Current year is 'Mon 2 Nov'; another year keeps the year. */
+  function shortWeekDate(iso) {
+    const day = lendingIsoDay(iso);
+    if (!day) return 'Earlier';
+    const parts = day.split('-');
+    const dt = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+    const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getUTCDay()];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let label = dow + ' ' + dt.getUTCDate() + ' ' + months[dt.getUTCMonth()];
+    const todayYear = String(lendingIsoDay(todayISO()) || '').slice(0, 4);
+    if (todayYear && parts[0] !== todayYear) label += ' ' + parts[0];
+    return label;
+  }
   function loanWhenLabel(row) {
-    if (!row || !row.at) return 'Earlier';
-    const d = new Date(row.at);
-    if (Number.isNaN(d.getTime())) return 'Earlier';
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const day = lendingIsoDay(row && row.at);
+    if (!day) return 'Earlier';
+    return shortWeekDate(day);
   }
   function ensureGuestDebt(g) {
     if (!g) return g;
@@ -618,12 +640,51 @@
     g.loans.push({
       id: uid('l'),
       amount: pounds,
-      at: at || new Date().toISOString(),
+      at: at || todayISO(),
       legacy: false,
       currency: 'CZK',
     });
     g.lent = loanTotal(g);
     return true;
+  }
+  function recordGuestRepayment(g, amount, date) {
+    if (!g) return false;
+    ensureGuestDebt(g);
+    const crowns = parseLoanAmount(amount);
+    if (!(crowns > 0)) return false;
+    g.repayments.push({
+      id: uid('r'),
+      date: date || todayISO(),
+      amount: crowns,
+      currency: 'CZK',
+    });
+    return true;
+  }
+  function repaymentWhenLabel(date) {
+    const day = lendingIsoDay(date);
+    if (!day) return 'Earlier';
+    return shortWeekDate(day);
+  }
+  function lendingHistory(g) {
+    ensureGuestDebt(g);
+    const rows = [];
+    (g.loans || []).forEach(row => {
+      if (!row || !(Number(row.amount) > 0)) return;
+      rows.push({ kind: 'loan', id: row.id, sort: row.at || '', when: loanWhenLabel(row), amount: row.amount });
+    });
+    (g.repayments || []).forEach(row => {
+      if (!row || !(Number(row.amount) > 0)) return;
+      const day = String(row.date || '').trim();
+      const sort = /^\d{4}-\d{2}-\d{2}/.test(day) ? day.slice(0, 10) + 'T12:00:00' : day;
+      rows.push({ kind: 'repay', id: row.id, sort: sort, when: repaymentWhenLabel(day), amount: row.amount });
+    });
+    rows.sort((a, b) => {
+      if (a.sort === b.sort) return 0;
+      if (!a.sort) return -1;
+      if (!b.sort) return 1;
+      return a.sort < b.sort ? -1 : 1;
+    });
+    return rows;
   }
   let loanCommitLock = false;
   function commitVisibleLoan(id, raw) {
@@ -633,6 +694,21 @@
     loanCommitLock = true;
     setTimeout(() => { loanCommitLock = false; }, 0);
     if (document.querySelector('.lending-desk')) state.lendingOpen = true;
+    scheduleAutoSave();
+    try { persistLocal(); } catch (_) { /* local copy is written again by the scheduled save */ }
+    render();
+    const again = [...document.querySelectorAll('[data-lent-entry]')].find(el => el.getAttribute('data-lent-entry') === String(guest.id));
+    if (again) again.focus();
+    return true;
+  }
+  function commitVisibleRepayment(id, raw) {
+    if (loanCommitLock) return false;
+    const guest = findGuestForLoan(id);
+    if (!recordGuestRepayment(guest, raw)) return false;
+    loanCommitLock = true;
+    setTimeout(() => { loanCommitLock = false; }, 0);
+    if (document.querySelector('.lending-desk')) state.lendingOpen = true;
+    state.openLentRows[String(guest.id)] = 1;
     scheduleAutoSave();
     try { persistLocal(); } catch (_) { /* local copy is written again by the scheduled save */ }
     render();
@@ -653,12 +729,41 @@
       commitVisibleLoan(id, inp.value);
     });
     document.addEventListener('click', (e) => {
-      const btn = e.target && e.target.closest ? e.target.closest('[data-lent-add]') : null;
-      if (!btn) return;
-      const lady = btn.closest('.lent-lady');
-      const inp = lady && lady.querySelector('[data-lent-entry]');
-      const id = btn.getAttribute('data-lent-add') || (lady && lady.getAttribute('data-lent-guest'));
-      commitVisibleLoan(id, inp ? inp.value : '');
+      const target = e.target && e.target.closest ? e.target : (e.target && e.target.parentElement);
+      if (!target || !target.closest) return;
+      const repayBtn = target.closest('[data-lent-repay]');
+      if (repayBtn) {
+        const lady = repayBtn.closest('.lent-lady');
+        const inp = lady && lady.querySelector('[data-lent-entry]');
+        const id = repayBtn.getAttribute('data-lent-repay') || (lady && lady.getAttribute('data-lent-guest'));
+        commitVisibleRepayment(id, inp ? inp.value : '');
+        return;
+      }
+      const btn = target.closest('[data-lent-add]');
+      if (btn) {
+        const lady = btn.closest('.lent-lady');
+        const inp = lady && lady.querySelector('[data-lent-entry]');
+        const id = btn.getAttribute('data-lent-add') || (lady && lady.getAttribute('data-lent-guest'));
+        commitVisibleLoan(id, inp ? inp.value : '');
+        return;
+      }
+      const dropRepay = target.closest('[data-remove-repay]');
+      if (dropRepay) {
+        const id = dropRepay.getAttribute('data-remove-repay');
+        state.openLentRows[String(id)] = 1;
+        if (document.querySelector('.lending-desk')) state.lendingOpen = true;
+        removeGuestRepayment(id, dropRepay.getAttribute('data-repay-id'));
+        return;
+      }
+      const dropLoan = target.closest('[data-remove-loan]');
+      if (!dropLoan) return;
+      const id = dropLoan.getAttribute('data-remove-loan');
+      const guest = (state.plan && state.plan.guests || []).find(x => String(x.id) === String(id));
+      if (!removeGuestLoan(guest, dropLoan.getAttribute('data-loan-id'))) return;
+      state.openLentRows[String(id)] = 1;
+      if (document.querySelector('.lending-desk')) state.lendingOpen = true;
+      scheduleAutoSave();
+      render();
     });
   }
   function removeGuestLoan(g, loanId) {
@@ -5664,19 +5769,20 @@
     function renderGuestLending(g, displayName) {
       ensureGuestDebt(g);
       const owes = guestOwes(g);
-      const repayRows = (g.repayments || []).map(r => `
-        <div class="repay-row">
-          <input type="date" data-repay-date="${g.id}" data-repay-id="${r.id}" value="${escapeHtml(r.date || '')}" aria-label="Repayment date">
-          <input type="number" inputmode="decimal" min="0" step="0.01" data-repay-amount="${g.id}" data-repay-id="${r.id}" value="${escapeHtml(String(r.amount ?? 0))}" aria-label="Repayment amount">
-          <button type="button" class="icon-btn" data-remove-repay="${g.id}" data-repay-id="${r.id}" aria-label="Remove repayment">×</button>
-        </div>
-      `).join('') || `<p class="muted">No daily repayments yet.</p>`;
-      const loanRows = (g.loans || []).map(row => `
+      const historyRows = lendingHistory(g).map(row => {
+        const paidBack = row.kind === 'repay';
+        const amount = paidBack ? ('− ' + formatAmount(row.amount) + ' paid back') : formatAmount(row.amount);
+        const remove = paidBack
+          ? `data-remove-repay="${escapeHtml(g.id)}" data-repay-id="${escapeHtml(row.id)}"`
+          : `data-remove-loan="${escapeHtml(g.id)}" data-loan-id="${escapeHtml(row.id)}"`;
+        const label = paidBack ? 'Remove this repayment' : 'Remove this lending';
+        return `
         <li class="lent-entry">
-          <span class="lent-when">${escapeHtml(loanWhenLabel(row))}</span>
-          <span class="lent-amt">${escapeHtml(formatAmount(row.amount))}</span>
-          <button type="button" class="icon-btn lent-remove" data-remove-loan="${escapeHtml(g.id)}" data-loan-id="${escapeHtml(row.id)}" aria-label="Remove this lending">×</button>
-        </li>`).join('') || `<li class="muted lent-empty">Nothing lent yet.</li>`;
+          <span class="lent-when">${escapeHtml(row.when)}</span>
+          <span class="lent-amt">${escapeHtml(amount)}</span>
+          <button type="button" class="lent-remove" ${remove} aria-label="${label}">×</button>
+        </li>`;
+      }).join('') || '<li class="muted lent-empty">Nothing lent yet.</li>';
       const historyOpen = !!state.openLentRows[String(g.id)];
       return `
         <div class="lent-lady" data-lent-guest="${escapeHtml(g.id)}">
@@ -5684,16 +5790,12 @@
           <div class="lent-line">
             <input type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" data-lent-entry="${escapeHtml(g.id)}" aria-label="Amount to add for ${escapeHtml(displayName)}">
             <button type="button" class="lent-enter" data-lent-add="${escapeHtml(g.id)}">Enter</button>
+            <button type="button" class="lent-enter lent-paid" data-lent-repay="${escapeHtml(g.id)}">Paid back</button>
             <span class="lent-owes" data-lent-owes="${escapeHtml(g.id)}">${escapeHtml(formatAmount(owes))}</span>
             <button type="button" class="lent-history-toggle${historyOpen ? ' is-open' : ''}" data-lent-history="${escapeHtml(g.id)}" aria-expanded="${historyOpen ? 'true' : 'false'}" aria-label="History" title="History"><span aria-hidden="true">›</span></button>
           </div>
           <div class="lent-history"${historyOpen ? '' : ' hidden'}>
-            <ul class="lent-list">${loanRows}</ul>
-            <div class="row-between">
-              <span class="muted" style="font-weight:700;">Daily repayments</span>
-              <button type="button" class="btn btn-outline btn-sm" data-add-repay="${g.id}">Add today’s repayment</button>
-            </div>
-            <div class="repay-list">${repayRows}</div>
+            <ul class="lent-list">${historyRows}</ul>
           </div>
         </div>`;
     }
@@ -10002,30 +10104,6 @@ function renderDayTabs() {
         btn.classList.toggle('is-open', open);
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
-    });
-    document.querySelectorAll('[data-remove-loan]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-remove-loan');
-        const guest = (state.plan.guests || []).find(x => String(x.id) === String(id));
-        if (!removeGuestLoan(guest, btn.getAttribute('data-loan-id'))) return;
-        state.openLentRows[String(id)] = 1;
-        if (document.querySelector('.lending-desk')) state.lendingOpen = true;
-        scheduleAutoSave();
-        render();
-      });
-    });
-    document.querySelectorAll('[data-add-repay]').forEach(btn => {
-      btn.addEventListener('click', () => addGuestRepayment(btn.getAttribute('data-add-repay')));
-    });
-    document.querySelectorAll('[data-repay-amount]').forEach(inp => {
-      inp.addEventListener('input', () => updateGuestRepayment(inp.getAttribute('data-repay-amount'), inp.getAttribute('data-repay-id'), 'amount', inp.value));
-      inp.addEventListener('change', () => updateGuestRepayment(inp.getAttribute('data-repay-amount'), inp.getAttribute('data-repay-id'), 'amount', inp.value));
-    });
-    document.querySelectorAll('[data-repay-date]').forEach(inp => {
-      inp.addEventListener('change', () => updateGuestRepayment(inp.getAttribute('data-repay-date'), inp.getAttribute('data-repay-id'), 'date', inp.value));
-    });
-    document.querySelectorAll('[data-remove-repay]').forEach(btn => {
-      btn.addEventListener('click', () => removeGuestRepayment(btn.getAttribute('data-remove-repay'), btn.getAttribute('data-repay-id')));
     });
     document.querySelectorAll('[data-tick-message]').forEach(inp => {
       inp.addEventListener('change', () => setStopTick(inp.getAttribute('data-tick-message'), 'messageSent', inp.checked));
