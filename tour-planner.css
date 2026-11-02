@@ -573,6 +573,14 @@
       font-size: 14px; font-weight: 800; line-height: 1.3;
       overflow-wrap: anywhere;
     }
+    .handover-maps {
+      margin: 4px 0 0;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .handover-address { font-weight: 650; }
     .handover-names { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
     .handover-names-list { font-weight: 800; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
     .handover-change {

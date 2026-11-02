@@ -196,6 +196,137 @@
     return bits.join(' · ');
   }
 
+  function isoDay(value) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim());
+    return m ? (m[1] + '-' + m[2] + '-' + m[3]) : '';
+  }
+
+  function shiftIso(iso, days) {
+    var day = isoDay(iso);
+    if (!day) return '';
+    var parts = day.split('-');
+    var dt = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    var y = dt.getUTCFullYear();
+    var mo = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    var d = String(dt.getUTCDate()).padStart(2, '0');
+    return y + '-' + mo + '-' + d;
+  }
+
+  function normaliseStay(stay) {
+    var row = stay || {};
+    return {
+      hotel: String(row.hotel || row.hotelName || '').trim().replace(/\s+/g, ' '),
+      check_in: isoDay(row.check_in || row.checkIn),
+      check_out: isoDay(row.check_out || row.checkOut),
+    };
+  }
+
+  /** A stay covers a night when check-in is on or before it and check-out is after it. */
+  function stayCoversNight(stay, night) {
+    if (!stay || !night) return false;
+    if (!stay.check_in && !stay.check_out) return false;
+    if (stay.check_in && stay.check_in > night) return false;
+    if (stay.check_out && stay.check_out <= night) return false;
+    return true;
+  }
+
+  function chosenStay(stays, night, preferLast) {
+    var rows = (stays || []).map(normaliseStay).filter(function (stay) { return stay.hotel; });
+    if (!rows.length) return null;
+    if (night) {
+      var covering = rows.filter(function (stay) { return stayCoversNight(stay, night); });
+      if (covering.length) return preferLast ? covering[covering.length - 1] : covering[0];
+    }
+    var undated = rows.filter(function (stay) { return !stay.check_in && !stay.check_out; });
+    if (undated.length) return preferLast ? undated[undated.length - 1] : undated[0];
+    if (!night) return preferLast ? rows[rows.length - 1] : rows[0];
+    return null;
+  }
+
+  /**
+   * One hotel stop per distinct Prague hotel. Guests with no stay are left out.
+   * Pick-up uses the night before arrival. Drop-off uses the departure night.
+   * Blank stay dates use the first stay for pick-up and the last for drop-off.
+   */
+  function hotelHandoverStops(guests, options) {
+    var opts = options || {};
+    var kind = opts.kind === 'dropoff' ? 'dropoff' : 'pickup';
+    var preferLast = kind === 'dropoff';
+    var night = preferLast ? isoDay(opts.departure) : shiftIso(opts.arrival, -1);
+    var people = namedGuests(guests);
+    if (opts.samePrague) {
+      var shared = (opts.sharedStays || []).map(normaliseStay).filter(function (stay) { return stay.hotel; });
+      if (!shared.length) {
+        var donor = people.filter(function (guest) {
+          return chosenStay(guest.prague_stays, night, preferLast);
+        })[0];
+        shared = donor ? (donor.prague_stays || []) : [];
+      }
+      if (shared.length) {
+        people = people.map(function (guest) {
+          return { id: guest.id, name: guest.name, prague_stays: shared };
+        });
+      }
+    }
+    var groups = [];
+    var byKey = {};
+    people.forEach(function (guest) {
+      var stay = chosenStay(guest.prague_stays, night, preferLast);
+      if (!stay) return;
+      var key = hotelKey(stay.hotel);
+      if (!byKey[key]) {
+        byKey[key] = { hotel: stay.hotel, guestIds: [], guestNames: [] };
+        groups.push(byKey[key]);
+      }
+      byKey[key].guestIds.push(String(guest.id));
+      byKey[key].guestNames.push(String(guest.name).trim());
+    });
+    return groups.map(function (group) {
+      return {
+        handoverKind: kind,
+        placeKind: 'hotel',
+        hotelName: group.hotel,
+        address: group.hotel,
+        guestIds: group.guestIds,
+        guestNames: group.guestNames,
+      };
+    });
+  }
+
+  function hotelStopPresent(stops, proposal) {
+    var key = hotelKey(proposal && proposal.hotelName);
+    if (!key) return false;
+    var kind = proposal.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
+    return (stops || []).some(function (stop) {
+      if (!stop || (stop.type && stop.type !== 'handover')) return false;
+      var stopKind = stop.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
+      if (stopKind !== kind) return false;
+      if (stop.placeKind && stop.placeKind !== 'hotel' && stop.placeKind !== 'note') return false;
+      var existing = hotelKey(stop.hotelName || stop.address || stop.placeNote || '');
+      return existing === key;
+    });
+  }
+
+  /** Stops still to add. Existing stops are not changed. */
+  function hotelStopsToAdd(existingStops, proposals) {
+    return (proposals || []).filter(function (proposal) {
+      return !hotelStopPresent(existingStops, proposal);
+    });
+  }
+
+  function googleMapsSearchUrl(text) {
+    var query = String(text || '').trim();
+    if (!query) return '';
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query);
+  }
+
+  function appleMapsSearchUrl(text) {
+    var query = String(text || '').trim();
+    if (!query) return '';
+    return 'https://maps.apple.com/?q=' + encodeURIComponent(query);
+  }
+
   root.HandoverStops = {
     guestNameMissing: guestNameMissing,
     namedGuests: namedGuests,
@@ -213,5 +344,13 @@
     terminalNumber: terminalNumber,
     placeLabel: placeLabel,
     summary: summary,
+    shiftIso: shiftIso,
+    stayCoversNight: stayCoversNight,
+    chosenStay: chosenStay,
+    hotelHandoverStops: hotelHandoverStops,
+    hotelStopPresent: hotelStopPresent,
+    hotelStopsToAdd: hotelStopsToAdd,
+    googleMapsSearchUrl: googleMapsSearchUrl,
+    appleMapsSearchUrl: appleMapsSearchUrl,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1066,6 +1066,8 @@
           <button type="button" class="btn btn-primary" data-place-picker-add="${selectId}">Add selected place</button>
           <button type="button" class="btn btn-outline" id="${blankId}">Add blank stop</button>
           <button type="button" class="btn btn-outline" data-add-handover="1">Add pick-up or drop-off</button>
+          <button type="button" class="btn btn-outline" data-add-hotel-handover="pickup">Add hotel pick-ups</button>
+          <button type="button" class="btn btn-outline" data-add-hotel-handover="dropoff">Add hotel drop-offs</button>
         </div>
         ${pageHelp('<p>Time is optional. Leave it blank for an approximate time, about 1 hour 30 minutes after the last timed stop, or about 30 minutes for lunch, snack, or restaurant. Untimed stops sort last.</p>')}
       </div>
@@ -4613,6 +4615,106 @@
     return (state.plan && state.plan.days || []).find(d => d && (d.blocks || []).some(b => b && String(b.id) === sid)) || null;
   }
 
+  function hotelGuestsForPlan(booking) {
+    const planGuests = (state.plan && state.plan.guests) || [];
+    const members = (booking && booking._members) || [];
+    if (members.length) {
+      return members.map((member, index) => {
+        const name = [member.first_name, member.last_name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
+        if (!name) return null;
+        const match = planGuests.find(guest => String(guest && guest.name || '').trim().toLowerCase() === name.toLowerCase()) || planGuests[index];
+        if (!match || !match.id) return null;
+        return { id: match.id, name: match.name || name, prague_stays: member.prague_stays || member.pragueStays || [] };
+      }).filter(Boolean);
+    }
+    return planGuests.filter(guest => guest && guest.id && String(guest.name || '').trim()).map(guest => ({
+      id: guest.id,
+      name: guest.name,
+      prague_stays: guest.prague_stays || guest.pragueStays || [],
+    }));
+  }
+
+  function samePragueForPlan(booking) {
+    const details = state.plan && state.plan.bookingDetails;
+    if (details && details.samePrague === true) return true;
+    if (!booking || !window.BookingExtras || booking.extra_notes == null) return false;
+    const split = BookingExtras.splitNotesAndExtras(booking.extra_notes);
+    return !!(split.extras && split.extras.samePrague === true);
+  }
+
+  function dayIndexForHotelHandover(kind) {
+    const days = (state.plan && state.plan.days) || [];
+    const iso = kind === 'dropoff'
+      ? (state.plan.departureDate || '')
+      : (state.plan.arrivalDate || '');
+    const wanted = String(iso).slice(0, 10);
+    if (wanted) {
+      const at = days.findIndex(day => day && String(day.date || '').slice(0, 10) === wanted);
+      if (at >= 0) return at;
+    }
+    return kind === 'dropoff' ? Math.max(0, days.length - 1) : 0;
+  }
+
+  function addHotelHandovers(kind) {
+    const HS = window.HandoverStops;
+    if (!state.plan || !HS || !HS.hotelHandoverStops) return;
+    const days = state.plan.days || [];
+    if (!days.length) {
+      toast('Add the tour days first.');
+      return;
+    }
+    const handoverKind = kind === 'dropoff' ? 'dropoff' : 'pickup';
+    const booking = bookingRecordForPlan(state.plan);
+    const guests = hotelGuestsForPlan(booking);
+    const proposals = HS.hotelHandoverStops(guests, {
+      kind: handoverKind,
+      arrival: state.plan.arrivalDate || (booking && booking.tour_arrival_date) || '',
+      departure: state.plan.departureDate || (booking && booking.departure_date) || '',
+      samePrague: samePragueForPlan(booking),
+    });
+    const index = dayIndexForHotelHandover(handoverKind);
+    const day = days[index];
+    if (!day || typeof day !== 'object') return;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
+    const fresh = HS.hotelStopsToAdd(day.blocks, proposals);
+    if (!fresh.length) {
+      toast(proposals.length ? 'Those hotel stops are already on the plan.' : 'No Prague hotel stays to add.');
+      return;
+    }
+    fresh.forEach(proposal => {
+      const stop = ensureHandoverFields({
+        id: uid('s'),
+        type: 'handover',
+        handoverKind: proposal.handoverKind,
+        time: '',
+        timeApprox: false,
+        placeKind: 'hotel',
+        hotelName: proposal.hotelName,
+        hotelKey: HS.hotelKey(proposal.hotelName),
+        address: proposal.address,
+        placeNote: '',
+        guestIds: proposal.guestIds.slice(),
+        flightArrivalTime: '',
+        title: '',
+        notes: '',
+        period: 'Untimed',
+        messageSent: false,
+        booked: false,
+        travelMinutes: null,
+      });
+      refreshHandoverTitle(stop);
+      day.blocks.push(stop);
+    });
+    sortDayBlocks(day);
+    state.selectedDay = index;
+    scheduleAutoSave();
+    closeSheet();
+    render();
+    toast(fresh.length === 1
+      ? 'Added 1 hotel stop. Stops already on the plan were left as they are.'
+      : ('Added ' + fresh.length + ' hotel stops. Stops already on the plan were left as they are.'));
+  }
+
   function addHandoverStop() {
     const day = currentDay();
     if (!day || typeof day !== 'object' || !state.plan || !window.HandoverStops) return;
@@ -4771,8 +4873,18 @@
     const id = escapeHtml(stop.id);
     return `<button type="button" class="handover-toggle" data-handover-toggle="${id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Hide details' : 'Show details'}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`;
   }
+  function handoverMapLinks(stop) {
+    const HS = window.HandoverStops;
+    if (!HS || !HS.googleMapsSearchUrl || !stop || stop.placeKind === 'airport') return '';
+    const text = String(stop.address || stop.hotelName || '').trim();
+    const google = HS.googleMapsSearchUrl(text);
+    if (!google) return '';
+    const apple = HS.appleMapsSearchUrl ? HS.appleMapsSearchUrl(text) : '';
+    return `<p class="handover-maps"><span class="handover-address">${escapeHtml(text)}</span> <a href="${escapeHtml(google)}" target="_blank" rel="noopener">Google Maps</a>${apple ? ` · <a href="${escapeHtml(apple)}" target="_blank" rel="noopener">Apple Maps</a>` : ''}</p>`;
+  }
+
   function renderHandoverBar(stop) {
-    return `<div class="handover-bar">${renderHandoverToggle(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p></div>`;
+    return `<div class="handover-bar">${renderHandoverToggle(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p></div>${handoverMapLinks(stop)}`;
   }
 
   function renderHandoverTerminal(stop) {
@@ -6525,6 +6637,7 @@
                 ${removeBtn}
               </div>
             </div>
+            ${handoverMapLinks(s)}
             ${renderRoughHandoverDetails(s)}
           </div>
         </li>`;
@@ -9247,6 +9360,9 @@ function renderDayTabs() {
     document.querySelectorAll('#app [data-add-handover]').forEach(btn => {
       btn.addEventListener('click', addHandoverStop);
     });
+    document.querySelectorAll('#app [data-add-hotel-handover]').forEach(btn => {
+      btn.addEventListener('click', () => addHotelHandovers(btn.getAttribute('data-add-hotel-handover')));
+    });
     document.querySelectorAll('[data-handover-kind]').forEach(sel => {
       sel.addEventListener('change', () => commitHandoverKind(sel.getAttribute('data-handover-kind'), sel.value));
     });
@@ -10267,6 +10383,9 @@ function renderDayTabs() {
     document.getElementById('btnSheetAddStop')?.addEventListener('click', addBlankStop);
     body.querySelectorAll('[data-add-handover]').forEach(btn => {
       btn.addEventListener('click', addHandoverStop);
+    });
+    body.querySelectorAll('[data-add-hotel-handover]').forEach(btn => {
+      btn.addEventListener('click', () => addHotelHandovers(btn.getAttribute('data-add-hotel-handover')));
     });
     document.getElementById('btnSheetManagePlaces')?.addEventListener('click', () => {
       closeSheet();
