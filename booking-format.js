@@ -79,6 +79,14 @@
     return dmyFromDate(d);
   }
 
+  // Display only. Never write this suffix back into group_name.
+  function unverifiedBookingTitle(name, status) {
+    var text = String(name == null ? '' : name).trim();
+    if (String(status == null ? '' : status).trim().toLowerCase() !== 'unconfirmed') return text;
+    if (/\(unverified\)\s*$/i.test(text)) return text;
+    return text ? (text + ' (unverified)') : text;
+  }
+
   root.BookingFormat = {
     DEFAULT_CURRENCY: DEFAULT_CURRENCY,
     normalizeCurrency: normalizeCurrency,
@@ -88,6 +96,7 @@
     parseISODateUTCPlanner: parseISODateUTCPlanner,
     formatDateDMY: formatDateDMY,
     formatDateDMYPlanner: formatDateDMYPlanner,
-    formatDMY: formatDMY
+    formatDMY: formatDMY,
+    unverifiedBookingTitle: unverifiedBookingTitle
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

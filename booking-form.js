@@ -303,6 +303,7 @@
     state.openFolds = [...panelFolds(tabId)].filter(d => d.open).map(d => d.getAttribute('data-fold'));
 
     state.tourFull = tourFullOn(tabId);
+    state.unverified = unverifiedOn(tabId);
     return state;
   }
 
@@ -455,6 +456,8 @@
     paintEmptyFields(el('tabPanel_' + tabId));
     updateHotelNightsHint(tabId);
     applyTourFull(tabId, !!state.tourFull);
+    applyUnverified(tabId, !!state.unverified);
+    refreshOpenBookingTitle(tabId);
   }
 
   function bookingIdLabel(id) {
@@ -478,21 +481,20 @@
   function syncTabHeader(tabId) {
     const tabData = tabs.get(tabId);
     const groupName = tEl(tabId, 'group_name')?.value?.trim() || '';
-    const title = groupName || (tabData?.bookingId ? ('Booking #' + tabData.bookingId) : 'New Booking');
     const formTitle = tEl(tabId, 'formTitle');
     const delBtn = tEl(tabId, 'deleteBtn');
     const idInput = tEl(tabId, 'id');
 
     if (tabData?.bookingId) {
       if (idInput) idInput.value = tabData.bookingId;
-      if (formTitle) formTitle.textContent = 'Edit: ' + title;
       if (delBtn) delBtn.style.display = 'inline-flex';
-      updateTabTitle(tabId, 'Edit: ' + title);
+      refreshOpenBookingTitle(tabId);
     } else {
       if (idInput) idInput.value = '';
       if (formTitle) formTitle.textContent = 'New Booking';
       if (delBtn) delBtn.style.display = 'none';
       updateTabTitle(tabId, 'New Booking');
+      if (groupName) refreshOpenBookingTitle(tabId);
     }
     syncBookingIdTag(tabId);
     applyTabYearTint(tabId);
@@ -1411,6 +1413,7 @@
         <div class="field-with-currency tour-fare-price"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
         <div class="field tour-fare-head"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
         <button type="button" class="tour-full-toggle" id="t${t}_tour_full" aria-pressed="false" onclick="toggleTourFull('${t}')">Tour full</button>
+        <label class="day-trip-toggle group-price-toggle unverified-toggle"><input type="checkbox" id="t${t}_unverified"> Unverified</label>
         <label class="day-trip-toggle group-price-toggle"><input type="checkbox" id="t${t}_group_price"> One price for the whole group</label>
         <div class="field-with-currency tour-fare-total"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to follow the price per person. Leader half price takes a half off that organiser only."></div>${currencyMarkHTML()}</div>
         <div id="t${t}_guestWarn" class="headcount-warn" role="alert" hidden></div>
@@ -1932,7 +1935,9 @@
       const range = extractBookingRangeUTC(b);
       const tour = {
         id: b.id,
-        title: String(b.group_name || (b.id ? 'Booking #' + b.id : 'Booking')).trim() || 'Booking',
+        title: (typeof bookingShownName === 'function'
+          ? bookingShownName(String(b.group_name || (b.id ? 'Booking #' + b.id : 'Booking')).trim() || 'Booking', b.status)
+          : (String(b.group_name || (b.id ? 'Booking #' + b.id : 'Booking')).trim() || 'Booking')),
         cancelled: bookingIsCancelled(b),
         hotel: b.hotel_name || '',
         people: (typeof BookingExtras !== 'undefined' && BookingExtras.bookingHeadcount) ? BookingExtras.bookingHeadcount(b) : b.no_people,
@@ -2069,7 +2074,9 @@
       if (String(booking.id) === want) {
         return {
           id: booking.id,
-          title: String(booking.group_name || ('Booking #' + booking.id)).trim() || ('Booking #' + booking.id),
+          title: (typeof bookingShownName === 'function'
+            ? bookingShownName(String(booking.group_name || ('Booking #' + booking.id)).trim() || ('Booking #' + booking.id), booking.status)
+            : (String(booking.group_name || ('Booking #' + booking.id)).trim() || ('Booking #' + booking.id))),
           people: yearTourHeadcount({ people: booking.no_people }),
           full: bookingIsTourFull(booking),
           dayTrip: yearTourIsDayTrip(booking),
@@ -2324,7 +2331,12 @@
       }
     }
     syncTabCalendarMonthFilterUI(tabId);
-    const openTourName = (tEl(tabId, 'group_name')?.value || tabData?.title || '').replace(/^Edit:\s*/i, '').trim();
+    const typedTourName = (tEl(tabId, 'group_name')?.value || '').trim();
+    const titledTourName = (tabData?.title || '').replace(/^Edit:\s*/i, '').replace(/\s*\(unverified\)\s*$/i, '').trim();
+    const openTourBase = typedTourName || titledTourName;
+    const openTourName = openTourBase
+      ? (typeof bookingShownName === 'function' ? bookingShownName(openTourBase, typeof openBookingStatus === 'function' ? openBookingStatus(tabId) : null) : openTourBase)
+      : '';
     let openTourRangeText = '';
     if (currentRange && currentRange.arrival && currentRange.departure) {
       openTourRangeText = formatDateDMY(toISODateUTC(currentRange.arrival)) + '–' + formatDateDMY(toISODateUTC(currentRange.departure));
@@ -2346,7 +2358,9 @@
         if (r.start.getUTCFullYear() > year || r.end.getUTCFullYear() < year) return null;
         return {
           id: b.id,
-          title: b.group_name || ('Booking #' + b.id),
+          title: (typeof bookingShownName === 'function'
+            ? bookingShownName(b.group_name || ('Booking #' + b.id), b.status)
+            : (b.group_name || ('Booking #' + b.id))),
           start: r.start,
           end: r.end,
         };
@@ -4234,7 +4248,7 @@
     const opts = ['<option value="">Not joining another group</option>'];
     (allBookings || []).forEach(b => {
       if (selfId && String(b.id) === String(selfId)) return;
-      const label = (b.group_name || ('Booking #' + b.id)) + (b.tour_arrival_date ? (' · ' + formatDateDMY(b.tour_arrival_date)) : '');
+      const label = (typeof bookingShownName === 'function' ? bookingShownName(b.group_name || ('Booking #' + b.id), b.status) : (b.group_name || ('Booking #' + b.id))) + (b.tour_arrival_date ? (' · ' + formatDateDMY(b.tour_arrival_date)) : '');
       opts.push('<option value="' + escapeAttr(String(b.id)) + '">' + escapeHtml(label) + '</option>');
     });
     sel.innerHTML = opts.join('');
@@ -6560,6 +6574,82 @@
     return !!tEl(tabId, 'leader_half_price')?.checked;
   }
 
+  function bookingShownName(name, status) {
+    const text = String(name == null ? '' : name).trim();
+    if (typeof BookingFormat !== 'undefined' && BookingFormat.unverifiedBookingTitle) {
+      return BookingFormat.unverifiedBookingTitle(text, status);
+    }
+    return text;
+  }
+
+  function protectedBookingStatus(status) {
+    const value = String(status == null ? '' : status).trim().toLowerCase();
+    if (value === 'cancelled' || value === 'duplicate' || value === 'companion') return value;
+    return '';
+  }
+
+  function rememberedBookingStatus(status) {
+    const kept = protectedBookingStatus(status);
+    if (kept) return kept;
+    return String(status == null ? '' : status).trim().toLowerCase() === 'unconfirmed' ? 'unconfirmed' : null;
+  }
+
+  function unverifiedOn(tabId) {
+    return !!tEl(tabId, 'unverified')?.checked;
+  }
+
+  function statusAfterUnverifiedTick(loadedStatus, ticked) {
+    const kept = protectedBookingStatus(loadedStatus);
+    if (kept) return kept;
+    return ticked ? 'unconfirmed' : null;
+  }
+
+  function openBookingStatus(tabId) {
+    const tabData = tabs.get(tabId);
+    return statusAfterUnverifiedTick(tabData && tabData.loadedStatus, unverifiedOn(tabId));
+  }
+
+  function applyUnverified(tabId, on) {
+    const box = tEl(tabId, 'unverified');
+    if (!box) return;
+    const kept = protectedBookingStatus((tabs.get(tabId) || {}).loadedStatus);
+    box.checked = !!on && !kept;
+    box.disabled = !!kept;
+  }
+
+  function refreshOpenBookingTitle(tabId) {
+    const tabData = tabs.get(tabId);
+    const groupName = tEl(tabId, 'group_name')?.value?.trim() || '';
+    const status = openBookingStatus(tabId);
+    if (tabData && tabData.bookingId) {
+      const base = groupName || ('Booking #' + tabData.bookingId);
+      const title = bookingShownName(base, status);
+      const formTitle = tEl(tabId, 'formTitle');
+      if (formTitle) formTitle.textContent = 'Edit: ' + title;
+      updateTabTitle(tabId, 'Edit: ' + title);
+      paintUnverifiedTab(tabId);
+      return;
+    }
+    if (groupName) updateTabTitle(tabId, bookingShownName(groupName, status));
+    paintUnverifiedTab(tabId);
+  }
+
+  function paintUnverifiedTab(tabId) {
+    const tabBtn = el('tabBtn_' + tabId);
+    if (!tabBtn) return;
+    tabBtn.classList.toggle('unconfirmed', openBookingStatus(tabId) === 'unconfirmed');
+  }
+
+  function syncUnverifiedList(tabId) {
+    const tabData = tabs.get(tabId);
+    if (tabData && tabData.bookingId && !protectedBookingStatus(tabData.loadedStatus)) {
+      const row = (allBookings || []).find(b => bookingIdsMatch(b.id, tabData.bookingId));
+      if (row) row.status = openBookingStatus(tabId);
+    }
+    paintUnverifiedTab(tabId);
+    if (typeof highlightSidebarRecords === 'function') highlightSidebarRecords();
+  }
+
   function tourFullOn(tabId) {
     const btn = tEl(tabId, 'tour_full');
     return !!(btn && btn.getAttribute('aria-pressed') === 'true');
@@ -7429,7 +7519,11 @@
       }
     }
 
-    const title = bookingRecord ? (bookingRecord.group_name || 'Booking #' + bookingRecord.id) : 'New Booking';
+    const title = bookingRecord
+      ? (typeof bookingShownName === 'function'
+        ? bookingShownName(bookingRecord.group_name || ('Booking #' + bookingRecord.id), bookingRecord.status)
+        : (bookingRecord.group_name || 'Booking #' + bookingRecord.id))
+      : 'New Booking';
     tabs.set(tabId, { bookingId, title, dirty: false, autoSaveTimer: null, planHotelsBaseline: [], planHotelsLoaded: !bookingId, dayPickupBaseline: '', planHotelTimer: null, startedNew: !bookingId });
 
     const tabBtn = document.createElement('div');
@@ -7638,10 +7732,10 @@
 
 	    const tabData = tabs.get(tabId);
 	    const groupInput = tEl(tabId, 'group_name');
-    if (groupInput && groupInput.value.trim()) {
-      const prefix = tabData && tabData.bookingId ? 'Edit: ' : '';
-      updateTabTitle(tabId, prefix + groupInput.value.trim());
+    if ((groupInput && groupInput.value.trim()) || changedId.endsWith('_unverified')) {
+      refreshOpenBookingTitle(tabId);
 	    }
+    if (changedId.endsWith('_unverified')) syncUnverifiedList(tabId);
 	    if (changedId.endsWith('_tour_arrival_date')) {
 	      const arrEl = tEl(tabId, 'tour_arrival_date');
 	      const depEl = tEl(tabId, 'departure_date');
@@ -7669,7 +7763,8 @@
 	    if (
 	      changedId.endsWith('_tour_arrival_date') ||
 	      changedId.endsWith('_departure_date') ||
-	      changedId.endsWith('_group_name')
+	      changedId.endsWith('_group_name') ||
+	      changedId.endsWith('_unverified')
 	    ) {
       renderYearCalendar(tabId);
     }
@@ -7929,6 +8024,9 @@
     data.totalprofit = totalPayments - totalExpenses;
     data.leader_half_price = checkVal(tabId, 'leader_half_price');
     data.tour_full = tourFullOn(tabId);
+    data.status = typeof statusAfterUnverifiedTick === 'function'
+      ? statusAfterUnverifiedTick((tabs.get(tabId) || {}).loadedStatus, typeof unverifiedOn === 'function' && unverifiedOn(tabId))
+      : null;
 
     // Child data
     data._members = getMembersData(tabId);
@@ -8057,6 +8155,7 @@
     if (tabData) {
       tabData.bookingId = record.id || null;
       rememberLoadedDates(tabId, record);
+      tabData.loadedStatus = rememberedBookingStatus(record.status);
       tabData.status = bookingIsCancelled(record) ? 'cancelled' : null;
       tabData.delayUntilYear = delayUntilYearOf(record);
       tabData.rescheduledFromId = rescheduledFromIdOf(record);
@@ -8069,9 +8168,8 @@
       if (record._childrenLoaded !== false) tabData.dirty = false;
     }
     tEl(tabId, 'id').value = record.id || '';
-    const title = record.group_name || (record.id ? 'Booking #' + record.id : 'New Booking');
-    tEl(tabId, 'formTitle').textContent = record.id ? 'Edit: ' + title : title;
-    updateTabTitle(tabId, record.id ? 'Edit: ' + title : title);
+    applyUnverified(tabId, rememberedBookingStatus(record.status) === 'unconfirmed');
+    refreshOpenBookingTitle(tabId);
     syncBookingIdTag(tabId);
     const deleteBtn = tEl(tabId, 'deleteBtn');
     if (deleteBtn) deleteBtn.style.display = record.id ? 'inline-flex' : 'none';
@@ -8170,6 +8268,7 @@
     if (tabData) {
       tabData.bookingId = null;
       tabData.status = null;
+      tabData.loadedStatus = null;
       tabData.delayUntilYear = '';
       tabData.rescheduledFromId = '';
       tabData.orphanHotelExpenses = [];
@@ -8187,6 +8286,7 @@
     tEl(tabId, 'formTitle').textContent = 'New Booking';
     updateTabTitle(tabId, 'New Booking');
     applyTourFull(tabId, false);
+    applyUnverified(tabId, false);
     syncBookingIdTag(tabId);
     const deleteBtn = tEl(tabId, 'deleteBtn');
     if (deleteBtn) deleteBtn.style.display = 'none';
@@ -8476,14 +8576,16 @@
 	        parts.push(`<div class="records-year-header year-band year-band-${band}" role="presentation">${escapeHtml(label)}</div>`);
 	      }
 	      const cancelled = bookingIsCancelled(r);
-	      const recordName = escapeHtml(r.group_name || ('Booking #' + r.id));
+	      const unconfirmed = !cancelled && String(r.status || '').trim().toLowerCase() === 'unconfirmed';
+	      const rawName = r.group_name || ('Booking #' + r.id);
+	      const recordName = escapeHtml(typeof bookingShownName === 'function' ? bookingShownName(rawName, r.status) : rawName);
 	      const idLabel = bookingIdLabel(r.id);
 	      const idTag = idLabel ? ' <span class="booking-id-tag">' + idLabel + '</span>' : '';
 	      const cancelledTag = cancelled ? ' <span class="cancelled-tag">Cancelled</span>' : '';
 	      const fullTag = bookingIsTourFull(r) ? ' <span class="tour-full-badge">FULL</span>' : '';
 	      const delayText = cancelled ? delayUntilLabel(r) : '';
 	      parts.push(`
-	      <div class="record-item year-band year-band-${band} ${cancelled ? 'cancelled' : ''} ${r.id === activeBookingId ? 'active' : ''}" onclick="openBookingInTab(${r.id})">
+	      <div class="record-item year-band year-band-${band} ${cancelled ? 'cancelled' : ''} ${unconfirmed ? 'unconfirmed' : ''} ${r.id === activeBookingId ? 'active' : ''}" onclick="openBookingInTab(${r.id})">
 	        ${cancelled ? cancelCrossHtml() : ''}
 	        <div class="record-title">${openIds.has(r.id) ? '<span style="color:var(--accent);margin-right:4px;">●</span>' : ''}${recordName}${idTag}${fullTag}${cancelledTag}</div>
 	        <div class="record-sub">${
@@ -8757,6 +8859,10 @@
     if (bookingData && Object.prototype.hasOwnProperty.call(bookingData, 'tour_full')) {
       optional.tour_full = bookingData.tour_full === true;
     }
+    if (bookingData && Object.prototype.hasOwnProperty.call(bookingData, 'status')) {
+      optional.status = bookingData.status;
+      delete bookingData.status;
+    }
     const optionalKeys = Object.keys(optional);
     let row = { ...bookingData, ...optional };
     const run = payload => bid
@@ -8870,6 +8976,9 @@
       else allBookings.unshift(record);
       saveLocalBookings();
       rememberSavedDates(tabId, data);
+      tabData.loadedStatus = typeof rememberedBookingStatus === 'function' ? rememberedBookingStatus(data.status) : tabData.loadedStatus;
+      applyUnverified(tabId, tabData.loadedStatus === 'unconfirmed');
+      refreshOpenBookingTitle(tabId);
       if (activeTabId === tabId) syncBookingAddress(tabData.bookingId);
       const idInput = tEl(tabId, 'id');
       if (idInput) idInput.value = tabData.bookingId;
@@ -8942,7 +9051,9 @@
         tabData.bookingId = newId;
         if (activeTabId === tabId) syncBookingAddress(newId);
         tEl(tabId, 'id').value = newId;
-        const savedLabel = bookingData.group_name || 'Booking';
+        const savedLabel = (typeof bookingShownName === 'function'
+          ? bookingShownName(bookingData.group_name || 'Booking', data.status)
+          : (bookingData.group_name || 'Booking'));
         tEl(tabId, 'formTitle').textContent = `Edit: ${savedLabel}`;
         updateTabTitle(tabId, `Edit: ${savedLabel}`);
         syncBookingIdTag(tabId);
@@ -8965,6 +9076,9 @@
       }
 
       rememberSavedDates(tabId, data);
+      tabData.loadedStatus = typeof rememberedBookingStatus === 'function' ? rememberedBookingStatus(data.status) : tabData.loadedStatus;
+      applyUnverified(tabId, tabData.loadedStatus === 'unconfirmed');
+      refreshOpenBookingTitle(tabId);
       applyBookingCancelledChrome(tabId);
       markTabDirty(tabId, false);
       const payMap = readMemberPayOpenMap();
@@ -9068,7 +9182,9 @@
     const payCur = normalizeCurrency((record && (record.depositmade_currency || record.beading_tour_price_currency)) || DEFAULT_CURRENCY);
     const money = (amount, currency) => formatMoney(Number(amount) || 0, normalizeCurrency(currency || payCur));
     return {
-      group: (record && (record.group_name || (record.id ? 'Booking #' + record.id : 'Booking'))) || 'Booking',
+      group: (typeof bookingShownName === 'function'
+        ? bookingShownName((record && (record.group_name || (record.id ? 'Booking #' + record.id : 'Booking'))) || 'Booking', record && record.status)
+        : ((record && (record.group_name || (record.id ? 'Booking #' + record.id : 'Booking'))) || 'Booking')),
       deposit: money(record && record.depositmade, record && record.depositmade_currency),
       finalPay: money(record && record.finalpayment, record && record.finalpayment_currency),
       left: money(record && record.left_to_pay, record && record.beading_tour_price_currency),
@@ -9216,6 +9332,9 @@
           : (error.message || 'Could not mark the booking cancelled.'));
       }
       tabData.status = 'cancelled';
+      tabData.loadedStatus = 'cancelled';
+      applyUnverified(tabId, false);
+      refreshOpenBookingTitle(tabId);
       const row = (allBookings || []).find(b => String(b.id) === String(tabData.bookingId));
       if (row) row.status = 'cancelled';
       applyBookingCancelledChrome(tabId);
@@ -9625,7 +9744,9 @@
           }
           let display = val != null && val !== '' ? val : '—';
           if (col.key === 'group_name') {
-            const name = val ? escapeHtml(String(val)) : '—';
+            const rawName = val ? String(val) : '';
+            const shownName = rawName ? (typeof bookingShownName === 'function' ? bookingShownName(rawName, r.status) : rawName) : '';
+            const name = shownName ? escapeHtml(shownName) : '—';
             const delay = delayText ? '<div class="record-delay">' + escapeHtml(delayText) + '</div>' : '';
             const pairLine = pairSummaryText(r) ? '<div class="record-pair">' + escapeHtml(pairSummaryText(r)) + '</div>' : '';
             const reschedule = cancelled ? '<button type="button" class="btn btn-outline btn-sm rescheduled-btn" onclick="event.stopPropagation(); openRescheduledBooking(' + r.id + ')">Rescheduled</button>' : '';

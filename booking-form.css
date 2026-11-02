@@ -728,6 +728,62 @@
     [data-theme="dark"] .record-item.year-band.cancelled.active {
       background: #e5e7eb; border-color: #9ca3af;
     }
+    .record-item.unconfirmed,
+    .record-item.year-band.unconfirmed,
+    .record-item.unconfirmed:hover,
+    .record-item.year-band.unconfirmed:hover {
+      background: #fff1d6;
+      border: 1px solid #f5d0a0;
+      border-left: 4px dashed #d97706;
+      color: #431407;
+    }
+    .record-item.unconfirmed .record-title,
+    .record-item.unconfirmed .record-sub { color: #431407; }
+    .record-item.unconfirmed.active,
+    .record-item.year-band.unconfirmed.active {
+      background: #ffd59a;
+      border: 1px solid #d97706;
+      border-left: 4px dashed #b45309;
+      color: #431407;
+    }
+    .record-item.unconfirmed.active .record-title,
+    .record-item.unconfirmed.active .record-sub { color: #431407; }
+    [data-theme="dark"] .record-item.unconfirmed,
+    [data-theme="dark"] .record-item.year-band.unconfirmed,
+    [data-theme="dark"] .record-item.unconfirmed:hover,
+    [data-theme="dark"] .record-item.year-band.unconfirmed:hover,
+    [data-theme="dark"] .record-item.unconfirmed.active,
+    [data-theme="dark"] .record-item.year-band.unconfirmed.active {
+      background: #7c3e12;
+      border-color: #fbbf24;
+      border-left: 4px dashed #fbbf24;
+      color: #fff7ed;
+    }
+    [data-theme="dark"] .record-item.unconfirmed .record-title,
+    [data-theme="dark"] .record-item.unconfirmed .record-sub,
+    [data-theme="dark"] .record-item.unconfirmed.active .record-title,
+    [data-theme="dark"] .record-item.unconfirmed.active .record-sub { color: #fff7ed; }
+    .tab.unconfirmed {
+      background: #fff1d6;
+      color: #431407;
+      border-color: #f5d0a0;
+      border-left: 3px dashed #d97706;
+    }
+    .tab.unconfirmed:hover,
+    .tab.unconfirmed.active {
+      background: #ffd59a;
+      color: #431407;
+      border-color: #d97706;
+      border-left: 3px dashed #b45309;
+    }
+    [data-theme="dark"] .tab.unconfirmed,
+    [data-theme="dark"] .tab.unconfirmed:hover,
+    [data-theme="dark"] .tab.unconfirmed.active {
+      background: #7c3e12;
+      color: #fff7ed;
+      border-color: #fbbf24;
+      border-left: 3px dashed #fbbf24;
+    }
     .record-item.cancelled .record-title,
     .record-item.cancelled .record-sub { color: #374151; }
     [data-theme="dark"] .record-item.cancelled .record-title,
@@ -2170,6 +2226,7 @@
       min-height: 28px;
       font-size: 13px;
     }
+    .tour-fare-block > .unverified-toggle { white-space: nowrap; }
     .tour-full-toggle {
       flex: 0 0 auto;
       align-self: flex-end;

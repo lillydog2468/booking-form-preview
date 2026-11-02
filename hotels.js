@@ -756,7 +756,10 @@
       if (!id || !localPlanIsDeviceOnly(id, loadedBookings, bookingListLoaded)) return;
       const matches = stays.filter(s => String(s.bookingKey) === id);
       if (!matches.length || matches.some(s => !s.deviceOnly)) return;
-      const name = matches[0].groupName || 'this plan';
+      const rawPlanName = matches[0].groupName || 'this plan';
+      const name = (typeof BookingFormat !== 'undefined' && BookingFormat.unverifiedBookingTitle)
+        ? BookingFormat.unverifiedBookingTitle(rawPlanName, matches[0].bookingStatus)
+        : rawPlanName;
       if (!window.confirm('Delete “' + name + '”? This plan is saved on this device only.')) return;
       try {
         const store = JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || '{}') || {};
@@ -943,7 +946,7 @@
           : '';
         return `<article class="stay${cancelled ? ' cancelled' : ''}${deviceOnly ? ' device-only' : ''}" data-stay-key="${esc(s.key)}" data-booking-status="${esc(s.bookingStatus || '')}">
           <div>
-            <div class="tour-name"><a href="${esc(plannerHref(s))}">${esc(s.groupName)}</a>${tag}</div>
+            <div class="tour-name"><a href="${esc(plannerHref(s))}">${esc((typeof BookingFormat !== 'undefined' && BookingFormat.unverifiedBookingTitle) ? BookingFormat.unverifiedBookingTitle(s.groupName, s.bookingStatus) : s.groupName)}</a>${tag}</div>
             <div class="hotel-name">${esc(s.hotelName)}</div>
             ${fullHotelFlag(s)}
             <div class="role">${esc(roleLabel(s.role))}</div>
