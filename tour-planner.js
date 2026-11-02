@@ -519,6 +519,23 @@
   function roundPounds(n) {
     return Math.round((Number(n) || 0) * 100) / 100;
   }
+  function parseLoanAmount(raw) {
+    let s = String(raw == null ? '' : raw).trim();
+    if (!s) return 0;
+    s = s.replace(/£/gi, '').replace(/\s+/g, '');
+    if (s.indexOf(',') >= 0 && s.indexOf('.') >= 0) {
+      if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+      else s = s.replace(/,/g, '');
+    } else if (s.indexOf(',') >= 0) {
+      const tail = s.slice(s.lastIndexOf(',') + 1);
+      const oneComma = s.indexOf(',') === s.lastIndexOf(',');
+      if (oneComma && tail.length > 0 && tail.length < 3 && /^\d+$/.test(tail)) s = s.replace(',', '.');
+      else s = s.replace(/,/g, '');
+    }
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return roundPounds(n);
+  }
   function loanTotal(g) {
     return roundPounds((g && g.loans || []).reduce((sum, row) => sum + (Number(row && row.amount) || 0), 0));
   }
@@ -530,6 +547,8 @@
   }
   function ensureGuestDebt(g) {
     if (!g) return g;
+    if (g.id == null || String(g.id).trim() === '') g.id = uid('g');
+    else g.id = String(g.id);
     if (typeof g.lent !== 'number' || Number.isNaN(g.lent)) g.lent = Number(g.lent) || 0;
     if (!Array.isArray(g.repayments)) g.repayments = [];
     g.repayments = g.repayments.map(r => ({
@@ -556,10 +575,16 @@
     else g.personId = String(g.personId || '').trim();
     return g;
   }
+  function findGuestForLoan(id) {
+    const guests = (state.plan && state.plan.guests) || [];
+    const key = String(id || '').trim();
+    if (!key) return null;
+    return guests.find(g => g && (String(g.id) === key || String(g.personId || '') === key)) || null;
+  }
   function recordGuestLoan(g, amount, at) {
     if (!g) return false;
     ensureGuestDebt(g);
-    const pounds = roundPounds(amount);
+    const pounds = parseLoanAmount(amount);
     if (!(pounds > 0)) return false;
     g.loans.push({
       id: uid('l'),
@@ -570,15 +595,41 @@
     g.lent = loanTotal(g);
     return true;
   }
+  let loanCommitLock = false;
   function commitVisibleLoan(id, raw) {
-    const guest = (state.plan && state.plan.guests || []).find(x => String(x.id) === String(id));
+    if (loanCommitLock) return false;
+    const guest = findGuestForLoan(id);
     if (!recordGuestLoan(guest, raw)) return false;
+    loanCommitLock = true;
+    setTimeout(() => { loanCommitLock = false; }, 0);
     if (document.querySelector('.lending-desk')) state.lendingOpen = true;
     scheduleAutoSave();
+    try { persistLocal(); } catch (_) { /* local copy is written again by the scheduled save */ }
     render();
-    const again = document.querySelector(`[data-lent-entry="${id}"]`);
+    const again = [...document.querySelectorAll('[data-lent-entry]')].find(el => el.getAttribute('data-lent-entry') === String(guest.id));
     if (again) again.focus();
     return true;
+  }
+  function bindLendingOnce() {
+    if (bindLendingOnce.done) return;
+    bindLendingOnce.done = true;
+    document.addEventListener('keydown', (e) => {
+      const inp = e.target && e.target.closest ? e.target.closest('[data-lent-entry]') : null;
+      if (!inp) return;
+      if (e.key !== 'Enter' && e.keyCode !== 13) return;
+      e.preventDefault();
+      const lady = inp.closest('.lent-lady');
+      const id = inp.getAttribute('data-lent-entry') || (lady && lady.getAttribute('data-lent-guest'));
+      commitVisibleLoan(id, inp.value);
+    });
+    document.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('[data-lent-add]') : null;
+      if (!btn) return;
+      const lady = btn.closest('.lent-lady');
+      const inp = lady && lady.querySelector('[data-lent-entry]');
+      const id = btn.getAttribute('data-lent-add') || (lady && lady.getAttribute('data-lent-guest'));
+      commitVisibleLoan(id, inp ? inp.value : '');
+    });
   }
   function removeGuestLoan(g, loanId) {
     if (!g) return false;
@@ -1833,10 +1884,38 @@
     if (plan.tourHotelName && String(plan.tourHotelName).trim()) score += 3;
     if (Array.isArray(plan.sharedAlbums) && plan.sharedAlbums.length) score += Math.min(12, plan.sharedAlbums.length * 3);
     if (String(plan.roughNotes || '').trim()) score += Math.min(20, 4 + Math.floor(String(plan.roughNotes).trim().length / 40));
+    (plan.guests || []).forEach(g => {
+      if (g && Array.isArray(g.loans)) score += g.loans.length * 6;
+    });
     try { score += Math.min(80, Math.floor(JSON.stringify(plan).length / 80)); } catch (_) {}
     return score;
   }
 
+  function mergeGuestLoansInto(keep, other) {
+    if (!keep || !other || keep === other) return keep;
+    const incoming = Array.isArray(other.guests) ? other.guests : [];
+    if (!Array.isArray(keep.guests)) keep.guests = [];
+    incoming.forEach(src => {
+      if (!src || !Array.isArray(src.loans) || !src.loans.length) return;
+      let dest = keep.guests.find(g => g && src.id && String(g.id) === String(src.id));
+      if (!dest) {
+        const name = String(src.name || '').trim().toLowerCase();
+        if (name) dest = keep.guests.find(g => String(g.name || '').trim().toLowerCase() === name);
+      }
+      if (!dest) return;
+      if (!Array.isArray(dest.loans)) dest.loans = [];
+      src.loans.forEach(row => {
+        if (!row || !(Number(row.amount) > 0)) return;
+        const id = String(row.id || '');
+        if (id && dest.loans.some(have => have && String(have.id) === id)) return;
+        const same = dest.loans.some(have => have && Number(have.amount) === Number(row.amount) && String(have.at || '') === String(row.at || ''));
+        if (same) return;
+        dest.loans.push(row);
+      });
+      ensureGuestDebt(dest);
+    });
+    return keep;
+  }
   function preferRicherPlan(localPlan, cloudPlan) {
     if (!cloudPlan) return localPlan || null;
     if (!localPlan) return cloudPlan;
@@ -1846,17 +1925,20 @@
       console.info('Keeping richer local plan (score', localScore, '> cloud', cloudScore, ')');
       localPlan.sharedAlbums = mergeSharedAlbums(localPlan.sharedAlbums, cloudPlan.sharedAlbums);
       localPlan.bookingDetails = mergeBookingDetails(localPlan.bookingDetails, cloudPlan.bookingDetails);
+      mergeGuestLoansInto(localPlan, cloudPlan);
       return localPlan;
     }
     if (cloudScore > localScore) {
       console.info('Using richer cloud plan (score', cloudScore, '> local', localScore, ')');
       cloudPlan.sharedAlbums = mergeSharedAlbums(cloudPlan.sharedAlbums, localPlan.sharedAlbums);
       cloudPlan.bookingDetails = mergeBookingDetails(cloudPlan.bookingDetails, localPlan.bookingDetails);
+      mergeGuestLoansInto(cloudPlan, localPlan);
       return cloudPlan;
     }
     // Tie: keep local so we never wipe Keith's in-progress edits with a same-thin skeleton
     localPlan.sharedAlbums = mergeSharedAlbums(localPlan.sharedAlbums, cloudPlan.sharedAlbums);
     localPlan.bookingDetails = mergeBookingDetails(localPlan.bookingDetails, cloudPlan.bookingDetails);
+    mergeGuestLoansInto(localPlan, cloudPlan);
     return localPlan;
   }
 
@@ -5526,9 +5608,9 @@
       const historyOpen = !!state.openLentRows[String(g.id)];
       return `
         <div class="lent-lady" data-lent-guest="${escapeHtml(g.id)}">
+          <p class="lent-name">${escapeHtml(displayName)}</p>
           <div class="lent-line">
-            <span class="lent-name">${escapeHtml(displayName)}</span>
-            <input type="number" inputmode="decimal" min="0" step="0.01" enterkeyhint="done" data-lent-entry="${escapeHtml(g.id)}" aria-label="Amount to add for ${escapeHtml(displayName)}">
+            <input type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" data-lent-entry="${escapeHtml(g.id)}" aria-label="Amount to add for ${escapeHtml(displayName)}">
             <button type="button" class="lent-enter" data-lent-add="${escapeHtml(g.id)}">Enter</button>
             <span class="lent-owes" data-lent-owes="${escapeHtml(g.id)}">${escapeHtml(formatAmount(owes))}</span>
             <button type="button" class="lent-history-toggle${historyOpen ? ' is-open' : ''}" data-lent-history="${escapeHtml(g.id)}" aria-expanded="${historyOpen ? 'true' : 'false'}" aria-label="History" title="History"><span aria-hidden="true">›</span></button>
@@ -5546,41 +5628,29 @@
     function renderLendingSection() {
       const rows = (state.plan.guests || []).map(g => {
         ensureGuestDebt(g);
-        return renderGuestLending(g, String(g.name || '').trim() || 'Unnamed');
+        return renderGuestLending(g, guestDisplayName(g));
       }).join('') || '<p class="muted">No guests yet.</p>';
       const open = state.lendingOpen ? ' open' : '';
       return `<details class="lending-desk"${open}><summary>Lending</summary><div class="lending-desk-body">${rows}</div></details>`;
     }
+    function guestDisplayName(g) {
+      return String(g && g.name || '').trim() || 'Unnamed';
+    }
+    function renderGuestNameChips() {
+      const chips = (state.plan.guests || []).map(g => {
+        const name = String(g && g.name || '').trim();
+        if (!name) return '';
+        return `<span class="guest-chip">${escapeHtml(name)}</span>`;
+      }).filter(Boolean).join('');
+      return `<div class="guest-chip-row">${chips || '<span class="muted">No guests yet.</span>'}</div>`;
+    }
     function renderGuests(withLending) {
-    const markEmpties = planShowsEmptyMarkers(state.plan);
-    return (state.plan.guests || []).map(g => {
-      ensureGuestDebt(g);
-      const nameMissing = markEmpties && guestNameIsMissing(g.name);
-      const emailMissing = markEmpties && !String(g.email || '').trim();
-      const person = resolvePersonForGuest(g, state.plan);
-      if (person && g.personId !== person.id) g.personId = person.id;
-      const personId = person ? person.id : (g.personId || '');
-      const displayName = String(g.name || '').trim() || 'Unnamed';
-      const canOpen = !!personId && !!findPersonById(personId);
-      return `
-      <div class="guest-block${missingMarkerClass(nameMissing || emailMissing)}" data-guest-id="${escapeHtml(g.id)}" data-person-id="${escapeHtml(personId)}">
-        <div class="guest-row">
-          <div class="guest-name-stack">
-            <button type="button" class="guest-name-link${canOpen ? '' : ' is-unlinked'}" data-open-person="${escapeHtml(personId)}" data-guest-id="${escapeHtml(g.id)}" ${canOpen ? '' : 'disabled'} title="${canOpen ? 'Open in People' : 'No matching person in People yet'}">${escapeHtml(displayName)}</button>
-            <input type="text" class="guest-name-input ${missingFieldClass(nameMissing).trim()}" data-guest-name="${g.id}" value="${escapeHtml(g.name)}" placeholder="Full name (first name and surname)" aria-label="Guest full name" aria-invalid="${nameMissing ? 'true' : 'false'}">
-          </div>
-          ${nameMissing ? missingBadgeHtml('Name missing') : ''}
-          <button type="button" class="icon-btn" data-remove-guest="${g.id}" aria-label="Remove guest">×</button>
-        </div>
-        <div class="guest-row">
-          <input type="email" class="${missingFieldClass(emailMissing).trim()}" data-guest-email="${g.id}" value="${escapeHtml(g.email || '')}" placeholder="Email (optional — feeds People)" aria-invalid="${emailMissing ? 'true' : 'false'}">
-          ${emailMissing ? missingBadgeHtml('Email missing') : ''}
-        </div>
-        ${renderGuestAlbums(g)}
-        ${withLending ? renderGuestLending(g, displayName) : ''}
-      </div>`;
-    }).join('');
-  }
+      if (!withLending) return renderGuestNameChips();
+      return (state.plan.guests || []).map(g => {
+        ensureGuestDebt(g);
+        return renderGuestLending(g, guestDisplayName(g));
+      }).join('') || '<p class="muted">No guests yet.</p>';
+    }
 
   function renderSharedAlbumsEditor() {
     const albums = ensureSharedAlbums(state.plan);
@@ -7475,8 +7545,6 @@ function renderDayTabs() {
     if (!hotels.length) {
       opts.push('<option value="" disabled>No hotels in Places yet — add one on the Places tab</option>');
     }
-    const place = getTourHotelPlace();
-    const maps = place ? tourHotelMapsButtonHtml(place.name, place.address || knownTourHotelAddress(place.name), 'Open in Apple Maps') : '';
     const hotelMissing = planShowsEmptyMarkers(state.plan) && tourHotelIsMissing(state.plan);
     return `
       <label class="field-label" for="tourHotel">Staying at${hotelMissing ? missingBadgeHtml('Hotel missing') : ''}</label>
@@ -7484,7 +7552,6 @@ function renderDayTabs() {
         ${opts.join('')}
       </select>
       ${pageHelp('<p>Beading-area tour hotel. It is the day starting point from the day after arrival, not on day 1 before the Prague pick-up. Add or edit hotels on the Places tab.</p>')}
-      ${maps || ''}
     `;
   }
 
@@ -8568,9 +8635,6 @@ function renderDayTabs() {
       zoom = null;
     }
     const shown = zoom == null ? days.map((d, i) => [d, i]) : [[days[zoom], zoom]];
-    const range = (plan && (plan.arrivalDate || plan.departureDate))
-      ? `${plan.arrivalDate ? formatDateDMY(plan.arrivalDate) : '—'} – ${plan.departureDate ? formatDateDMY(plan.departureDate) : '—'}`
-      : '';
     const intro = pageHelp(zoom == null
       ? '<p>Scroll through the week. Zoom in when you want one day on its own. Detailed view is where stops are moved.</p>'
       : '<p>Tap a time to change it. Detailed view is where stops are moved. Zoom out returns to the week.</p>');
@@ -8615,7 +8679,6 @@ function renderDayTabs() {
       : `<div class="look-dock" id="lookDock"><span class="look-dock-note">Whole week</span><div class="look-dock-actions"><button type="button" class="look-zoom look-zoom-out" data-look-zoom="out">Zoom out</button>${detailedBtn}</div></div>`);
     const label = zoom == null ? 'Whole week' : ((days[zoom] && days[zoom].date) ? weekdayName(days[zoom].date) : 'Day');
     return `<div class="week-look" id="weekLook" aria-label="${escapeHtml(label)}">
-      ${range ? `<p class="look-range">${escapeHtml(range)}</p>` : ''}
       ${intro}
       ${days.length ? sections : '<p class="look-intro">No days on this tour yet.</p>'}
     </div>${dock}`;
@@ -8945,8 +9008,8 @@ function renderDayTabs() {
             <input type="text" id="departureDate" class="${missingFieldClass(departureMissing).trim()}" value="${escapeHtml(state.plan.departureDate ? formatDateDMY(state.plan.departureDate) : '')}" placeholder="DD/MM/YYYY" aria-invalid="${departureMissing ? 'true' : 'false'}">
           </div>
         </div>`;
+    const stayingAt = `${renderTourHotelSelect()}`;
     const groupTools = `
-        ${renderTourHotelSelect()}
         ${renderSharedAlbumsEditor()}
         <button type="button" class="btn btn-outline btn-sm" id="btnRebuildDays">Rebuild days from dates</button>
         <button type="button" class="btn btn-outline btn-sm" id="btnSuggestRoughWeek" title="Lay down a draft week from Places and usual tour patterns — you can edit everything after">Suggest a rough week</button>
@@ -8966,7 +9029,6 @@ function renderDayTabs() {
         <div class="trip-title">${escapeHtml(state.plan.groupName || 'Tour group')}</div>
         <div class="trip-meta">
           <span class="${orgPersonMissing ? 'meta-missing' : ''}">👤 Organiser: ${escapeHtml(tripOrgName || 'Not set')}</span>
-          <span class="trip-dates${(arrivalMissing || departureMissing) ? ' meta-missing' : ''}">📅 ${state.plan.arrivalDate ? formatDateDMY(state.plan.arrivalDate) : '—'} – ${state.plan.departureDate ? formatDateDMY(state.plan.departureDate) : '—'}</span>
           <span class="${hotelMissingMeta ? 'meta-missing' : ''}">🏨 Staying at: ${escapeHtml(state.plan.tourHotelName || 'Not set')}</span>
           <span>🗺 Day 1 start: ${escapeHtml(effectiveDay1OriginType() === 'airport' ? PRAGUE_AIRPORT_NAME : (state.plan.pragueHotel?.name || 'Prague hotel pick-up'))}</span>
         </div>
@@ -8979,10 +9041,9 @@ function renderDayTabs() {
 
     const renderGuestsCard = (withLending) => `
       <div class="card">
-        <div class="row-between"><h2>Ladies / guests</h2>
-          <button type="button" class="btn btn-outline btn-sm" id="btnAddGuest">Add name</button></div>
+        <h2>Ladies / guests</h2>
         <div id="guestList">${renderGuests(withLending)}</div>
-        ${pageHelp('<p>Every guest’s full name and email. Each name links to People when there is a match. The organiser stays in the field above and is not the group name. Debt tracking stays on this device with the plan.</p>')}
+        ${pageHelp('<p>Who is coming. Names are edited on the booking form.</p>')}
       </div>
     `;
 
@@ -9047,7 +9108,7 @@ function renderDayTabs() {
       <div style="height:12px;"></div>
       <div class="card">
         <h2>Dates &amp; hotel</h2>
-        <div class="stack">${groupIdentity}${groupTools}</div>
+        <div class="stack">${groupIdentity}${stayingAt}${groupTools}</div>
       </div>
     `;
 
@@ -9516,6 +9577,7 @@ function renderDayTabs() {
   }
 
   function bindDynamic() {
+    bindLendingOnce();
     const q = (sel) => document.querySelector(sel);
     q('#groupName')?.addEventListener('input', e => {
       state.plan.groupName = e.target.value;
@@ -9651,20 +9713,6 @@ function renderDayTabs() {
     });
     document.querySelectorAll('[data-remove-guest]').forEach(btn => {
       btn.addEventListener('click', () => removeGuest(btn.getAttribute('data-remove-guest')));
-    });
-    document.querySelectorAll('[data-lent-entry]').forEach(inp => {
-      inp.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        commitVisibleLoan(inp.getAttribute('data-lent-entry'), inp.value);
-      });
-    });
-    document.querySelectorAll('[data-lent-add]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-lent-add');
-        const inp = document.querySelector(`[data-lent-entry="${id}"]`);
-        commitVisibleLoan(id, inp ? inp.value : '');
-      });
     });
     document.querySelector('.lending-desk')?.addEventListener('toggle', (e) => {
       state.lendingOpen = !!e.currentTarget.open;
