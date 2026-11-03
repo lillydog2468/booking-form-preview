@@ -3285,6 +3285,117 @@
     return onScreen.length === 0;
   }
 
+  function childMatchText(value) {
+    return String(value == null ? '' : value).trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  function guestNameMatchKey(row) {
+    if (!row) return '';
+    const first = childMatchText(row.first_name != null ? row.first_name : row.firstName);
+    const last = childMatchText(row.last_name != null ? row.last_name : row.lastName);
+    return (first + ' ' + last).trim();
+  }
+
+  function guestEmailMatchKey(row) {
+    return childMatchText(row && row.email);
+  }
+
+  function flightRowMatchKey(row) {
+    if (!row) return '';
+    const number = String(row.flight_number == null ? '' : row.flight_number).replace(/\s+/g, '').toLowerCase();
+    const arrival = String(row.arrival_date == null ? '' : row.arrival_date).slice(0, 10);
+    const departure = String(row.departure_date == null ? '' : row.departure_date).slice(0, 10);
+    if (!number && !arrival && !departure) return '';
+    return number + '|' + arrival + '|' + departure;
+  }
+
+  function childRowsMatch(left, right, kind) {
+    if (kind === 'flights') {
+      const key = flightRowMatchKey(left);
+      return !!key && key === flightRowMatchKey(right);
+    }
+    const name = guestNameMatchKey(left);
+    if (name && name === guestNameMatchKey(right)) return true;
+    const email = guestEmailMatchKey(left);
+    return !!email && email === guestEmailMatchKey(right);
+  }
+
+  function savedChildWasRemoved(row, removedRows, kind) {
+    const removed = removedRows || [];
+    for (let i = 0; i < removed.length; i++) {
+      if (childRowsMatch(removed[i], row, kind)) return true;
+    }
+    return false;
+  }
+
+  // Another tab deletes and reinserts guests, so their ids change. Match the
+  // rows already on screen, keep those edits, and put back anyone this tab
+  // did not deliberately remove.
+  function mergeSavedChildRows(screenRows, savedRows, removedRows, kind) {
+    const saved = (savedRows || []).map(row => Object.assign({}, row));
+    const removed = removedRows || [];
+    const used = new Set();
+    const findSaved = (screen) => {
+      let emailHit = -1;
+      const name = kind === 'flights' ? '' : guestNameMatchKey(screen);
+      for (let i = 0; i < saved.length; i++) {
+        if (used.has(i) || savedChildWasRemoved(saved[i], removed, kind)) continue;
+        if (kind === 'flights') {
+          if (childRowsMatch(screen, saved[i], kind)) return i;
+          continue;
+        }
+        if (name && guestNameMatchKey(saved[i]) === name) return i;
+        if (emailHit < 0 && guestEmailMatchKey(screen) && guestEmailMatchKey(screen) === guestEmailMatchKey(saved[i])) emailHit = i;
+      }
+      return emailHit;
+    };
+    const rows = (screenRows || []).map(screen => {
+      const copy = Object.assign({}, screen);
+      const hit = findSaved(copy);
+      if (hit >= 0) {
+        used.add(hit);
+        copy.id = saved[hit].id;
+        return copy;
+      }
+      copy.id = null;
+      return copy;
+    });
+    saved.forEach((row, index) => {
+      if (used.has(index) || savedChildWasRemoved(row, removed, kind)) return;
+      rows.push(Object.assign({}, row));
+    });
+    const loadedIds = [];
+    saved.forEach(row => {
+      if (row && row.id != null && String(row.id) !== '') loadedIds.push(String(row.id));
+    });
+    return { rows: rows, loadedIds: loadedIds };
+  }
+
+  function childGuardNextStep(guard, attempt) {
+    if (guard === 'error') return 'error';
+    if (guard !== 'blocked') return 'save';
+    return (attempt || 0) >= 1 ? 'reload' : 'prompt';
+  }
+
+  function childRefreshPlan(guards, attempt) {
+    const list = guards || [];
+    let step = 'save';
+    for (let i = 0; i < list.length; i++) {
+      const next = childGuardNextStep(list[i], attempt);
+      if (next === 'error') return 'error';
+      if (next === 'reload') step = 'reload';
+      else if (next === 'prompt' && step !== 'reload') step = 'prompt';
+    }
+    return step;
+  }
+
+  function childRefreshMessage(membersBlocked) {
+    if (membersBlocked) {
+      return 'This booking was changed somewhere else (another tab or device). Refresh the guest list and save your changes?';
+    }
+    return 'This booking was changed somewhere else (another tab or device). Refresh the flight list and save your changes?';
+  }
+
   function tabMissedSavedChildren(tabData, fresh) {
     if (!tabData || tabData.dirty || !fresh || fresh._childrenLoaded !== true) return false;
     const missing = (rows, loaded) => {
@@ -3383,7 +3494,7 @@
       </details>`;
   }
 
-  function addMemberRow(tabId, firstName = '', memberId = '', lastName = '', email = '', reveal, pay) {
+  function addMemberRow(tabId, firstName = '', memberId = '', lastName = '', email = '', reveal, pay, quiet) {
     if (reveal && tourFullOn(tabId)) return;
     const list = document.getElementById(`t${tabId}_members_list`);
     if (!list) return;
@@ -3473,6 +3584,10 @@
       refreshGuestTravel(tabId);
       onTabInput(tabId);
     });
+    if (quiet) {
+      paintEmptyFields(row);
+      return;
+    }
     refreshGuestTravel(tabId);
     paintEmptyFields(row);
     paintGuestTones(tabId);
@@ -3524,8 +3639,24 @@
     if (typeof paintRoomShares === 'function') paintRoomShares(tabId);
   }
 
+  function rememberRemovedMember(tabId, row) {
+    const tabData = tabs.get(tabId);
+    if (!tabData || !row) return;
+    const id = String(row.dataset.memberId || '');
+    const loaded = (tabData.loadedMemberIds || []).map(item => String(item));
+    if (!id || loaded.indexOf(id) < 0) return;
+    if (!Array.isArray(tabData.removedGuests)) tabData.removedGuests = [];
+    tabData.removedGuests.push({
+      id: id,
+      first_name: row.querySelector('.member-first')?.value.trim() || '',
+      last_name: row.querySelector('.member-last')?.value.trim() || '',
+      email: row.querySelector('.member-email')?.value.trim() || '',
+    });
+  }
+
   function removeMemberRow(btn, tabId) {
     const row = btn.closest('.member-row');
+    rememberRemovedMember(tabId, row);
     unpairGuestRow(row);
     row.remove();
     renumberMemberRows(tabId);
@@ -3549,7 +3680,7 @@
   function getMembersData(tabId) {
     const list = document.getElementById(`t${tabId}_members_list`);
     if (!list) return [];
-    const members = [];
+    let members = [];
     list.querySelectorAll('.member-row').forEach(row => {
       const first = row.querySelector('.member-first')?.value.trim() || '';
       const last = row.querySelector('.member-last')?.value.trim() || '';
@@ -4969,7 +5100,7 @@
   //  FLIGHT ROWS
   // ═══════════════════════════════════════════════════════════════
 
-  function addFlightRow(tabId, data = {}) {
+  function addFlightRow(tabId, data = {}, quiet) {
     const list = document.getElementById(`t${tabId}_flights_list`);
     if (!list) return;
     const idx = list.children.length + 1;
@@ -5004,6 +5135,7 @@
     });
 
     list.appendChild(row);
+    if (quiet) return;
 
     const fold = list.closest('details');
     if (!data.flight_number && (!fold || fold.open)) {
@@ -5013,8 +5145,26 @@
     refreshDateFoldSummaries(tabId);
   }
 
+  function rememberRemovedFlight(tabId, row) {
+    const tabData = tabs.get(tabId);
+    if (!tabData || !row) return;
+    const id = String(row.dataset.flightId || '');
+    const loaded = (tabData.loadedFlightIds || []).map(item => String(item));
+    if (!id || loaded.indexOf(id) < 0) return;
+    if (!Array.isArray(tabData.removedFlights)) tabData.removedFlights = [];
+    tabData.removedFlights.push({
+      id: id,
+      flight_number: row.querySelector('.flight-number')?.value.trim() || '',
+      arrival_date: toStorageISO(row.querySelector('.flight-arr-date')?.value || '') || '',
+      departure_date: toStorageISO(row.querySelector('.flight-dep-date')?.value || '') || '',
+    });
+  }
+
   function removeFlightRow(btn, tabId) {
-    btn.closest('.flight-row').remove();
+    const row = btn && btn.closest('.flight-row');
+    if (!row) return;
+    rememberRemovedFlight(tabId, row);
+    row.remove();
     renumberFlightRows(tabId);
     onTabInput(tabId);
   }
@@ -8182,6 +8332,9 @@
       tabData.loadedFlightIds = [...document.querySelectorAll('#t' + tabId + '_flights_list .flight-row')]
         .map(row => row.dataset.flightId).filter(Boolean);
       tabData.loadedMemberIds = memberRows(tabId).map(row => row.dataset.memberId).filter(Boolean);
+      tabData.removedGuests = [];
+      tabData.removedFlights = [];
+      tabData.childRefreshAttempt = 0;
       tabData.childrenPending = record._childrenLoaded === false;
       if (record._childrenLoaded !== false) tabData.dirty = false;
     }
@@ -8292,6 +8445,9 @@
       tabData.orphanHotelExpenses = [];
       tabData.loadedFlightIds = [];
       tabData.loadedMemberIds = [];
+      tabData.removedGuests = [];
+      tabData.removedFlights = [];
+      tabData.childRefreshAttempt = 0;
       tabData.loadedDates = {};
       tabData.dateFieldsTouched = {};
     }
@@ -8982,6 +9138,163 @@
     }
   }
 
+  async function fetchSavedChildRows(table, bookingId) {
+    const { data, error } = await sb.from(table).select('*').eq('booking_id', bookingId);
+    if (error) throw error;
+    return data || [];
+  }
+
+  function memberRowNamed(row) {
+    const first = row.querySelector('.member-first')?.value.trim() || '';
+    const last = row.querySelector('.member-last')?.value.trim() || '';
+    const email = row.querySelector('.member-email')?.value.trim() || '';
+    const legacy = row.querySelector('.member-name')?.value.trim() || '';
+    const firstName = first || (last || email ? '' : legacy);
+    return !!(firstName || last || email);
+  }
+
+  function applyMergedMemberRows(tabId, merged, screenCount) {
+    const named = memberRows(tabId).filter(memberRowNamed);
+    const count = Math.min(screenCount, named.length);
+    const rows = merged && merged.rows ? merged.rows : [];
+    rows.forEach((member, index) => {
+      if (index < count) {
+        const id = member && member.id != null && String(member.id) !== '' ? String(member.id) : '';
+        named[index].dataset.memberId = id;
+        return;
+      }
+      addMemberRow(
+        tabId,
+        member.first_name || '',
+        member.id != null ? member.id : '',
+        member.last_name || '',
+        member.email || '',
+        false,
+        member,
+        true
+      );
+    });
+  }
+
+  function applyMergedFlightRows(tabId, merged, screenCount) {
+    const list = document.getElementById('t' + tabId + '_flights_list');
+    const dom = list ? [...list.querySelectorAll('.flight-row')] : [];
+    const count = Math.min(screenCount, dom.length);
+    const rows = merged && merged.rows ? merged.rows : [];
+    rows.forEach((flight, index) => {
+      if (index < count) {
+        const id = flight && flight.id != null && String(flight.id) !== '' ? String(flight.id) : '';
+        dom[index].dataset.flightId = id;
+        return;
+      }
+      addFlightRow(tabId, flight || {}, true);
+    });
+  }
+
+  async function refreshLoadedChildren(tabId, bookingId, which) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+    if (which && which.members) {
+      const saved = await fetchSavedChildRows('members', bookingId);
+      const screen = getMembersData(tabId);
+      const merged = mergeSavedChildRows(screen, saved, tabData.removedGuests || [], 'members');
+      applyMergedMemberRows(tabId, merged, screen.length);
+      tabData.loadedMemberIds = merged.loadedIds.slice();
+    }
+    if (which && which.flights) {
+      const saved = await fetchSavedChildRows('flights', bookingId);
+      const screen = getFlightsData(tabId);
+      const merged = mergeSavedChildRows(screen, saved, tabData.removedFlights || [], 'flights');
+      applyMergedFlightRows(tabId, merged, screen.length);
+      tabData.loadedFlightIds = merged.loadedIds.slice();
+    }
+  }
+
+  function askChildRefresh(message) {
+    const overlay = el('childRefreshModal');
+    const text = el('childRefreshText');
+    const confirmBtn = el('childRefreshConfirm');
+    const cancelBtn = el('childRefreshCancel');
+    if (!overlay || !confirmBtn || !cancelBtn) return Promise.resolve('cancel');
+    if (text) text.textContent = message;
+    overlay.classList.add('visible');
+    return new Promise(resolve => {
+      const finish = (choice) => {
+        confirmBtn.removeEventListener('click', onYes);
+        cancelBtn.removeEventListener('click', onNo);
+        overlay.removeEventListener('click', onBackdrop);
+        document.removeEventListener('keydown', onKey);
+        overlay.classList.remove('visible');
+        resolve(choice);
+      };
+      const onYes = () => finish('refresh');
+      const onNo = () => finish('cancel');
+      const onBackdrop = (event) => {
+        if (event.target === overlay) finish('cancel');
+      };
+      const onKey = (event) => {
+        if (event.key === 'Escape') finish('cancel');
+      };
+      confirmBtn.addEventListener('click', onYes);
+      cancelBtn.addEventListener('click', onNo);
+      overlay.addEventListener('click', onBackdrop);
+      document.addEventListener('keydown', onKey);
+      try { confirmBtn.focus(); } catch (err) { overlay.classList.add('visible'); }
+    });
+  }
+
+  function childReloadToast(flightGuard, memberGuard) {
+    if (flightGuard === 'blocked') {
+      toast('This booking has flights saved that aren\'t loaded on this screen. Reload the page before saving so they aren\'t lost.', 'error');
+    }
+    if (memberGuard === 'blocked') {
+      toast('This booking has guests saved that aren\'t loaded on this screen. Reload the page before saving so they aren\'t lost.', 'error');
+    }
+  }
+
+  async function resolveSavedChildConflict(tabId, data, silent) {
+    const tabData = tabs.get(tabId);
+    const bid = tabData && tabData.bookingId;
+    if (!tabData || !bid) return false;
+    const attempt = tabData.childRefreshAttempt || 0;
+    const flightGuard = await guardSavedChildRows(bid, 'flights', tabData.loadedFlightIds);
+    const memberGuard = await guardSavedChildRows(bid, 'members', tabData.loadedMemberIds, data._members);
+    const plan = childRefreshPlan([flightGuard, memberGuard], attempt);
+    if (plan === 'save') {
+      tabData.childRefreshAttempt = 0;
+      return false;
+    }
+    if (plan === 'error') {
+      tabData.childRefreshAttempt = 0;
+      toast(flightGuard === 'error'
+        ? 'Could not check saved flights before saving. Reload the page and try again.'
+        : 'Could not check saved guests before saving. Reload the page and try again.', 'error');
+      return true;
+    }
+    if (plan === 'reload') {
+      tabData.childRefreshAttempt = 0;
+      childReloadToast(flightGuard, memberGuard);
+      return true;
+    }
+    const choice = await askChildRefresh(childRefreshMessage(memberGuard === 'blocked'));
+    if (choice !== 'refresh') return true;
+    try {
+      await refreshLoadedChildren(tabId, bid, {
+        members: memberGuard === 'blocked',
+        flights: flightGuard === 'blocked',
+      });
+    } catch (err) {
+      tabData.childRefreshAttempt = 0;
+      toast(memberGuard === 'blocked'
+        ? 'Could not check saved guests before saving. Reload the page and try again.'
+        : 'Could not check saved flights before saving. Reload the page and try again.', 'error');
+      return true;
+    }
+    tabData.childRefreshAttempt = 1;
+    await saveBooking(tabId, silent, true);
+    return true;
+  }
+
   let bookingSaveFlights = new Map();
 
   function bookingSaveKey(tabId) {
@@ -9057,6 +9370,11 @@
 
     const extras = data._extras || collectBookingExtras(tabId);
 
+    if (tabData.bookingId) {
+      const paused = await resolveSavedChildConflict(tabId, data, silent);
+      if (paused) return;
+    }
+
     for (const stay of data._hotel_stays) {
       if (stay.custom_hotel_name && !stay.hotel_id) {
         stay.hotel_id = await addOtherHotel(stay.custom_hotel_name);
@@ -9072,20 +9390,6 @@
       const bid = tabData.bookingId;
 
       if (bid) {
-        const flightGuard = await guardSavedChildRows(bid, 'flights', tabData.loadedFlightIds);
-        if (flightGuard) {
-          toast(flightGuard === 'error'
-            ? 'Could not check saved flights before saving. Reload the page and try again.'
-            : 'This booking has flights saved that aren\'t loaded on this screen. Reload the page before saving so they aren\'t lost.', 'error');
-          return;
-        }
-        const memberGuard = await guardSavedChildRows(bid, 'members', tabData.loadedMemberIds, data._members);
-        if (memberGuard) {
-          toast(memberGuard === 'error'
-            ? 'Could not check saved guests before saving. Reload the page and try again.'
-            : 'This booking has guests saved that aren\'t loaded on this screen. Reload the page before saving so they aren\'t lost.', 'error');
-          return;
-        }
         const { error } = await saveBookingRow(bookingData, _extras || extras, bid);
         if (error) throw error;
 

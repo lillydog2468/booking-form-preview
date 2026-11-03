@@ -1661,6 +1661,25 @@
     .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
     .modal p { font-size: 14px; color: var(--text-secondary); margin-bottom: 22px; }
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .child-refresh-overlay { z-index: 240; background: rgba(15, 23, 42, .28); }
+    .child-refresh-modal {
+      width: min(420px, 92vw);
+      padding: 16px 16px 14px;
+    }
+    .child-refresh-modal p {
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+    .child-refresh-modal .modal-actions { gap: 8px; }
+    .child-refresh-modal .btn {
+      padding: 4px 10px;
+      min-height: 0;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
 
     /* ── Auto-save toggle ── */
     .autosave-toggle {
@@ -3187,6 +3206,8 @@
       .modal p { font-size: 13px; }
       .modal-actions { flex-direction: column; }
       .modal-actions .btn { justify-content: center; }
+      .child-refresh-modal .modal-actions { flex-direction: row; justify-content: flex-end; }
+      .child-refresh-modal .btn { min-height: 0; font-size: 12px; }
 
       .login-card { padding: 28px 22px; }
       .login-logo h2 { font-size: 19px; }
