@@ -155,9 +155,27 @@
     if (bm == null) return -1;
     return am - bm;
   }
+  function keepFinalDropoffsLast(day) {
+    if (!day || !Array.isArray(day.blocks)) return;
+    const finals = [];
+    const rest = [];
+    day.blocks.forEach(stop => {
+      if (stop && stop.tourFinalDropoff) finals.push(stop);
+      else rest.push(stop);
+    });
+    if (!finals.length) return;
+    day.blocks = rest.concat(finals);
+  }
   function sortDayBlocks(day) {
     if (!day || !Array.isArray(day.blocks)) return;
-    day.blocks.sort(compareStopTime);
+    const finals = [];
+    const rest = [];
+    day.blocks.forEach(stop => {
+      if (stop && stop.tourFinalDropoff) finals.push(stop);
+      else rest.push(stop);
+    });
+    rest.sort(compareStopTime);
+    day.blocks = rest.concat(finals);
   }
   function placeTypesOf(placeOrStop) {
     if (window.PlaceCategories) return PlaceCategories.placeCategories(placeOrStop);
@@ -1061,7 +1079,8 @@
 
   function ensureTourSpanDays(plan) {
     if (!plan) return;
-    const dates = enumerateDates(plan.arrivalDate, plan.departureDate);
+    const skipped = new Set((plan.removedDayDates || []).map(date => String(date || '').slice(0, 10)));
+    const dates = enumerateDates(plan.arrivalDate, plan.departureDate).filter(date => !skipped.has(date));
     if (!dates.length) return;
     const byDate = {};
     (plan.days || []).forEach(day => {
@@ -4512,6 +4531,421 @@
     });
   }
 
+  function isoDateUtc(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '').trim());
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+    return dt;
+  }
+  function isoTextUtc(dt) {
+    return dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dt.getUTCDate()).padStart(2, '0');
+  }
+  function shiftIsoDay(iso, days) {
+    const dt = isoDateUtc(iso);
+    if (!dt) return '';
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return isoTextUtc(dt);
+  }
+  function hotelNightsCount(value) {
+    const match = /^(\d+)(?:\s*nights?)?$/i.exec(String(value == null ? '' : value).trim());
+    if (!match) return null;
+    const n = Number(match[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  /** Primary hotel, then each extra stay, in the order the booking lists them. */
+  function bookingHotelStays(booking, plan) {
+    const stays = [];
+    const push = (name, hotelId, nights) => {
+      const clean = String(name || '').trim();
+      if (!clean || /^day trips?$/i.test(clean)) return;
+      stays.push({ name: clean, hotelId: hotelId == null ? '' : String(hotelId), nights: hotelNightsCount(nights) });
+    };
+    if (booking) {
+      push(
+        booking.hotel_name || (booking.hotels && booking.hotels.name) || '',
+        booking.hotel_id || (booking.hotels && booking.hotels.id) || '',
+        booking.other_hotel_nights
+      );
+      (booking._hotel_stays || []).forEach(stay => {
+        if (!stay) return;
+        push(
+          (stay.hotels && stay.hotels.name) || stay.custom_hotel_name || stay.name || '',
+          stay.hotel_id || (stay.hotels && stay.hotels.id) || '',
+          stay.nights
+        );
+      });
+    }
+    if (!stays.length && plan) {
+      push(plan.pragueHotel && plan.pragueHotel.name, '', null);
+      if (!stays.length) push(plan.tourHotelName, plan.tourHotelPlaceId, null);
+    }
+    return stays;
+  }
+  /**
+   * Which hotel owns each night. Check-in counts, check-out morning does not.
+   * A single hotel with no night count covers arrival up to departure.
+   */
+  function hotelNightMap(arrivalIso, departureIso, stays) {
+    const list = Array.isArray(stays) ? stays : [];
+    const arrival = isoDateUtc(arrivalIso);
+    const departure = isoDateUtc(departureIso);
+    const map = {};
+    if (!arrival || !list.length) return map;
+    let cursor = arrival.getTime();
+    const departMs = departure ? departure.getTime() : NaN;
+    let blocked = false;
+    list.forEach((stay, index) => {
+      if (blocked || !stay) return;
+      const known = typeof stay.nights === 'number' && Number.isFinite(stay.nights) && stay.nights >= 0;
+      let start = cursor;
+      let end = NaN;
+      if (known) {
+        end = cursor + (stay.nights * 86400000);
+        cursor = end;
+      } else {
+        const last = index === list.length - 1;
+        if ((list.length === 1 || last) && Number.isFinite(departMs) && departMs >= cursor) {
+          end = departMs;
+          cursor = departMs;
+        } else {
+          blocked = true;
+        }
+      }
+      if (!Number.isFinite(end) || end <= start) return;
+      for (let t = start; t < end; t += 86400000) {
+        const iso = isoTextUtc(new Date(t));
+        if (!map[iso]) map[iso] = stay;
+      }
+    });
+    return map;
+  }
+  /** Morning pick-up is the previous night's hotel. Drop-off is the hotel for this night. */
+  function dayHotelEnds(dateIso, arrivalIso, departureIso, stays) {
+    const day = String(dateIso || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { pickup: null, dropoff: null };
+    const nights = hotelNightMap(arrivalIso, departureIso, stays);
+    return {
+      pickup: nights[shiftIsoDay(day, -1)] || null,
+      dropoff: nights[day] || null,
+    };
+  }
+  function catalogueHotel(name, places) {
+    const wanted = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!wanted) return null;
+    const list = Array.isArray(places) ? places : ((typeof state !== 'undefined' && state && state.catalogue) || []);
+    const exact = list.find(place => String(place && place.name || '').trim().toLowerCase().replace(/\s+/g, ' ') === wanted);
+    if (exact) return exact;
+    if (Array.isArray(places)) return null;
+    return typeof matchHotelPlaceFromText === 'function' ? matchHotelPlaceFromText(name) : null;
+  }
+  function pinFromHotelPlace(place) {
+    if (!place) return null;
+    if (typeof window !== 'undefined' && window.PlacePin && PlacePin.readPin) {
+      const read = PlacePin.readPin(place);
+      if (read) return read;
+    }
+    const lat = Number(place.pinLat != null ? place.pinLat : place.pin_lat);
+    const lng = Number(place.pinLng != null ? place.pinLng : place.pin_lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    return { lat: lat, lng: lng, setAt: place.pinSetAt || place.pin_set_at || '' };
+  }
+  function hotelNameKey(name) {
+    return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+  function guestListLabel(guests) {
+    const names = (guests || []).map(guest => String(guest && guest.name || '').trim()).filter(Boolean);
+    if (names.length <= 1) return names[0] || '';
+    if (names.length === 2) return names[0] + ' and ' + names[1];
+    return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  }
+  function guestMatchesStayKey(guest, key) {
+    const wanted = String(key || '').trim();
+    if (!wanted || !guest) return false;
+    if (guest.personId && String(guest.personId) === wanted) return true;
+    const memberId = guest.memberId != null && String(guest.memberId).trim() !== '' ? guest.memberId : guest.id;
+    if (memberId != null && String(memberId).trim() !== '') {
+      if (wanted === String(memberId) || wanted === 'member:' + String(memberId)) return true;
+    }
+    const name = hotelNameKey(guest.name);
+    return !!(name && name === hotelNameKey(wanted));
+  }
+  function plannerGuestList(plan, booking) {
+    const planGuests = ((plan && plan.guests) || []).filter(guest => guest && String(guest.name || '').trim());
+    const members = (booking && booking._members) || [];
+    if (!members.length) {
+      return planGuests.map(guest => ({
+        id: guest.id,
+        name: String(guest.name).trim(),
+        personId: guest.personId || '',
+        memberId: guest.memberId != null ? guest.memberId : guest.id,
+        prague_stays: guest.prague_stays || guest.pragueStays || [],
+      }));
+    }
+    return members.map((member, index) => {
+      const name = [member.first_name, member.last_name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
+      if (!name) return null;
+      const match = planGuests.find(guest => hotelNameKey(guest.name) === hotelNameKey(name)) || planGuests[index];
+      return {
+        id: match && match.id,
+        name,
+        personId: member.person_id || member.personId || (match && match.personId) || '',
+        memberId: member.id,
+        prague_stays: member.prague_stays || member.pragueStays || [],
+      };
+    }).filter(Boolean);
+  }
+  function readHotelStayers(booking, plan) {
+    if (booking && Array.isArray(booking.hotelStayers)) return booking.hotelStayers;
+    if (plan && plan.bookingDetails && Array.isArray(plan.bookingDetails.hotelStayers)) return plan.bookingDetails.hotelStayers;
+    if (booking && booking._extras && Array.isArray(booking._extras.hotelStayers)) return booking._extras.hotelStayers;
+    return null;
+  }
+  function bookingStaySlots(booking, plan) {
+    return bookingHotelStays(booking, plan).map((stay, index) => {
+      const slot = index === 0
+        ? 'primary'
+        : (stay.hotelId ? ('hotel:' + stay.hotelId + '#' + (index - 1)) : ('extra:' + (index - 1)));
+      return { slot, name: stay.name, hotelId: stay.hotelId, nights: stay.nights };
+    });
+  }
+  function guestsOnHotelSlot(guests, stayers, slot) {
+    if (!Array.isArray(stayers)) return guests;
+    const row = stayers.find(item => item && item.slot === slot);
+    if (!row || !Array.isArray(row.guests) || !row.guests.length) return guests;
+    return guests.filter(guest => row.guests.some(key => guestMatchesStayKey(guest, key)));
+  }
+  function pragueNights(stay) {
+    const row = stay || {};
+    const hotel = String(row.hotel || row.hotelName || '').trim();
+    if (!hotel) return [];
+    const start = isoDateUtc(row.check_in || row.checkIn);
+    const end = isoDateUtc(row.check_out || row.checkOut);
+    if (!start || !end || end.getTime() <= start.getTime()) return [];
+    const nights = [];
+    for (let t = start.getTime(); t < end.getTime(); t += 86400000) nights.push(isoTextUtc(new Date(t)));
+    return nights.map(night => ({ night, name: hotel, hotelId: '' }));
+  }
+  function hotelsOnNight(night, guests, slots, nightMap, stayers) {
+    const groups = [];
+    const byKey = {};
+    function add(name, hotelId, guest) {
+      const key = hotelNameKey(name);
+      if (!key) return;
+      if (!byKey[key]) {
+        byKey[key] = { name, hotelId: hotelId || '', guests: [] };
+        groups.push(byKey[key]);
+      }
+      if (guest && !byKey[key].guests.some(have => hotelNameKey(have.name) === hotelNameKey(guest.name))) {
+        byKey[key].guests.push(guest);
+      }
+    }
+    if (!guests.length) {
+      const stay = nightMap[night];
+      if (stay) add(stay.name, stay.hotelId, null);
+      return groups;
+    }
+    guests.forEach(guest => {
+      slots.forEach(slot => {
+        const owned = nightMap[night];
+        if (!owned || hotelNameKey(owned.name) !== hotelNameKey(slot.name)) return;
+        if (!guestsOnHotelSlot([guest], stayers, slot.slot).length) return;
+        add(slot.name, slot.hotelId, guest);
+      });
+      (guest.prague_stays || []).forEach(stay => {
+        pragueNights(stay).forEach(row => {
+          if (row.night === night) add(row.name, row.hotelId, guest);
+        });
+      });
+    });
+    return groups;
+  }
+  function lastTourDayIso(plan, booking) {
+    const departure = String((plan && plan.departureDate) || (booking && booking.departure_date) || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(departure)) return departure;
+    const dates = ((plan && plan.days) || [])
+      .map(day => String(day && day.date || '').slice(0, 10))
+      .filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day))
+      .sort();
+    return dates.length ? dates[dates.length - 1] : '';
+  }
+  function guestHotelsInOrder(guest, slots, stayers) {
+    const list = [];
+    (slots || []).forEach(slot => {
+      if (!guest || !guestsOnHotelSlot([guest], stayers, slot.slot).length) return;
+      list.push({ name: slot.name, hotelId: slot.hotelId || '' });
+    });
+    (guest && guest.prague_stays || []).forEach(stay => {
+      const name = String((stay && (stay.hotel || stay.hotelName)) || '').trim();
+      if (name) list.push({ name, hotelId: '' });
+    });
+    return list;
+  }
+  /** Last day: tonight's hotel, or the last hotel entered for that guest. */
+  function lastDayDropoffGroups(dayIso, guests, slots, nights, stayers) {
+    if (!guests.length) {
+      const tonight = hotelsOnNight(dayIso, guests, slots, nights, stayers);
+      if (tonight.length) return tonight;
+      const last = (slots || [])[(slots || []).length - 1];
+      return last ? [{ name: last.name, hotelId: last.hotelId || '', guests: [] }] : [];
+    }
+    const groups = [];
+    const byKey = {};
+    function add(hotel, guest) {
+      const key = hotelNameKey(hotel && hotel.name);
+      if (!key) return;
+      if (!byKey[key]) {
+        byKey[key] = { name: hotel.name, hotelId: hotel.hotelId || '', guests: [] };
+        groups.push(byKey[key]);
+      }
+      if (guest && !byKey[key].guests.some(have => hotelNameKey(have.name) === hotelNameKey(guest.name))) {
+        byKey[key].guests.push(guest);
+      }
+    }
+    guests.forEach(guest => {
+      const tonight = hotelsOnNight(dayIso, [guest], slots, nights, stayers);
+      if (tonight.length) {
+        tonight.forEach(group => add(group, guest));
+        return;
+      }
+      const entered = guestHotelsInOrder(guest, slots, stayers);
+      const last = entered[entered.length - 1];
+      if (last) add(last, guest);
+    });
+    return groups;
+  }
+  function hotelMapHref(name, address, pin) {
+    const lat = pin && Number(pin.lat != null ? pin.lat : pin.pinLat);
+    const lng = pin && Number(pin.lng != null ? pin.lng : pin.pinLng);
+    const label = String(name || '').trim() || 'Hotel';
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return 'https://maps.apple.com/?ll=' + lat + ',' + lng + '&q=' + encodeURIComponent(label);
+    }
+    const text = String(address || '').trim();
+    if (!text) return '';
+    return 'https://maps.apple.com/?q=' + encodeURIComponent(text);
+  }
+  function hotelStopMapHref(stop) {
+    if (!stop) return '';
+    const place = typeof placeById === 'function' ? placeById(stop.placeId || stop.place_id) : null;
+    const name = String(stop.hotelName || (place && place.name) || '').trim();
+    const pin = (typeof pinFromHotelPlace === 'function' && (pinFromHotelPlace(stop) || pinFromHotelPlace(place))) || null;
+    const address = String(stop.address || (place && place.address) || '').trim();
+    return hotelMapHref(name, address, pin);
+  }
+  function stopHasHotel(stop, hotelName, kind) {
+    if (!stop) return false;
+    const key = hotelNameKey(hotelName);
+    if (!key) return false;
+    let stopKind = '';
+    if (stop.type === 'handover') stopKind = stop.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
+    else if (stop.type === 'pickup') stopKind = 'pickup';
+    if (kind && stopKind && stopKind !== kind) return false;
+    if (kind && !stopKind) {
+      const title = hotelNameKey(stop.title);
+      if (kind === 'dropoff' && title.indexOf('drop') < 0) return false;
+      if (kind === 'pickup' && title.indexOf('pick') < 0) return false;
+    }
+    const blob = [stop.hotelName, stop.address, stop.title, stop.placeNote].map(hotelNameKey).join(' | ');
+    return blob.indexOf(key) >= 0;
+  }
+  function hotelBookendStop(kind, stay, places, guests) {
+    const place = catalogueHotel(stay && stay.name, places);
+    const known = typeof knownTourHotelAddress === 'function' ? knownTourHotelAddress(stay.name) : '';
+    const address = (place && String(place.address || '').trim()) || known || '';
+    const pin = pinFromHotelPlace(place);
+    const dropoff = kind === 'dropoff';
+    const who = guestListLabel(guests || (stay && stay.guests));
+    const guestRows = guests || (stay && stay.guests) || [];
+    const stop = {
+      id: uid('s'),
+      type: 'handover',
+      handoverKind: dropoff ? 'dropoff' : 'pickup',
+      time: dropoff ? '17:00' : '08:00',
+      timeApprox: false,
+      placeKind: 'hotel',
+      hotelName: stay.name,
+      hotelKey: (typeof window !== 'undefined' && window.HandoverStops && HandoverStops.hotelKey) ? HandoverStops.hotelKey(stay.name) : hotelNameKey(stay.name),
+      address: address,
+      placeId: place && place.id ? place.id : '',
+      placeNote: '',
+      guestIds: guestRows.map(guest => guest && guest.id).filter(id => id != null && String(id) !== ''),
+      flightArrivalTime: '',
+      title: (dropoff ? 'Drop-off' : 'Pick-up') + ' · ' + stay.name + (who ? (' · ' + who) : ''),
+      notes: '',
+      period: dropoff ? 'Evening' : 'Morning',
+      messageSent: false,
+      booked: false,
+      travelMinutes: null,
+    };
+    if (pin) {
+      stop.pinLat = Number(pin.lat);
+      stop.pinLng = Number(pin.lng);
+      if (pin.setAt) stop.pinSetAt = pin.setAt;
+    }
+    if (typeof ensureHandoverFields === 'function') ensureHandoverFields(stop);
+    if (typeof refreshHandoverTitle === 'function' && typeof window !== 'undefined' && window.HandoverStops) refreshHandoverTitle(stop);
+    return stop;
+  }
+  /**
+   * Add a morning pick-up and an evening drop-off for each hotel a guest is
+   * staying at. Existing stops stay where they are. Nothing is removed.
+   */
+  function prefillEmptyDayWithHotel(day, plan, booking, places) {
+    if (!day) return false;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
+    const arrival = (plan && plan.arrivalDate) || (booking && booking.tour_arrival_date) || '';
+    const departure = (plan && plan.departureDate) || (booking && booking.departure_date) || '';
+    const dayIso = String(day.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) return false;
+    const guests = plannerGuestList(plan, booking);
+    const slots = bookingStaySlots(booking, plan);
+    const stayers = readHotelStayers(booking, plan);
+    const nights = hotelNightMap(arrival, departure, slots);
+    const pickups = hotelsOnNight(shiftIsoDay(dayIso, -1), guests, slots, nights, stayers);
+    const lastDay = dayIso === lastTourDayIso(plan, booking);
+    const dropoffs = lastDay
+      ? lastDayDropoffGroups(dayIso, guests, slots, nights, stayers)
+      : hotelsOnNight(dayIso, guests, slots, nights, stayers);
+    let changed = false;
+    const freshPickups = [];
+    pickups.forEach(group => {
+      if (day.blocks.some(stop => stopHasHotel(stop, group.name, 'pickup'))) return;
+      if (freshPickups.some(stop => stopHasHotel(stop, group.name, 'pickup'))) return;
+      freshPickups.push(hotelBookendStop('pickup', group, places, group.guests));
+    });
+    if (freshPickups.length) {
+      day.blocks = freshPickups.concat(day.blocks);
+      changed = true;
+    }
+    dropoffs.forEach(group => {
+      const existing = day.blocks.find(stop => stopHasHotel(stop, group.name, 'dropoff'));
+      if (existing) {
+        if (lastDay && !existing.tourFinalDropoff) {
+          existing.tourFinalDropoff = true;
+          changed = true;
+        }
+        return;
+      }
+      const stop = hotelBookendStop('dropoff', group, places, group.guests);
+      if (lastDay) stop.tourFinalDropoff = true;
+      day.blocks.push(stop);
+      changed = true;
+    });
+    if (lastDay) keepFinalDropoffsLast(day);
+    return changed;
+  }
+  function prefillEmptyPlanDays(plan, booking, places) {
+    let added = false;
+    (plan && plan.days || []).forEach(day => {
+      if (prefillEmptyDayWithHotel(day, plan, booking, places)) added = true;
+    });
+    return added;
+  }
+
   function planFromBooking(b) {
     const key = String(b.id);
     const existing = state.plans[key];
@@ -4536,7 +4970,9 @@
     });
     if (!existing) {
       seedPlanFromBookingExtras(base, b);
-      return normalizePlan(base);
+      const created = normalizePlan(base);
+      prefillEmptyPlanDays(created, b);
+      return created;
     }
     seedPlanFromBookingExtras(existing, b);
     existing.groupName = existing.groupName || base.groupName;
@@ -4591,7 +5027,9 @@
       existing.departureDate = base.departureDate;
       mergeDays(existing, base.days);
     }
-    return normalizePlan(existing);
+    const saved = normalizePlan(existing);
+    prefillEmptyPlanDays(saved, b);
+    return saved;
   }
 
   function mergeDays(existing, freshDays) {
@@ -5303,15 +5741,19 @@
 
   function handoverMapLinks(stop) {
     const HS = window.HandoverStops;
-    if (!HS || !HS.googleMapsSearchUrl || !stop || stop.placeKind === 'airport') return '';
+    if (!stop || stop.placeKind === 'airport') return '';
     const text = String(stop.address || stop.hotelName || '').trim();
     const nav = navigationAddressForStop(stop);
     const query = nav || text;
-    const google = HS.googleMapsSearchUrl(query);
-    if (!google) return '';
-    const apple = HS.appleMapsSearchUrl ? HS.appleMapsSearchUrl(query) : '';
-    const shown = HS.mapFieldLabel ? HS.mapFieldLabel(text || query) : (text || query);
-    return `<p class="handover-maps"><span class="handover-address">${escapeHtml(shown)}</span> <a href="${escapeHtml(google)}" target="_blank" rel="noopener">Google Maps</a>${apple ? ` · <a href="${escapeHtml(apple)}" target="_blank" rel="noopener">Apple Maps</a>` : ''} ${navigateButtonHtml(query)}</p>`;
+    const google = HS && HS.googleMapsSearchUrl ? HS.googleMapsSearchUrl(query) : '';
+    const pinned = hotelStopMapHref(stop);
+    const apple = pinned || (HS && HS.appleMapsSearchUrl ? HS.appleMapsSearchUrl(query) : '');
+    if (!google && !apple) return '';
+    const shown = HS && HS.mapFieldLabel ? HS.mapFieldLabel(text || query) : (text || query);
+    const googleLink = google ? `<a href="${escapeHtml(google)}" target="_blank" rel="noopener">Google Maps</a>` : '';
+    const appleLink = apple ? `<a href="${escapeHtml(apple)}" target="_blank" rel="noopener">Apple Maps</a>` : '';
+    const maps = [googleLink, appleLink].filter(Boolean).join(' · ');
+    return `<p class="handover-maps"><span class="handover-address">${escapeHtml(shown)}</span> ${maps} ${navigateButtonHtml(query)}</p>`;
   }
 
   function renderHandoverBar(stop) {
@@ -5520,6 +5962,7 @@
   function reorderDayByDrop(day, draggedId, targetId, after) {
     if (!day || !reorderStopsByDrop(day.blocks, draggedId, targetId, after)) return false;
     redistributeBlockTimes(day);
+    keepFinalDropoffsLast(day);
     day.blocks.forEach((_, i) => {
       if (day.blocks[i] && day.blocks[i].travelMinutes == null) seedTravelMinutes(day, i);
     });
@@ -5533,6 +5976,7 @@
     const [item] = day.blocks.splice(fromIdx, 1);
     day.blocks.splice(toIdx, 0, item);
     redistributeBlockTimes(day);
+    keepFinalDropoffsLast(day);
     day.blocks.forEach((_, i) => {
       if (day.blocks[i] && day.blocks[i].travelMinutes == null) seedTravelMinutes(day, i);
     });
@@ -5607,7 +6051,11 @@
         hasAirport: hasAirportArrivalOption(state.plan),
       }),
     }, nextDate));
-    if (nextDate) state.plan.departureDate = nextDate;
+    prefillEmptyDayWithHotel(state.plan.days[state.plan.days.length - 1], state.plan, bookingRecordForPlan(state.plan));
+    if (nextDate) {
+      state.plan.departureDate = nextDate;
+      forgetRemovedDay(state.plan, nextDate);
+    }
     state.selectedDay = state.plan.days.length - 1;
     scheduleAutoSave();
     render();
@@ -5625,11 +6073,14 @@
     };
     const byDate = {};
     (state.plan.days || []).forEach(d => { if (d && d.date) byDate[d.date] = d; });
+    state.plan.removedDayDates = (state.plan.removedDayDates || []).filter(date => dates.indexOf(String(date).slice(0, 10)) < 0);
     state.plan.days = dates.map((date, i) => {
       const kept = byDate[date];
       if (kept && typeof kept === 'object') return storedPlanDay(kept, date);
       const blocks = defaultBlocks(i, ctx);
-      return storedPlanDay({ id: uid('d'), date, blocks: Array.isArray(blocks) ? blocks : [] }, date);
+      const day = { id: uid('d'), date, blocks: Array.isArray(blocks) ? blocks : [] };
+      prefillEmptyDayWithHotel(day, state.plan, bookingRecordForPlan(state.plan));
+      return storedPlanDay(day, date);
     });
     state.selectedDay = Math.min(state.selectedDay, state.plan.days.length - 1);
     scheduleAutoSave();
@@ -7701,11 +8152,56 @@ function renderDayTabs() {
     return `<div class="day-tabs">${(state.plan.days || []).map((d, i) => {
       if (!d || typeof d !== 'object') return '';
       const isToday = d.date && d.date === today;
-      return `<button type="button" class="day-tab ${i === state.selectedDay ? 'active' : ''} ${isToday ? 'today' : ''}" data-day="${i}">
-        <div class="d-label">${isToday ? 'Today · ' : ''}Day ${i + 1}</div>
-        <div class="d-date">${d.date ? `${weekdayName(d.date)} ${formatDateDMY(d.date)}` : 'Date not set'}</div>
-      </button>`;
+      return `<div class="day-tab ${i === state.selectedDay ? 'active' : ''} ${isToday ? 'today' : ''}" data-day="${i}">
+        <button type="button" class="day-tab-open">
+          <div class="d-label">${isToday ? 'Today · ' : ''}Day ${i + 1}</div>
+          <div class="d-date">${d.date ? `${weekdayName(d.date)} ${formatDateDMY(d.date)}` : 'Date not set'}</div>
+        </button>
+        <button type="button" class="day-delete" data-delete-day="${i}" aria-label="Delete day" title="Delete day">×</button>
+      </div>`;
     }).join('')}</div>`;
+  }
+
+  function deleteDayLabel(day, index) {
+    const iso = day && day.date ? String(day.date).slice(0, 10) : '';
+    const d = parseISODateUTC(iso);
+    if (!d) return 'Day ' + (Number(index) + 1);
+    const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return dow + ' ' + d.getUTCDate() + ' ' + months[d.getUTCMonth()];
+  }
+  function forgetRemovedDay(plan, iso) {
+    const day = String(iso || '').slice(0, 10);
+    if (!plan || !Array.isArray(plan.removedDayDates) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    plan.removedDayDates = plan.removedDayDates.filter(item => String(item).slice(0, 10) !== day);
+  }
+  function removePlanDay(plan, index) {
+    if (!plan || !Array.isArray(plan.days)) return false;
+    const day = plan.days[index];
+    if (!day || typeof day !== 'object') return false;
+    const iso = String(day.date || '').slice(0, 10);
+    plan.days.splice(index, 1);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+      if (!Array.isArray(plan.removedDayDates)) plan.removedDayDates = [];
+      if (plan.removedDayDates.indexOf(iso) < 0) plan.removedDayDates.push(iso);
+    }
+    return true;
+  }
+  function deletePlanDay(index) {
+    if (!state.plan || !Array.isArray(state.plan.days)) return;
+    const day = state.plan.days[index];
+    if (!day || typeof day !== 'object') return;
+    if (!window.confirm('Delete ' + deleteDayLabel(day, index) + ' and its stops?')) return;
+    removePlanDay(state.plan, index);
+    if (state.selectedDay > index) state.selectedDay -= 1;
+    else if (state.selectedDay >= state.plan.days.length) state.selectedDay = Math.max(0, state.plan.days.length - 1);
+    if (state.weekZoomDay != null && state.weekZoomDay !== '') {
+      const zoom = Number(state.weekZoomDay);
+      if (zoom === index) state.weekZoomDay = null;
+      else if (zoom > index) state.weekZoomDay = zoom - 1;
+    }
+    scheduleAutoSave();
+    render();
   }
 
   function renderTourHotelSelect() {
@@ -7931,7 +8427,9 @@ function renderDayTabs() {
     return `
       <div class="place-pin-map" data-place-map="${id}">
         <div class="field-label">Map</div>
-        <div class="place-pin-canvas" data-place-map-canvas="${id}" role="application" aria-label="Map of this place"></div>
+        <div class="place-pin-frame">
+          <div class="place-pin-canvas" data-place-map-canvas="${id}" role="application" aria-label="Map of this place"></div>
+        </div>
         <p class="place-pin-status" data-place-pin-status="${id}">${status}</p>
         <p class="place-pin-credit">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors. Address search © <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener">Nominatim</a>.</p>
       </div>`;
@@ -7944,6 +8442,7 @@ function renderDayTabs() {
   let leafletPromise = null;
   let placeMapToken = 0;
   let placeLeafletMap = null;
+  let placeMapResize = null;
   let placePinBound = false;
 
   function ensureLeaflet() {
@@ -8001,6 +8500,10 @@ function renderDayTabs() {
 
   function destroyPlaceMap() {
     placeMapToken += 1;
+    if (placeMapResize) {
+      try { placeMapResize.disconnect(); } catch (e) { /* observer may already be gone */ }
+      placeMapResize = null;
+    }
     if (placeLeafletMap) {
       try { placeLeafletMap.remove(); } catch (e) { /* the node may already be gone */ }
       placeLeafletMap = null;
@@ -8063,7 +8566,12 @@ function renderDayTabs() {
     marker.on('dragend', () => dropPin(marker.getLatLng()));
     // Leaflet does not fire click after a pan, so a tap drops the pin and a drag of the map does not.
     map.on('click', (event) => dropPin(event && event.latlng));
-    setTimeout(() => { if (token === placeMapToken) map.invalidateSize(); }, 80);
+    const fitMap = () => { if (token === placeMapToken) map.invalidateSize(); };
+    setTimeout(fitMap, 80);
+    if (typeof ResizeObserver === 'function') {
+      placeMapResize = new ResizeObserver(fitMap);
+      placeMapResize.observe(canvas);
+    }
     if (!PlacePin.needsLookup(place)) return;
     setPinStatus(place.id, 'Looking up the address…');
     const addr = String(place.address || '').trim();
@@ -10139,6 +10647,13 @@ function renderDayTabs() {
       btn.addEventListener('click', () => addPlaceFromPicker(btn.getAttribute('data-place-picker-add')));
     });
     // Place select no longer auto-adds — Keith picks Time, then taps Add selected place.
+    document.querySelectorAll('[data-delete-day]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        deletePlanDay(Number(btn.getAttribute('data-delete-day')));
+      });
+    });
     document.querySelectorAll('[data-day]').forEach(btn => {
       btn.addEventListener('click', () => { state.selectedDay = Number(btn.getAttribute('data-day')); render(); });
     });

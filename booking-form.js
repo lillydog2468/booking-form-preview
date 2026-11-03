@@ -9744,17 +9744,70 @@
     const after = profit + owed;
     const currency = normalizeCurrency(record.beading_tour_price_currency || record.depositmade_currency || DEFAULT_CURRENCY);
     if (profitSet && owed > 0) {
-      if (after < 0) return { cls: ' negative', text: escapeHtml(formatMoney(after, currency)) };
+      if (after < 0) return { cls: ' negative', text: escapeHtml(formatMoney(after, currency)), amount: after };
       const main = escapeHtml(formatMoney(after, currency));
       const due = escapeHtml(formatMoney(owed, currency));
       const cls = after > 0 ? ' positive' : '';
-      return { cls, text: main + ' <span class="profit-to-come">(+' + due + ' to come)</span>' };
+      return { cls, text: main + ' <span class="profit-to-come">(+' + due + ' to come)</span>', amount: after };
     }
     let cls = '';
     if (Number.isFinite(stored) && stored > 0) cls = ' positive';
     else if (Number.isFinite(stored) && stored < 0) cls = ' negative';
     const text = storedRaw != null && storedRaw !== '' ? escapeHtml(String(storedRaw)) : '—';
-    return { cls, text };
+    return { cls, text, amount: profitSet ? stored : 0 };
+  }
+
+  function tableShownHotelNights(record) {
+    const raw = record && record.other_hotel_nights;
+    if (raw == null || String(raw).trim() === '') return 0;
+    const parsed = parseNightsCount(raw);
+    if (parsed != null) return parsed;
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.round(n) : 0;
+  }
+
+  function tableYearTotals(rows) {
+    const totals = { people: 0, nights: 0, left: 0, profit: 0 };
+    (rows || []).forEach(record => {
+      const people = Number(record && record.no_people);
+      if (Number.isFinite(people)) totals.people += people;
+      totals.nights += tableShownHotelNights(record);
+      const left = Number(record && record.left_to_pay);
+      if (Number.isFinite(left)) totals.left += left;
+      totals.profit += Number(profitListCell(record || {}).amount) || 0;
+    });
+    totals.people = Math.round(totals.people);
+    totals.nights = Math.round(totals.nights);
+    return totals;
+  }
+
+  function tableYearHeaderRow(year, rows, columns) {
+    const totals = tableYearTotals(rows);
+    const bandCls = yearBandClass(year);
+    const label = year == null ? 'No year' : String(year);
+    const figures = {
+      no_people: String(totals.people),
+      other_hotel_nights: String(totals.nights),
+      left_to_pay: formatMoney(totals.left),
+      totalprofit: formatMoney(totals.profit),
+    };
+    const cols = columns && columns.length ? columns : [{ key: '_empty' }];
+    const labelAt = cols.findIndex(col => !Object.prototype.hasOwnProperty.call(figures, col.key));
+    const yearAt = labelAt === -1 ? 0 : labelAt;
+    const cells = cols.map((col, index) => {
+      const figure = figures[col.key] || '';
+      const yearHere = index === yearAt;
+      const bits = [];
+      if (yearHere) bits.push('<span class="table-year-label">' + escapeHtml(label) + '</span>');
+      if (figure) bits.push('<span class="year-total-figure">' + figure + '</span>');
+      const cls = [];
+      if (figure && col.type === 'num') cls.push('num');
+      if (yearHere && figure) cls.push('year-and-total');
+      const size = tableColSizeStyle(col.key);
+      const classAttr = cls.length ? ' class="' + cls.join(' ') + '"' : '';
+      return '<td' + classAttr + ' data-table-col="' + escapeHtml(col.key) + '"' + (size ? ' style="' + size + '"' : '') + '>' + bits.join('') + '</td>';
+    }).join('');
+    return '<tr class="table-year-header ' + bandCls + '" role="row">' + cells + '</tr>';
   }
 
   function renderTable(records) {
@@ -9772,23 +9825,23 @@
       return;
     }
 
-    const groupByYear = true;
     const parts = [];
-    let lastYearKey = null;
-
-    for (const r of sortedRecords) {
-      const y = bookingYear(r);
+    const yearGroups = [];
+    let currentGroup = null;
+    sortedRecords.forEach(record => {
+      const y = bookingYear(record);
       const yearKey = y == null ? 'none' : String(y);
-      const bandCls = yearBandClass(y);
-
-      if (groupByYear && yearKey !== lastYearKey) {
-        lastYearKey = yearKey;
-        const label = y == null ? 'No year' : String(y);
-        parts.push(
-          `<tr class="table-year-header ${bandCls}" role="row">` +
-          `<td colspan="${colCount}">${escapeHtml(label)}</td></tr>`
-        );
+      if (!currentGroup || currentGroup.key !== yearKey) {
+        currentGroup = { key: yearKey, year: y, rows: [] };
+        yearGroups.push(currentGroup);
       }
+      currentGroup.rows.push(record);
+    });
+
+    for (const group of yearGroups) {
+      parts.push(tableYearHeaderRow(group.year, group.rows, activeColumns));
+      for (const r of group.rows) {
+      const bandCls = yearBandClass(group.year);
 
       const cancelled = bookingIsCancelled(r);
       const delayText = cancelled ? delayUntilLabel(r) : '';
@@ -9845,6 +9898,7 @@
         }).join('') +
         '</tr>'
       );
+      }
     }
 
     body.innerHTML = parts.join('');
