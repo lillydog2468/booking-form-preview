@@ -5548,6 +5548,7 @@
     paintHotelStayers(tabId);
     suggestBlankHotelNights(tabId);
     onTabInput(tabId);
+    schedulePlanHotelSave(tabId);
   }
 
   function renumberHotelStayRows(tabId) {
@@ -7295,20 +7296,24 @@
     return flags;
   }
   function patchHotelsArray(existing, flags) {
-    const rows = (existing || []).map(h => Object.assign({}, h));
-    flags.forEach(flag => {
+    // The form is the list. A hotel Keith removed is not put back from the saved plan.
+    const pool = (existing || []).map(h => Object.assign({}, h));
+    const rows = [];
+    (flags || []).forEach(flag => {
       const name = String(flag.hotelName || '').trim();
       if (!name || normHotelName(name) === 'day trip') return;
       const paid = flag.paid === 'advance' || flag.paid === 'on_day' ? flag.paid : '';
-      const idx = findPlanHotelIndex(rows, name, flag.role || 'tour');
+      const idx = findPlanHotelIndex(pool, name, flag.role || 'tour');
+      let row;
       if (idx >= 0) {
-        rows[idx].booked = !!flag.booked;
-        rows[idx].paid = paid;
-        if (flag.price !== undefined && flag.price !== '') rows[idx].price = flag.price;
-        return;
+        row = pool.splice(idx, 1)[0];
+        row.booked = !!flag.booked;
+        row.paid = paid;
+        if (flag.price !== undefined && flag.price !== '') row.price = flag.price;
+      } else {
+        row = { hotelName: name, role: flag.role || 'extra', booked: !!flag.booked, paid, notes: '' };
+        if (flag.price !== undefined && flag.price !== '') row.price = flag.price;
       }
-      const row = { hotelName: name, role: flag.role || 'extra', booked: !!flag.booked, paid, notes: '' };
-      if (flag.price !== undefined && flag.price !== '') row.price = flag.price;
       rows.push(row);
     });
     return rows;
@@ -7444,7 +7449,8 @@
       if (pickupEl && !pickupEl.value.trim()) pickupEl.value = pickup;
       tabData.dayPickupBaseline = pickupEl ? pickupEl.value.trim() : pickup;
       applyPlanHotelFlags(tabId, hotels);
-      addPlanOnlyHotelRows(tabId, hotels);
+      // Do not turn a plan-only hotel into a new form row. Booking 315 still
+      // lists Familia on the plan after Hotel 2 was deleted from the booking.
       tabData.planHotelsLoaded = true;
       syncHotelPanel(tabId);
       updateHotelNightsHint(tabId);

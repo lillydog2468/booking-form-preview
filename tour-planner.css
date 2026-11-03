@@ -560,11 +560,12 @@
     .timeline { display: flex; flex-direction: column; gap: 0; }
     .stop {
       display: grid;
-      grid-template-columns: 108px 18px minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 108px) 18px minmax(0, 1fr) max-content;
       gap: 10px;
       align-items: start;
       padding: 10px 0;
     }
+    .stop-body { min-width: 0; }
     .stop-time {
       font-variant-numeric: tabular-nums;
       font-weight: 800; font-size: 15px;
@@ -603,7 +604,10 @@
       background: var(--bg); color: var(--text-secondary); margin-right: 6px;
     }
     .stop-notes { color: var(--text-secondary); font-size: 13px; }
-    .stop-actions { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+    .stop-actions {
+      display: flex; flex-direction: column; gap: 4px; align-items: center;
+      flex-shrink: 0; min-width: max-content;
+    }
     .stop-delete {
       border: 0; background: none; color: var(--text-secondary); opacity: .4;
       width: 16px; height: 16px; min-width: 16px; min-height: 16px; padding: 0;
@@ -730,7 +734,7 @@
       border-radius: 10px; font-size: 13px; font-weight: 700; box-shadow: var(--shadow-lg);
     }
 
-    .view-phone .stop { grid-template-columns: 78px 14px minmax(0, 1fr) auto; gap: 6px; }
+    .view-phone .stop { grid-template-columns: minmax(0, 78px) 14px minmax(0, 1fr) max-content; gap: 6px; }
     .view-phone .stop-title { font-size: 20px; }
     .view-phone .stop-time { font-size: 18px; }
     .view-phone .hotel-card .name { font-size: 20px; }
@@ -891,8 +895,8 @@
     }
     .day-glance-item {
       display: grid;
-      /* handle | time | icon | nickname | ↑↓ — nickname shrinks; controls never clip */
-      grid-template-columns: 44px auto auto minmax(0, 1fr) max-content;
+      /* handle | time | icon | nickname | ↑↓× — nickname shrinks; controls never clip */
+      grid-template-columns: 44px minmax(0, max-content) minmax(0, max-content) minmax(0, 1fr) max-content;
       gap: 4px 6px;
       align-items: center;
       border-radius: 8px;
@@ -921,15 +925,17 @@
     .day-glance-handle:active { cursor: grabbing; }
     .day-glance-item .day-glance-row { min-width: 0; }
     .day-glance-moves {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 4px;
       flex-shrink: 0;
       flex-wrap: nowrap;
       justify-self: end;
       min-width: max-content;
       width: max-content;
     }
+    .day-glance-moves .stop-delete { align-self: center; }
     .day-glance-move {
       border: 1px solid var(--border);
       background: var(--surface);

@@ -169,13 +169,19 @@
   function sortDayBlocks(day) {
     if (!day || !Array.isArray(day.blocks)) return;
     const finals = [];
-    const rest = [];
+    const timed = [];
+    const untimed = [];
     day.blocks.forEach(stop => {
-      if (stop && stop.tourFinalDropoff) finals.push(stop);
-      else rest.push(stop);
+      if (!stop) return;
+      if (stop.tourFinalDropoff) finals.push(stop);
+      else if (timeToMinutes(stop.time) == null) untimed.push(stop);
+      else timed.push(stop);
     });
-    rest.sort(compareStopTime);
-    day.blocks = rest.concat(finals);
+    timed.sort(compareStopTime);
+    if (!timed.length && !untimed.length && !finals.length) return;
+    // Untimed stops stay together after the timed ones, so a blank row cannot
+    // sit between 08:00 and 11:00 and shove the timed order around.
+    day.blocks = timed.concat(untimed, finals);
   }
   function placeTypesOf(placeOrStop) {
     if (window.PlaceCategories) return PlaceCategories.placeCategories(placeOrStop);
@@ -1156,6 +1162,7 @@
     plan.days = (Array.isArray(plan.days) ? plan.days : [])
       .filter(d => d && typeof d === 'object')
       .sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
+    stripAutoTourHotelStops(plan, null);
     (plan.days || []).forEach((d, dayIndex) => {
       if (!d || typeof d !== 'object') return;
       if (!Array.isArray(d.blocks)) d.blocks = [];
@@ -1170,6 +1177,8 @@
         ensureStopTicks(s);
         if (s.type === 'handover') ensureHandoverFields(s);
       });
+      repairAutoHotelTimes(d);
+      sortDayBlocks(d);
     });
     // Resolve hotel place id from catalogue when possible (keeps Staying at in sync)
     if (plan.tourHotelPlaceId) {
@@ -4683,20 +4692,58 @@
         personId: guest.personId || '',
         memberId: guest.memberId != null ? guest.memberId : guest.id,
         prague_stays: guest.prague_stays || guest.pragueStays || [],
+        arrival_flight: guest.arrival_flight || guest.arrivalFlight || '',
+        arrival_date: String(guest.arrival_date || guest.arrivalDate || '').slice(0, 10),
+        arrival_time: flightClock(guest.arrival_time || guest.arrivalTime),
+        departure_flight: guest.departure_flight || guest.departureFlight || '',
+        departure_date: String(guest.departure_date || guest.departureDate || '').slice(0, 10),
+        departure_time: flightClock(guest.departure_time || guest.departureTime),
+        flight_note: guest.flight_note || guest.flightNote || '',
       }));
     }
     return members.map((member, index) => {
       const name = [member.first_name, member.last_name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
       if (!name) return null;
       const match = planGuests.find(guest => hotelNameKey(guest.name) === hotelNameKey(name)) || planGuests[index];
+      const flights = memberFlightFields(member, match);
       return {
         id: match && match.id,
         name,
         personId: member.person_id || member.personId || (match && match.personId) || '',
         memberId: member.id,
-        prague_stays: member.prague_stays || member.pragueStays || [],
+        prague_stays: member.prague_stays || member.pragueStays || (match && (match.prague_stays || match.pragueStays)) || [],
+        arrival_flight: flights.arrival_flight,
+        arrival_date: flights.arrival_date,
+        arrival_time: flights.arrival_time,
+        departure_flight: flights.departure_flight,
+        departure_date: flights.departure_date,
+        departure_time: flights.departure_time,
+        flight_note: flights.flight_note,
       };
     }).filter(Boolean);
+  }
+  function flightClock(value) {
+    const s = String(value || '').trim();
+    return s.length >= 5 ? s.slice(0, 5) : s;
+  }
+  function memberFlightFields(member, extra) {
+    const src = member || {};
+    const ex = extra || {};
+    function pick(snake, camel) {
+      const primary = src[snake];
+      if (primary != null && String(primary).trim()) return String(primary).trim();
+      const alt = ex[snake] != null ? ex[snake] : ex[camel];
+      return String(alt || '').trim();
+    }
+    return {
+      arrival_flight: pick('arrival_flight', 'arrivalFlight'),
+      arrival_date: pick('arrival_date', 'arrivalDate').slice(0, 10),
+      arrival_time: flightClock(pick('arrival_time', 'arrivalTime')),
+      departure_flight: pick('departure_flight', 'departureFlight'),
+      departure_date: pick('departure_date', 'departureDate').slice(0, 10),
+      departure_time: flightClock(pick('departure_time', 'departureTime')),
+      flight_note: pick('flight_note', 'flightNote'),
+    };
   }
   function readHotelStayers(booking, plan) {
     if (booking && Array.isArray(booking.hotelStayers)) return booking.hotelStayers;
@@ -4890,9 +4937,155 @@
     if (typeof refreshHandoverTitle === 'function' && typeof window !== 'undefined' && window.HandoverStops) refreshHandoverTitle(stop);
     return stop;
   }
+  function tourHotelNames(plan, booking) {
+    const names = [];
+    function add(name) {
+      const clean = String(name || '').trim();
+      if (!clean || /prague|praha/i.test(clean)) return;
+      if (names.some(have => hotelNameKey(have) === hotelNameKey(clean))) return;
+      names.push(clean);
+    }
+    add(plan && plan.tourHotelName);
+    if (booking) {
+      add(booking.hotel_name || (booking.hotels && booking.hotels.name));
+      (booking._hotel_stays || []).forEach(stay => {
+        add((stay && stay.hotels && stay.hotels.name) || (stay && stay.custom_hotel_name));
+      });
+    }
+    (bookingHotelStays(booking, plan) || []).forEach(stay => add(stay && stay.name));
+    return names;
+  }
+  /** Daily Park-hotel bookends from the old rules. A note or a moved time means Keith edited it. */
+  function isAutoTourHotelBookend(stop, tourNames) {
+    if (!stop || stop.type !== 'handover') return false;
+    if (stop.autoStop) return false;
+    if (stop.placeKind === 'airport' || stop.placeKind === 'note') return false;
+    if (String(stop.notes || '').trim()) return false;
+    const hotel = String(stop.hotelName || '').trim();
+    if (!hotel || !(tourNames || []).some(name => hotelNameKey(name) === hotelNameKey(hotel))) return false;
+    const dropoff = stop.handoverKind === 'dropoff';
+    const title = String(stop.title || '').trim();
+    const head = dropoff ? 'Drop-off' : 'Pick-up';
+    if (title && title.indexOf(head) !== 0) return false;
+    if (stop.tourFinalDropoff) return true;
+    const time = String(stop.time || '').slice(0, 5);
+    const usual = dropoff ? '17:00' : '08:00';
+    return !time || time === usual;
+  }
+  function stripDayAutoTourHotels(day, tourNames) {
+    if (!day || !Array.isArray(day.blocks)) return false;
+    const before = day.blocks.length;
+    day.blocks = day.blocks.filter(stop => !isAutoTourHotelBookend(stop, tourNames));
+    return day.blocks.length !== before;
+  }
+  function stripAutoTourHotelStops(plan, booking) {
+    const names = tourHotelNames(plan, booking);
+    let removed = false;
+    (plan && plan.days || []).forEach(day => {
+      if (stripDayAutoTourHotels(day, names)) removed = true;
+    });
+    return removed;
+  }
+  function normalisePragueStayRow(stay) {
+    const row = stay || {};
+    return {
+      hotel: String(row.hotel || row.hotelName || '').trim().replace(/\s+/g, ' '),
+      check_in: String(row.check_in || row.checkIn || '').slice(0, 10),
+      check_out: String(row.check_out || row.checkOut || '').slice(0, 10),
+    };
+  }
+  function pragueStayCoversNight(stay, night) {
+    if (!stay || !night || !stay.hotel) return false;
+    if (!stay.check_in && !stay.check_out) return false;
+    if (stay.check_in && stay.check_in > night) return false;
+    if (stay.check_out && stay.check_out <= night) return false;
+    return true;
+  }
+  function pragueHotelBeforeTour(guest, arrivalIso) {
+    const night = shiftIsoDay(arrivalIso, -1);
+    const stays = (guest && guest.prague_stays || []).map(normalisePragueStayRow).filter(stay => stay.hotel);
+    const covering = stays.filter(stay => pragueStayCoversNight(stay, night));
+    if (covering.length) return covering[0].hotel;
+    const undated = stays.filter(stay => !stay.check_in && !stay.check_out);
+    return undated.length ? undated[0].hotel : '';
+  }
+  function pragueHotelAfterTour(guest, departureIso) {
+    const stays = (guest && guest.prague_stays || []).map(normalisePragueStayRow).filter(stay => stay.hotel);
+    const covering = stays.filter(stay => pragueStayCoversNight(stay, departureIso));
+    if (covering.length) return covering[covering.length - 1].hotel;
+    const starting = stays.filter(stay => stay.check_in === departureIso);
+    if (starting.length) return starting[starting.length - 1].hotel;
+    const undated = stays.filter(stay => !stay.check_in && !stay.check_out);
+    return undated.length ? undated[undated.length - 1].hotel : '';
+  }
+  function guestArrivesOnDay(guest, dayIso) {
+    const date = String(guest && guest.arrival_date || '').slice(0, 10);
+    if (date) return date === dayIso;
+    return !!(guest && (String(guest.arrival_flight || '').trim() || String(guest.arrival_time || '').trim()));
+  }
+  function guestDepartsOnDay(guest, dayIso) {
+    const date = String(guest && guest.departure_date || '').slice(0, 10);
+    if (date) return date === dayIso;
+    return !!(guest && (String(guest.departure_flight || '').trim() || String(guest.departure_time || '').trim()));
+  }
+  function flightInfoText(guest, kind) {
+    const prefix = kind === 'dropoff' ? 'departure' : 'arrival';
+    const num = String(guest && guest[prefix + '_flight'] || '').trim();
+    const time = flightClock(guest && guest[prefix + '_time']);
+    const note = String(guest && guest.flight_note || '').trim();
+    return [num, time, note].filter(Boolean).join(' · ');
+  }
+  function autoAirportStop(kind, group, places) {
+    const dropoff = kind === 'dropoff';
+    const time = flightClock(group.time);
+    const info = String(group.flightInfo || '').trim();
+    const stop = {
+      id: uid('s'),
+      type: 'handover',
+      handoverKind: dropoff ? 'dropoff' : 'pickup',
+      time: time,
+      timeApprox: false,
+      placeKind: 'airport',
+      hotelName: '',
+      address: typeof PRAGUE_AIRPORT_ADDRESS === 'string' ? PRAGUE_AIRPORT_ADDRESS : '',
+      placeNote: '',
+      guestIds: (group.guests || []).map(guest => guest && guest.id).filter(id => id != null && String(id) !== ''),
+      flightNumber: String(group.flightNumber || '').trim(),
+      flightInfo: info,
+      flightArrivalTime: dropoff ? '' : time,
+      terminal: '1',
+      title: '',
+      notes: info,
+      period: time && typeof periodForTime === 'function' ? periodForTime(time) : (dropoff ? 'Evening' : 'Morning'),
+      messageSent: false,
+      booked: false,
+      travelMinutes: null,
+      autoStop: dropoff ? 'airport-dropoff' : 'airport-pickup',
+    };
+    if (typeof ensureHandoverFields === 'function') ensureHandoverFields(stop);
+    if (typeof refreshHandoverTitle === 'function') refreshHandoverTitle(stop);
+    if (!stop.title) {
+      const who = guestListLabel(group.guests);
+      const place = typeof PRAGUE_AIRPORT_NAME === 'string' ? PRAGUE_AIRPORT_NAME : 'Airport';
+      stop.title = [(dropoff ? 'Drop-off' : 'Pick-up'), place, info, who].filter(Boolean).join(' · ');
+    }
+    return stop;
+  }
+  function dayAlreadyHasEdgeStop(day, spec) {
+    return (day.blocks || []).some(stop => {
+      if (!stop || stop.type !== 'handover') return false;
+      const dropoff = stop.handoverKind === 'dropoff';
+      if (dropoff !== (spec.kind === 'dropoff')) return false;
+      if (spec.place === 'airport') {
+        return stop.placeKind === 'airport' && String(stop.flightNumber || '') === String(spec.flightNumber || '');
+      }
+      return stopHasHotel(stop, spec.hotel, spec.kind);
+    });
+  }
   /**
-   * Add a morning pick-up and an evening drop-off for each hotel a guest is
-   * staying at. Existing stops stay where they are. Nothing is removed.
+   * First day: Prague hotel if they stayed there the night before, otherwise
+   * the airport when they land that day. Last day: the airport when they fly
+   * out, otherwise their Prague hotel. No daily tour-hotel bookends.
    */
   function prefillEmptyDayWithHotel(day, plan, booking, places) {
     if (!day) return false;
@@ -4900,44 +5093,107 @@
     const arrival = (plan && plan.arrivalDate) || (booking && booking.tour_arrival_date) || '';
     const departure = (plan && plan.departureDate) || (booking && booking.departure_date) || '';
     const dayIso = String(day.date || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) return false;
-    const guests = plannerGuestList(plan, booking);
-    const slots = bookingStaySlots(booking, plan);
-    const stayers = readHotelStayers(booking, plan);
-    const nights = hotelNightMap(arrival, departure, slots);
-    const pickups = hotelsOnNight(shiftIsoDay(dayIso, -1), guests, slots, nights, stayers);
-    const lastDay = dayIso === lastTourDayIso(plan, booking);
-    const dropoffs = lastDay
-      ? lastDayDropoffGroups(dayIso, guests, slots, nights, stayers)
-      : hotelsOnNight(dayIso, guests, slots, nights, stayers);
-    let changed = false;
-    const freshPickups = [];
-    pickups.forEach(group => {
-      if (hotelStopDismissed(day, group.name, 'pickup')) return;
-      if (day.blocks.some(stop => stopHasHotel(stop, group.name, 'pickup'))) return;
-      if (freshPickups.some(stop => stopHasHotel(stop, group.name, 'pickup'))) return;
-      freshPickups.push(hotelBookendStop('pickup', group, places, group.guests));
-    });
-    if (freshPickups.length) {
-      day.blocks = freshPickups.concat(day.blocks);
-      changed = true;
+    let changed = stripDayAutoTourHotels(day, tourHotelNames(plan, booking));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) {
+      if (changed) sortDayBlocks(day);
+      return changed;
     }
-    dropoffs.forEach(group => {
-      if (hotelStopDismissed(day, group.name, 'dropoff')) return;
-      const existing = day.blocks.find(stop => stopHasHotel(stop, group.name, 'dropoff'));
-      if (existing) {
-        if (lastDay && !existing.tourFinalDropoff) {
-          existing.tourFinalDropoff = true;
-          changed = true;
-        }
-        return;
+    const first = String(arrival).slice(0, 10) || dayIso;
+    const last = lastTourDayIso(plan, booking) || String(departure).slice(0, 10);
+    const guests = plannerGuestList(plan, booking);
+    const groups = [];
+    function queue(spec) {
+      const key = spec.place + '|' + spec.kind + '|' + hotelNameKey(spec.hotel || spec.flightNumber || spec.time);
+      let group = groups.find(row => row.key === key);
+      if (!group) {
+        group = Object.assign({ key, guests: [] }, spec);
+        groups.push(group);
       }
-      const stop = hotelBookendStop('dropoff', group, places, group.guests);
-      if (lastDay) stop.tourFinalDropoff = true;
-      day.blocks.push(stop);
+      if (spec.guest && !group.guests.some(have => String(have.id) === String(spec.guest.id))) group.guests.push(spec.guest);
+      if (!group.flightInfo && spec.flightInfo) group.flightInfo = spec.flightInfo;
+      if (!group.time && spec.time) group.time = spec.time;
+    }
+    if (dayIso === first) {
+      guests.forEach(guest => {
+        const prague = pragueHotelBeforeTour(guest, first);
+        if (prague) {
+          queue({ place: 'hotel', kind: 'pickup', hotel: prague, time: '08:00', guest: guest });
+          return;
+        }
+        if (!guestArrivesOnDay(guest, first)) return;
+        queue({
+          place: 'airport',
+          kind: 'pickup',
+          flightNumber: String(guest.arrival_flight || '').trim(),
+          time: flightClock(guest.arrival_time),
+          flightInfo: flightInfoText(guest, 'pickup'),
+          guest: guest,
+        });
+      });
+    }
+    if (dayIso === last) {
+      guests.forEach(guest => {
+        if (guestDepartsOnDay(guest, last)) {
+          queue({
+            place: 'airport',
+            kind: 'dropoff',
+            flightNumber: String(guest.departure_flight || '').trim(),
+            time: flightClock(guest.departure_time),
+            flightInfo: flightInfoText(guest, 'dropoff'),
+            guest: guest,
+          });
+          return;
+        }
+        const prague = pragueHotelAfterTour(guest, last);
+        if (!prague) return;
+        queue({ place: 'hotel', kind: 'dropoff', hotel: prague, time: '17:00', guest: guest });
+      });
+    }
+    const freshPickups = [];
+    groups.forEach(group => {
+      const dismissName = group.place === 'airport'
+        ? ('airport:' + (group.flightNumber || group.time || 'airport'))
+        : group.hotel;
+      if (hotelStopDismissed(day, dismissName, group.kind)) return;
+      if (dayAlreadyHasEdgeStop(day, group)) return;
+      let stop;
+      if (group.place === 'airport') stop = autoAirportStop(group.kind, group, places);
+      else {
+        stop = hotelBookendStop(group.kind, { name: group.hotel, guests: group.guests }, places, group.guests);
+        stop.time = group.time;
+        stop.period = typeof periodForTime === 'function' ? periodForTime(group.time) : (group.kind === 'dropoff' ? 'Evening' : 'Morning');
+        stop.autoStop = group.kind === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+        if (typeof refreshHandoverTitle === 'function') refreshHandoverTitle(stop);
+      }
+      if (group.kind === 'pickup') freshPickups.push(stop);
+      else day.blocks.push(stop);
       changed = true;
     });
-    if (lastDay) keepFinalDropoffsLast(day);
+    if (freshPickups.length) day.blocks = freshPickups.concat(day.blocks);
+    if (repairAutoHotelTimes(day)) changed = true;
+    sortDayBlocks(day);
+    return changed;
+  }
+  function isAutoHotelHandover(stop) {
+    if (!stop || stop.type !== 'handover') return false;
+    if (stop.placeKind === 'airport' || stop.placeKind === 'note') return false;
+    const hotel = String(stop.hotelName || '').trim();
+    if (!hotel && stop.placeKind !== 'hotel') return false;
+    return true;
+  }
+  /** Fill a blank clock on a Prague bookend this code just added. Manual rows are left alone. */
+  function repairAutoHotelTimes(day) {
+    if (!day || !Array.isArray(day.blocks)) return false;
+    let changed = false;
+    day.blocks.forEach(stop => {
+      if (!stop || String(stop.autoStop || '').indexOf('prague-') !== 0) return;
+      if (timeToMinutes(stop.time) != null) return;
+      const dropoff = stop.handoverKind === 'dropoff';
+      stop.time = dropoff ? '17:00' : '08:00';
+      stop.timeApprox = false;
+      stop.period = dropoff ? 'Evening' : 'Morning';
+      changed = true;
+    });
     return changed;
   }
   function hotelStopDismissed(day, hotelName, kind) {
@@ -4947,7 +5203,9 @@
   }
   function rememberDismissedHotelStop(day, stop) {
     if (!day || !stop || stop.type !== 'handover') return;
-    const hotel = String(stop.hotelName || '').trim();
+    const hotel = stop.placeKind === 'airport'
+      ? ('airport:' + String(stop.flightNumber || stop.flightInfo || 'airport').trim())
+      : String(stop.hotelName || '').trim();
     if (!hotel) return;
     const kind = stop.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
     if (!Array.isArray(day.dismissedHotelStops)) day.dismissedHotelStops = [];
@@ -5390,7 +5648,9 @@
 
   function refreshHandoverTitle(stop) {
     if (!stop || stop.type !== 'handover') return;
-    stop.title = handoverLabel(stop);
+    const flight = String(stop.flightInfo || '').trim();
+    const label = handoverLabel(stop);
+    stop.title = flight ? (label + ' · ' + flight) : label;
   }
 
   function hotelNamesMatch(a, b) {
@@ -5537,11 +5797,12 @@
       return !hotelStopDismissed(day, proposal && proposal.hotelName, handoverKind);
     });
     fresh.forEach(proposal => {
+      const dropoff = proposal.handoverKind === 'dropoff';
       const stop = ensureHandoverFields({
         id: uid('s'),
         type: 'handover',
         handoverKind: proposal.handoverKind,
-        time: '',
+        time: dropoff ? '17:00' : '08:00',
         timeApprox: false,
         placeKind: 'hotel',
         hotelName: proposal.hotelName,
@@ -5552,7 +5813,7 @@
         flightArrivalTime: '',
         title: '',
         notes: '',
-        period: 'Untimed',
+        period: dropoff ? 'Evening' : 'Morning',
         messageSent: false,
         booked: false,
         travelMinutes: null,
@@ -5560,6 +5821,7 @@
       refreshHandoverTitle(stop);
       day.blocks.push(stop);
     });
+    if (fresh.length) sortDayBlocks(day);
     return fresh.length;
   }
 
@@ -5756,7 +6018,8 @@
     const time = String(stop.time || '').trim() || 'No time';
     const place = HS ? HS.placeLabel(stop) : '';
     const names = HS ? HS.peopleNames(stop.guestIds, (state.plan && state.plan.guests) || []) : [];
-    return [kind, time, place].concat(names.length ? [names.join(', ')] : []).filter(Boolean).join(' · ');
+    const flight = String(stop.flightInfo || '').trim();
+    return [kind, time, place, flight].concat(names.length ? [names.join(', ')] : []).filter(Boolean).join(' · ');
   }
   function renderHandoverToggle(stop) {
     const open = handoverIsOpen(stop.id);
@@ -5937,6 +6200,7 @@
           <button type="button" class="plan-drag" aria-label="Drag to reorder" title="Drag up or down">⠿</button>
           <button type="button" class="icon-btn" data-move="${id}" data-dir="-1" aria-label="Move up">↑</button>
           <button type="button" class="icon-btn" data-move="${id}" data-dir="1" aria-label="Move down">↓</button>
+          ${stopDeleteButton(s.id)}
         </div>
       </article>`;
   }
@@ -8078,14 +8342,9 @@
       const flagged = notesAreFlagged(s.notes);
       const mark = noPlace || flagged;
       const ticks = renderBookingTicksHtml(s, { compact: true });
-      const auto = isAutoGeneratedStop(s);
-      const timeControl = renderTimeWheelControl(s, 'glance', 'Time for ' + label);
-      const timeHtml = auto
-        ? `<span class="stop-time-line">${timeControl}${stopDeleteButton(s.id)}</span>`
-        : timeControl;
       return `<li class="day-glance-item ${stopToneClass(s)}${ticks ? ' has-ticks' : ''}${missingMarkerClass(mark)}" data-glance-index="${idx}" data-glance-stop-id="${escapeHtml(s.id)}">
         <span class="day-glance-handle" title="Drag up or down" aria-hidden="true">⠿</span>
-        ${timeHtml}
+        ${renderTimeWheelControl(s, 'glance', 'Time for ' + label)}
         <span class="day-glance-icon" aria-hidden="true">${renderStopCue(s)}</span>
         <div class="day-glance-main">
           <button type="button" class="day-glance-row" data-glance-stop="${escapeHtml(s.id)}" title="${escapeHtml(tip)}">
@@ -8096,7 +8355,7 @@
         <div class="day-glance-moves">
           <button type="button" class="day-glance-move" data-move="${escapeHtml(s.id)}" data-dir="-1" aria-label="Move up"${upDis}>↑</button>
           <button type="button" class="day-glance-move" data-move="${escapeHtml(s.id)}" data-dir="1" aria-label="Move down"${downDis}>↓</button>
-          ${auto ? '' : stopDeleteButton(s.id)}
+          ${stopDeleteButton(s.id)}
         </div>
       </li>`;
     }).join('');
@@ -8151,7 +8410,7 @@
             <input type="time" data-stop-time="${s.id}" data-time-src="timeline" value="${escapeHtml(s.time || '')}" aria-label="Time">
           </div>
           <div class="rail"><div class="dot ${escapeHtml(placeTypeForStop(s))}"></div></div>
-          <div>
+          <div class="stop-body">
             <div class="stop-kicker"><span class="badge">${escapeHtml(s.period || periodForTime(s.time))}</span><span class="badge">${escapeHtml(stopCategoriesLabel(s))}</span>${flagged ? missingBadgeHtml('FLAG / GAP') : ''}${noPlace ? missingBadgeHtml('No placeId') : ''}${stopNeedsBookingTicks(s) ? renderBookingTicksHtml(s) : ''}</div>
             <div class="stop-title">${renderStopCue(s)}<input type="text" data-stop-title="${s.id}" value="${escapeHtml(s.title || '')}"></div>
             <div class="stop-notes"><input type="text" class="${flagged ? 'field-flagged' : ''}" data-stop-notes="${s.id}" value="${escapeHtml(s.notes || '')}" placeholder="Notes" aria-invalid="${flagged ? 'true' : 'false'}"></div>
@@ -9554,8 +9813,9 @@ function renderDayTabs() {
       if (s.type === 'handover') return true;
       return String(s.title || '').trim() || String(s.time || '').trim();
     });
-    blocks.sort(compareStopTime);
-    return blocks;
+    const copy = { blocks };
+    sortDayBlocks(copy);
+    return copy.blocks;
   }
 
   function renderWeekLook() {
