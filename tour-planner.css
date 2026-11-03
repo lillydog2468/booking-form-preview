@@ -603,7 +603,18 @@
       background: var(--bg); color: var(--text-secondary); margin-right: 6px;
     }
     .stop-notes { color: var(--text-secondary); font-size: 13px; }
-    .stop-actions { display: flex; flex-direction: column; gap: 4px; }
+    .stop-actions { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+    .stop-delete {
+      border: 0; background: none; color: var(--text-secondary); opacity: .4;
+      width: 16px; height: 16px; min-width: 16px; min-height: 16px; padding: 0;
+      font-size: 12px; line-height: 1; cursor: pointer; flex: 0 0 auto;
+    }
+    .stop-delete:hover { opacity: 1; color: var(--danger); }
+    .stop-time-line {
+      display: inline-flex; align-items: center; gap: 2px;
+      max-width: 100%; min-width: 0;
+    }
+    .stop-time-line .stop-delete { flex: 0 0 auto; }
     .handover-box { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     .handover-box select, .handover-box input[type="text"] { width: 100%; }
     .handover-summary { font-weight: 800; font-size: 15px; }
@@ -637,6 +648,7 @@
     .handover-bar {
       display: flex; align-items: flex-start; gap: 6px; min-width: 0;
     }
+    .handover-bar > .stop-delete { align-self: center; flex: 0 0 auto; }
     .handover-toggle {
       flex: 0 0 auto;
       min-width: 44px; min-height: 44px;
