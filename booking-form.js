@@ -9787,10 +9787,69 @@
     return totals;
   }
 
+  function tableYearKey(year) {
+    return year == null || year === '' ? 'none' : String(year);
+  }
+  function readTableYearOpenMap() {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage.getItem) return {};
+      const raw = JSON.parse(localStorage.getItem('booking_table_year_open') || '{}');
+      return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    } catch (_) { return {}; }
+  }
+  function tableYearOpenDefault(year) {
+    const n = Number(year);
+    if (!Number.isFinite(n)) return false;
+    return n === new Date().getFullYear();
+  }
+  function tableYearIsOpen(year) {
+    const map = readTableYearOpenMap();
+    const key = tableYearKey(year);
+    if (Object.prototype.hasOwnProperty.call(map, key)) return !!map[key];
+    return tableYearOpenDefault(year);
+  }
+  function setTableYearOpen(year, open) {
+    const map = readTableYearOpenMap();
+    map[tableYearKey(year)] = !!open;
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.setItem) {
+        localStorage.setItem('booking_table_year_open', JSON.stringify(map));
+      }
+    } catch (_) { /* ignore */ }
+  }
+  function yearFromTableKey(yearKey) {
+    if (yearKey == null || yearKey === '' || yearKey === 'none') return null;
+    const n = Number(yearKey);
+    return Number.isFinite(n) ? n : null;
+  }
+  function repaintTable() {
+    renderTable(tableShownRecords || allBookings || []);
+  }
+  function toggleTableYear(yearKey) {
+    const year = yearFromTableKey(yearKey);
+    setTableYearOpen(year, !tableYearIsOpen(year));
+    repaintTable();
+  }
+  function setAllTableYearsOpen(open) {
+    const map = readTableYearOpenMap();
+    const seen = {};
+    (tableShownRecords || allBookings || []).forEach(record => {
+      seen[tableYearKey(bookingYear(record))] = true;
+    });
+    Object.keys(seen).forEach(key => { map[key] = !!open; });
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.setItem) {
+        localStorage.setItem('booking_table_year_open', JSON.stringify(map));
+      }
+    } catch (_) { /* ignore */ }
+    repaintTable();
+  }
+
   function tableYearHeaderRow(year, rows, columns) {
     const totals = tableYearTotals(rows);
     const bandCls = yearBandClass(year);
     const label = year == null ? 'No year' : String(year);
+    const open = tableYearIsOpen(year);
     const figures = {
       no_people: String(totals.people),
       other_hotel_nights: String(totals.nights),
@@ -9804,7 +9863,9 @@
       const figure = figures[col.key] || '';
       const yearHere = index === yearAt;
       const bits = [];
-      if (yearHere) bits.push('<span class="table-year-label">' + escapeHtml(label) + '</span>');
+      if (yearHere) {
+        bits.push('<span class="table-year-name"><span class="table-year-toggle" aria-hidden="true">' + (open ? '▾' : '▸') + '</span><span class="table-year-label">' + escapeHtml(label) + '</span></span>');
+      }
       if (figure) bits.push('<span class="year-total-figure">' + figure + '</span>');
       const cls = [];
       if (figure && col.type === 'num') cls.push('num');
@@ -9813,10 +9874,13 @@
       const classAttr = cls.length ? ' class="' + cls.join(' ') + '"' : '';
       return '<td' + classAttr + ' data-table-col="' + escapeHtml(col.key) + '"' + (size ? ' style="' + size + '"' : '') + '>' + bits.join('') + '</td>';
     }).join('');
-    return '<tr class="table-year-header ' + bandCls + '" role="row">' + cells + '</tr>';
+    const key = escapeHtml(tableYearKey(year));
+    return '<tr class="table-year-header ' + bandCls + (open ? ' is-open' : ' is-closed') + '" data-year-key="' + key + '" role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '" aria-label="' + escapeHtml((open ? 'Hide ' : 'Show ') + label) + '" onclick="toggleTableYear(this.getAttribute(\'data-year-key\'))" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleTableYear(this.getAttribute(\'data-year-key\'))}">' + cells + '</tr>';
   }
 
+  let tableShownRecords = null;
   function renderTable(records) {
+    tableShownRecords = records || [];
     updateColumnLockLabel();
     if (tableColumnMenuOpen) renderColumnMenu();
     renderTableHead();
@@ -9828,6 +9892,8 @@
     if (!sortedRecords.length) {
       body.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;color:var(--text-secondary);">No bookings to display</td></tr>`;
       el('tableCount').textContent = '0 bookings';
+      const emptyFolds = el('tableYearFolds');
+      if (emptyFolds) emptyFolds.hidden = true;
       return;
     }
 
@@ -9845,6 +9911,7 @@
     });
 
     for (const group of yearGroups) {
+      const yearOpen = tableYearIsOpen(group.year);
       parts.push(tableYearHeaderRow(group.year, group.rows, activeColumns));
       for (const r of group.rows) {
       const bandCls = yearBandClass(group.year);
@@ -9855,7 +9922,7 @@
         ? (activeColumns.some(col => col.key === 'group_name') ? 'group_name' : (activeColumns[0] && activeColumns[0].key))
         : '';
       parts.push(
-        `<tr class="${bandCls}${cancelled ? ' cancelled' : ''}" onclick="tableRowClick(${r.id})">` +
+        `<tr class="${bandCls}${cancelled ? ' cancelled' : ''}" data-year-key="${escapeHtml(tableYearKey(group.year))}"${yearOpen ? '' : ' hidden'} onclick="tableRowClick(${r.id})">` +
         activeColumns.map((col) => {
           let val = r[col.key];
           if (col.key === 'extra_notes') {
@@ -9909,6 +9976,8 @@
 
     body.innerHTML = parts.join('');
     el('tableCount').textContent = sortedRecords.length + ' booking' + (sortedRecords.length !== 1 ? 's' : '');
+    const folds = el('tableYearFolds');
+    if (folds) folds.hidden = yearGroups.length < 1;
   }
 
   function onTableHeaderDragStart(event, sourceKey) {

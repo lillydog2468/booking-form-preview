@@ -300,7 +300,11 @@
       </div>
       <div class="table-footer" id="tableFooter">
         <span id="tableCount">0 bookings</span>
-        <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>Click a row to open it in the form.</p></div></details>
+        <span class="table-year-folds" id="tableYearFolds" hidden>
+          <button type="button" class="table-year-fold" onclick="setAllTableYearsOpen(true)">Open all</button>
+          <button type="button" class="table-year-fold" onclick="setAllTableYearsOpen(false)">Close all</button>
+        </span>
+        <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>Click a row to open it in the form. Tap a year to show or hide that year’s bookings. The totals stay.</p></div></details>
       </div>
     </div>
 

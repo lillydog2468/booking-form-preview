@@ -651,8 +651,40 @@
       background: var(--year-band-bg-hover, var(--accent-soft));
     }
     .data-table tbody tr.table-year-header {
-      cursor: default;
+      cursor: pointer;
     }
+    .data-table tbody tr.table-year-header .table-year-name {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .table-year-toggle {
+      flex: 0 0 auto;
+      width: 0.9em;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: none;
+      line-height: 1;
+    }
+    .table-year-folds {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 10px;
+    }
+    .table-year-fold {
+      border: 0;
+      background: none;
+      color: var(--text-secondary);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 0 4px;
+      cursor: pointer;
+    }
+    .table-year-fold:hover { color: var(--text); }
     .data-table tbody tr.table-year-header td {
       position: sticky;
       top: 38px;
