@@ -5282,7 +5282,87 @@
   function findPragueEndStop(day, hotel, kind) {
     return (day && day.blocks || []).find(stop => stop && stopHasHotel(stop, hotel, kind)) || null;
   }
-  /** First-day Prague pick-ups at 08:00, last-day Prague drop-offs at 18:00. A press puts dismissed ones back. */
+  function praguePickupSchedule(stop) {
+    if (!stop || !Array.isArray(stop.praguePickups)) return '';
+    return stop.praguePickups.map(row => {
+      const time = String(row && row.time || '').trim();
+      const hotel = String(row && row.hotel || '').trim();
+      const who = String(row && row.guests || '').trim();
+      return [time, hotel].filter(Boolean).join(' ') + (who ? (' · ' + who) : '');
+    }).map(line => line.trim()).filter(Boolean).join(' · ');
+  }
+  function pragueHotelAddress(name, places) {
+    const place = catalogueHotel(name, places);
+    const known = typeof knownTourHotelAddress === 'function' ? knownTourHotelAddress(name) : '';
+    return (place && String(place.address || '').trim()) || known || '';
+  }
+  function isSeparatePraguePickup(stop, groups) {
+    if (!stop || stop.type !== 'handover' || stop.handoverKind === 'dropoff') return false;
+    if (stop.placeKind === 'airport' || stop.placeKind === 'note') return false;
+    if (Array.isArray(stop.praguePickups) && stop.praguePickups.length) return false;
+    if (stop.autoStop === 'prague-pickup') return true;
+    return (groups || []).some(group => stopHasHotel(stop, group.hotel, 'pickup'));
+  }
+  function combinedPraguePickupStop(groups, places, existingId) {
+    const rows = (groups || []).map((group, index) => {
+      const guests = guestListLabel(group.guests);
+      return {
+        hotel: group.hotel,
+        time: addMinutes('08:00', index * 5),
+        address: pragueHotelAddress(group.hotel, places),
+        guestIds: (group.guests || []).map(guest => guest && (guest.id || guest.memberId)).filter(id => id != null && String(id) !== '').map(id => String(id)),
+        guests,
+      };
+    });
+    const schedule = rows.map(row => [row.time, row.hotel].filter(Boolean).join(' ') + (row.guests ? (' · ' + row.guests) : '')).join(' · ');
+    const notes = rows.map(row => row.time + ' ' + row.hotel + (row.address ? (' — ' + row.address) : '')).join('\n');
+    const guestIds = [];
+    rows.forEach(row => row.guestIds.forEach(id => { if (guestIds.indexOf(id) < 0) guestIds.push(id); }));
+    const first = rows[0] || { hotel: '', address: '' };
+    return {
+      id: existingId || uid('s'),
+      type: 'handover',
+      handoverKind: 'pickup',
+      time: rows[0] ? rows[0].time : '08:00',
+      timeApprox: false,
+      placeKind: 'hotel',
+      hotelName: first.hotel,
+      address: first.address || '',
+      placeId: '',
+      placeNote: '',
+      guestIds,
+      flightArrivalTime: '',
+      title: 'Pick-up · ' + schedule,
+      notes,
+      period: 'Morning',
+      messageSent: false,
+      booked: false,
+      travelMinutes: null,
+      autoStop: 'prague-pickup',
+      praguePickups: rows.map(row => ({ hotel: row.hotel, time: row.time, address: row.address, guestIds: row.guestIds.slice(), guests: row.guests })),
+    };
+  }
+  /** One day-one pick-up listing every Prague hotel, five minutes apart. Replaces the older one-stop-per-hotel rows. */
+  function placeCombinedPraguePickup(day, groups, places) {
+    if (!day || !groups || !groups.length) return 0;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
+    groups.forEach(group => forgetDismissedHotelStop(day, group.hotel, 'pickup'));
+    const existing = day.blocks.find(stop => stop && Array.isArray(stop.praguePickups) && stop.praguePickups.length && stop.handoverKind !== 'dropoff');
+    const keptId = existing && existing.id;
+    day.blocks = day.blocks.filter(stop => {
+      if (existing && stop === existing) return false;
+      return !isSeparatePraguePickup(stop, groups);
+    });
+    const stop = combinedPraguePickupStop(groups, places, keptId);
+    if (existing) {
+      stop.messageSent = !!existing.messageSent;
+      stop.booked = !!existing.booked;
+    }
+    day.blocks.unshift(stop);
+    sortDayBlocks(day);
+    return 1;
+  }
+  /** Last-day Prague drop-offs at 18:00. A press puts dismissed ones back. */
   function placePragueEnds(day, groups, kind, time, places) {
     if (!day || !groups || !groups.length) return 0;
     if (!Array.isArray(day.blocks)) day.blocks = [];
@@ -5328,7 +5408,7 @@
     const guests = plannerGuestList(plan, booking);
     const pickups = pragueEndGroups(guests, plan, 'pickup', firstIso);
     const dropoffs = pragueEndGroups(guests, plan, 'dropoff', lastIso);
-    return placePragueEnds(firstDay, pickups, 'pickup', '08:00', places)
+    return placeCombinedPraguePickup(firstDay, pickups, places)
       + placePragueEnds(lastDay, dropoffs, 'dropoff', '18:00', places);
   }
   function addPraguePickupsAndDropoffs() {
@@ -5792,6 +5872,11 @@
 
   function refreshHandoverTitle(stop) {
     if (!stop || stop.type !== 'handover') return;
+    const schedule = praguePickupSchedule(stop);
+    if (schedule) {
+      stop.title = 'Pick-up · ' + schedule;
+      return;
+    }
     const flight = String(stop.flightInfo || '').trim();
     const label = handoverLabel(stop);
     stop.title = flight ? (label + ' · ' + flight) : label;
@@ -6159,6 +6244,8 @@
   function handoverCompactLine(stop) {
     const HS = window.HandoverStops;
     const kind = HS ? HS.kindLabel(stop.handoverKind) : (stop.handoverKind === 'dropoff' ? 'Drop-off' : 'Pick-up');
+    const schedule = praguePickupSchedule(stop);
+    if (schedule) return [kind, schedule].filter(Boolean).join(' · ');
     const time = String(stop.time || '').trim() || 'No time';
     const place = HS ? HS.placeLabel(stop) : '';
     const names = HS ? HS.peopleNames(stop.guestIds, (state.plan && state.plan.guests) || []) : [];
@@ -6187,17 +6274,30 @@
     return `<button type="button" class="btn btn-outline btn-sm navigate-stop" data-navigate="1" data-navigate-scheme="${escapeHtml(urls.scheme)}" data-navigate-https="${escapeHtml(urls.https)}">Navigate</button>`;
   }
 
+  function routeQueryText(address, name) {
+    const street = String(address || '').trim();
+    if (street) return street;
+    const hotel = String(name || '').trim();
+    if (!hotel) return '';
+    if (/prague|praha/i.test(hotel)) return hotel;
+    return hotel + ', Prague';
+  }
+
   function routePointForStop(stop) {
     if (!stop || !isRealBlock(stop)) return '';
-    const address = String(stop.address || '').trim();
-    if (address) return address;
     let name = String(stop.hotelName || '').trim();
     if (!name) {
       name = String(stop.title || '').split('·')[0].replace(/pick-up|drop-off/ig, '').trim();
     }
-    if (!name) return '';
-    if (/prague|praha/i.test(name)) return name;
-    return name + ', Prague';
+    return routeQueryText(stop.address, name);
+  }
+
+  function routePointsForStop(stop) {
+    if (stop && Array.isArray(stop.praguePickups) && stop.praguePickups.length) {
+      return stop.praguePickups.map(row => routeQueryText(row && row.address, row && row.hotel)).filter(Boolean);
+    }
+    const one = routePointForStop(stop);
+    return one ? [one] : [];
   }
 
   function dayRouteStops(day, kind) {
@@ -6228,7 +6328,10 @@
   }
 
   function pragueRouteLinkHtml(day, kind) {
-    const points = dayRouteStops(day, kind).map(routePointForStop).filter(Boolean);
+    const points = [];
+    dayRouteStops(day, kind).forEach(stop => {
+      routePointsForStop(stop).forEach(point => points.push(point));
+    });
     const href = googleMapsDirectionsUrl(points);
     if (!href) return '';
     return `<a class="prague-route-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">Open in Maps</a>`;
