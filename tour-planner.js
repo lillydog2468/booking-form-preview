@@ -5432,7 +5432,7 @@
     if (touched) sortDayBlocks(day);
     return touched;
   }
-  function placeCombinedPraguePickup(day, groups, places) {
+  function placeCombinedPraguePickup(day, groups, places, missingNote) {
     if (!day || !groups || !groups.length) return 0;
     if (!Array.isArray(day.blocks)) day.blocks = [];
     groups.forEach(group => forgetDismissedHotelStop(day, group.hotel, 'pickup'));
@@ -5443,6 +5443,7 @@
       return !isSeparatePraguePickup(stop, groups);
     });
     const stop = combinedPraguePickupStop(groups, places, keptId);
+    stop.missingPragueNote = missingNote || '';
     if (existing) {
       stop.messageSent = !!existing.messageSent;
       stop.booked = !!existing.booked;
@@ -5500,8 +5501,27 @@
     const pickups = pragueEndGroups(guests, plan, 'pickup', firstIso);
     const dropoffs = pragueEndGroups(guests, plan, 'dropoff', lastIso);
     const missing = pragueMissingNote(guests, firstIso);
-    return placeDayOnePickups(firstDay, pickups, places, missing)
+    const kept = (plan.days || []).map(day => ({
+      day,
+      stops: (day && day.blocks || []).filter(stop => stop && stop.type !== 'handover'),
+    }));
+    const added = placeCombinedPraguePickup(firstDay, pickups, places, missing)
       + placePragueEnds(lastDay, dropoffs, 'dropoff', '18:00', places);
+    kept.forEach(row => {
+      if (!row.day) return;
+      if (!Array.isArray(row.day.blocks)) row.day.blocks = [];
+      const ids = new Set(row.day.blocks.map(stop => stop && stop.id).filter(Boolean));
+      row.stops.forEach(stop => {
+        if (stop.id && ids.has(stop.id)) return;
+        if (!stop.id && row.day.blocks.indexOf(stop) >= 0) return;
+        row.day.blocks.push(stop);
+      });
+    });
+    if (added) {
+      if (firstDay) sortDayBlocks(firstDay);
+      if (lastDay && lastDay !== firstDay) sortDayBlocks(lastDay);
+    }
+    return added;
   }
   function addPraguePickupsAndDropoffs() {
     if (!state.plan || !Array.isArray(state.plan.days) || !state.plan.days.length) {
@@ -6463,10 +6483,28 @@
     }).join('');
   }
 
+  function pragueDayHasCombinedRoute(day, kind) {
+    const auto = kind === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+    let separate = 0;
+    let combined = false;
+    (day && day.blocks || []).forEach(stop => {
+      if (!stop) return;
+      const rows = Array.isArray(stop.praguePickups) ? stop.praguePickups.length : 0;
+      const dropoff = stop.handoverKind === 'dropoff';
+      if (rows && (kind === 'dropoff' ? dropoff : !dropoff)) combined = true;
+      if (stop.autoStop === auto && !rows) separate += 1;
+    });
+    return combined || separate >= 2;
+  }
+
   function pragueRouteLinkHtml(day, kind) {
-    const href = pragueMapsForDay(day, kind).combined;
+    const maps = pragueMapsForDay(day, kind);
+    const href = maps.combined;
     if (!href) return '';
-    return `<a class="prague-route-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">Open in Maps (all hotels)</a>`;
+    const label = (maps.individuals.length >= 2 || pragueDayHasCombinedRoute(day, kind))
+      ? 'Open in Maps (all hotels)'
+      : 'Open in Maps';
+    return `<a class="prague-route-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">${label}</a>`;
   }
 
   function planDayIsEdge(day, plan, edge) {
@@ -6507,14 +6545,14 @@
     if (!day || !plan || !stop) return '';
     const flags = shown || {};
     const bits = [];
-    if (!flags.pickup && planDayIsEdge(day, plan, 'first') && stopStartsRoute(day, stop, 'pickup')) {
+    if (!flags.pickup && (planDayIsEdge(day, plan, 'first') || pragueDayHasCombinedRoute(day, 'pickup')) && stopStartsRoute(day, stop, 'pickup')) {
       const link = pragueRouteLinkHtml(day, 'pickup');
       if (link) {
         bits.push(link);
         flags.pickup = true;
       }
     }
-    if (!flags.dropoff && planDayIsEdge(day, plan, 'last') && stopStartsRoute(day, stop, 'dropoff')) {
+    if (!flags.dropoff && (planDayIsEdge(day, plan, 'last') || pragueDayHasCombinedRoute(day, 'dropoff')) && stopStartsRoute(day, stop, 'dropoff')) {
       const link = pragueRouteLinkHtml(day, 'dropoff');
       if (link) {
         bits.push(link);
@@ -6551,11 +6589,33 @@
   function stopDeleteButton(id) {
     return `<button type="button" class="stop-delete" data-remove-stop="${escapeHtml(id)}" aria-label="Remove stop">×</button>`;
   }
+  function pragueCardAllHotelsHtml(stop) {
+    if (!stop) return '';
+    const kind = stop.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
+    let day = null;
+    if (typeof state !== 'undefined' && state && state.plan && stop.id && typeof dayContainingStop === 'function') {
+      day = dayContainingStop(stop.id);
+    }
+    const source = day || { blocks: [stop] };
+    if (!pragueDayHasCombinedRoute(source, kind)) return '';
+    const link = pragueRouteLinkHtml(source, kind);
+    if (!link || link.indexOf('Open in Maps (all hotels)') < 0) return '';
+    if (day) {
+      const first = dayRouteStops(day, kind).find(row => {
+        if (!row) return false;
+        const auto = kind === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+        return row.autoStop === auto || (Array.isArray(row.praguePickups) && row.praguePickups.length) || row.type === 'handover' || row.type === 'pickup';
+      });
+      if (first && String(first.id) !== String(stop.id)) return '';
+    }
+    return `<p class="prague-route">${link}</p>`;
+  }
+
   function renderHandoverBar(stop) {
     const remove = stop && stop.id ? stopDeleteButton(stop.id) : '';
     const missing = String(stop && stop.missingPragueNote || '').trim();
     const note = missing ? `<p class="prague-missing-note">${escapeHtml(missing)}</p>` : '';
-    return `<div class="handover-bar">${renderHandoverToggle(stop)}${renderStopCue(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p>${remove}</div>${pragueHotelLinesHtml(stop)}${note}${handoverMapLinks(stop)}`;
+    return `<div class="handover-bar">${renderHandoverToggle(stop)}${renderStopCue(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p>${remove}</div>${pragueHotelLinesHtml(stop)}${pragueCardAllHotelsHtml(stop)}${note}${handoverMapLinks(stop)}`;
   }
 
   function renderHandoverTerminal(stop) {

@@ -304,7 +304,10 @@
       if (stopKind !== kind) return false;
       if (stop.placeKind && stop.placeKind !== 'hotel' && stop.placeKind !== 'note') return false;
       var existing = hotelKey(stop.hotelName || stop.address || stop.placeNote || '');
-      return existing === key;
+      if (existing === key) return true;
+      return Array.isArray(stop.praguePickups) && stop.praguePickups.some(function (row) {
+        return hotelKey(row && (row.hotel || row.address)) === key;
+      });
     });
   }
 
