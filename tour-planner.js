@@ -4513,54 +4513,87 @@
         name,
         firstName,
         lastName,
-        email: extra.email || '',
-        personId: extra.personId || '',
+        email: String(m.email || extra.email || '').trim(),
+        personId: String(m.person_id || m.personId || extra.personId || '').trim(),
+        memberId: m.id != null && String(m.id) !== '' ? String(m.id) : '',
+        prague_stays: Array.isArray(m.prague_stays) ? m.prague_stays : (Array.isArray(m.pragueStays) ? m.pragueStays : []),
       });
     });
     return rows;
   }
 
+  function guestCarriesMoney(guest) {
+    if (!guest) return false;
+    if (Number(guest.lent) > 0) return true;
+    if ((guest.loans || []).some(row => row && Number(row.amount) > 0)) return true;
+    if ((guest.repayments || []).some(row => row && Number(row.amount) > 0)) return true;
+    return false;
+  }
+
+  function guestRowIsBlank(guest) {
+    return !String(guest && guest.name || '').trim() && !String(guest && guest.email || '').trim();
+  }
+
   /**
-   * Keep this plan's guest ids and replace names from the booking's members.
+   * Match the open booking's members onto the plan. Names follow the members.
+   * Loans and repayments stay on the planner guest. A blank row with no money is dropped.
    * A failed member load does not call this, so a blank fetch cannot wipe names.
-   * Extra planner guests past the member list stay, so pick-up links keep their ids.
    */
   function syncPlanGuestNames(existingGuests, members, extras) {
     const incoming = memberNameRows(members, extras);
-    const guests = (existingGuests || []).map(g => ensureGuestDebt(g));
-    const named = guests.some(g => String(g.name || '').trim());
+    const finish = (guest) => (typeof ensureGuestDebt === 'function' ? ensureGuestDebt(guest) : guest);
+    const guests = (existingGuests || []).map(finish);
     if (!incoming.length) {
-      if (!guests.length) return [{ id: uid('g'), name: '' }];
+      if (!guests.length) return [finish({ id: uid('g'), name: '' })];
       return guests;
     }
-    if (!guests.length || !named) {
-      return incoming.map(src => ensureGuestDebt({
-        id: uid('g'),
-        name: src.name,
-        email: src.email,
-        personId: src.personId,
-        lent: 0,
-        repayments: [],
-      }));
+    const used = new Set();
+    function matchIndex(src) {
+      const nameKey = hotelNameKey(src.name);
+      let idx = -1;
+      if (src.memberId) {
+        idx = guests.findIndex((guest, i) => !used.has(i) && guest && String(guest.memberId) === String(src.memberId));
+      }
+      if (idx < 0 && src.personId) {
+        idx = guests.findIndex((guest, i) => !used.has(i) && guest && String(guest.personId) === String(src.personId));
+      }
+      if (idx < 0 && nameKey) {
+        idx = guests.findIndex((guest, i) => !used.has(i) && guest && hotelNameKey(guest.name) === nameKey);
+      }
+      return idx;
     }
-    incoming.forEach((src, i) => {
-      if (!guests[i]) {
-        guests.push(ensureGuestDebt({
-          id: uid('g'),
-          name: src.name,
-          email: src.email,
-          personId: src.personId,
-          lent: 0,
-          repayments: [],
-        }));
+    const next = [];
+    incoming.forEach(src => {
+      const idx = matchIndex(src);
+      if (idx >= 0) {
+        used.add(idx);
+        const guest = guests[idx];
+        guest.name = src.name;
+        if (src.memberId) guest.memberId = src.memberId;
+        if (!String(guest.email || '').trim() && src.email) guest.email = src.email;
+        if (!String(guest.personId || '').trim() && src.personId) guest.personId = src.personId;
+        guest.prague_stays = src.prague_stays || [];
+        next.push(guest);
         return;
       }
-      const g = guests[i];
-      g.name = src.name;
-      if (!String(g.email || '').trim() && src.email) g.email = src.email;
-      if (!String(g.personId || '').trim() && src.personId) g.personId = src.personId;
+      next.push(finish({
+        id: uid('g'),
+        name: src.name,
+        email: src.email || '',
+        personId: src.personId || '',
+        memberId: src.memberId || '',
+        prague_stays: src.prague_stays || [],
+        lent: 0,
+        repayments: [],
+        loans: [],
+      }));
     });
-    return guests;
+    guests.forEach((guest, i) => {
+      if (used.has(i)) return;
+      if (guestRowIsBlank(guest) && !guestCarriesMoney(guest)) return;
+      next.push(guest);
+    });
+    return next.length ? next : [finish({ id: uid('g'), name: '' })];
   }
 
   /** Hotel-stay people lists also read bookingDetails.guests, so those names follow the members too. */
@@ -4735,17 +4768,17 @@
         flight_note: guest.flight_note || guest.flightNote || '',
       }));
     }
-    return members.map((member, index) => {
+    return members.map(member => {
       const name = [member.first_name, member.last_name].map(part => String(part || '').trim()).filter(Boolean).join(' ');
       if (!name) return null;
-      const match = planGuests.find(guest => hotelNameKey(guest.name) === hotelNameKey(name)) || planGuests[index];
+      const match = planGuests.find(guest => hotelNameKey(guest.name) === hotelNameKey(name)) || null;
       const flights = memberFlightFields(member, match);
       return {
         id: match && match.id,
         name,
         personId: member.person_id || member.personId || (match && match.personId) || '',
         memberId: member.id,
-        prague_stays: member.prague_stays || member.pragueStays || (match && (match.prague_stays || match.pragueStays)) || [],
+        prague_stays: Array.isArray(member.prague_stays) ? member.prague_stays : (Array.isArray(member.pragueStays) ? member.pragueStays : []),
         arrival_flight: flights.arrival_flight,
         arrival_date: flights.arrival_date,
         arrival_time: flights.arrival_time,
@@ -5270,14 +5303,17 @@
       const hotel = kind === 'dropoff' ? pragueHotelAfterTour(guest, dayIso) : pragueHotelBeforeTour(guest, dayIso);
       if (hotel) queue(hotel, guest);
     });
-    if (!groups.length) {
-      const shared = plan && plan.pragueHotel && String(plan.pragueHotel.name || '').trim();
-      if (shared) {
-        queue(shared, null);
-        if (groups[0]) groups[0].guests = (guests || []).filter(guest => guest && (guest.name || guest.id));
-      }
-    }
     return groups;
+  }
+  function pragueMissingNote(guests, dayIso) {
+    const missing = (guests || []).filter(guest => {
+      const name = String(guest && guest.name || '').trim();
+      return name && !pragueHotelBeforeTour(guest, dayIso);
+    });
+    if (!missing.length) return '';
+    const names = missing.map(guest => String(guest.name).trim());
+    const label = names.length === 1 ? '1 guest' : (names.length + ' guests');
+    return label + ' with no Prague hotel yet (' + names.join(', ') + ')';
   }
   function findPragueEndStop(day, hotel, kind) {
     return (day && day.blocks || []).find(stop => stop && stopHasHotel(stop, hotel, kind)) || null;
@@ -5342,7 +5378,59 @@
       praguePickups: rows.map(row => ({ hotel: row.hotel, time: row.time, address: row.address, guestIds: row.guestIds.slice(), guests: row.guests })),
     };
   }
-  /** One day-one pick-up listing every Prague hotel, five minutes apart. Replaces the older one-stop-per-hotel rows. */
+  /** One day-one pick-up per Prague hotel, five minutes apart, in guest order. */
+  function placeDayOnePickups(day, groups, places, missingNote) {
+    if (!day) return 0;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
+    day.blocks = day.blocks.filter(stop => !(stop && Array.isArray(stop.praguePickups) && stop.praguePickups.length && stop.handoverKind !== 'dropoff'));
+    if (!groups || !groups.length) return 0;
+    let touched = 0;
+    const seen = new Set();
+    groups.forEach((group, index) => {
+      const key = hotelNameKey(group.hotel);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      const time = addMinutes('08:00', index * 5);
+      forgetDismissedHotelStop(day, group.hotel, 'pickup');
+      const who = guestListLabel(group.guests);
+      const note = index === 0 ? (missingNote || '') : '';
+      let stop = findPragueEndStop(day, group.hotel, 'pickup');
+      if (!stop) {
+        stop = hotelBookendStop('pickup', { name: group.hotel, guests: group.guests }, places, group.guests);
+        day.blocks.push(stop);
+      }
+      stop.time = time;
+      stop.timeApprox = false;
+      stop.period = pragueEndPeriod(time);
+      stop.autoStop = 'prague-pickup';
+      stop.hotelName = group.hotel;
+      stop.handoverKind = 'pickup';
+      stop.placeKind = 'hotel';
+      stop.type = 'handover';
+      if (!stop.id) stop.id = uid('s');
+      const address = pragueHotelAddress(group.hotel, places);
+      if (address) stop.address = address;
+      stop.missingPragueNote = note;
+      stop.title = 'Pick-up · ' + time + ' ' + group.hotel + (who ? (' · ' + who) : '');
+      touched += 1;
+    });
+    day.blocks = day.blocks.filter(stop => {
+      if (!stop || stop.type !== 'handover' || stop.handoverKind === 'dropoff' || stop.placeKind === 'airport') return true;
+      const key = hotelNameKey(stop.hotelName);
+      if (!key || !seen.has(key)) return stop.autoStop !== 'prague-pickup';
+      return true;
+    });
+    const kept = new Set();
+    day.blocks = day.blocks.filter(stop => {
+      if (!stop || stop.autoStop !== 'prague-pickup') return true;
+      const key = hotelNameKey(stop.hotelName);
+      if (kept.has(key)) return false;
+      kept.add(key);
+      return true;
+    });
+    if (touched) sortDayBlocks(day);
+    return touched;
+  }
   function placeCombinedPraguePickup(day, groups, places) {
     if (!day || !groups || !groups.length) return 0;
     if (!Array.isArray(day.blocks)) day.blocks = [];
@@ -5408,7 +5496,8 @@
     const guests = plannerGuestList(plan, booking);
     const pickups = pragueEndGroups(guests, plan, 'pickup', firstIso);
     const dropoffs = pragueEndGroups(guests, plan, 'dropoff', lastIso);
-    return placeCombinedPraguePickup(firstDay, pickups, places)
+    const missing = pragueMissingNote(guests, firstIso);
+    return placeDayOnePickups(firstDay, pickups, places, missing)
       + placePragueEnds(lastDay, dropoffs, 'dropoff', '18:00', places);
   }
   function addPraguePickupsAndDropoffs() {
@@ -6428,7 +6517,9 @@
   }
   function renderHandoverBar(stop) {
     const remove = stop && stop.id ? stopDeleteButton(stop.id) : '';
-    return `<div class="handover-bar">${renderHandoverToggle(stop)}${renderStopCue(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p>${remove}</div>${handoverMapLinks(stop)}`;
+    const missing = String(stop && stop.missingPragueNote || '').trim();
+    const note = missing ? `<p class="prague-missing-note">${escapeHtml(missing)}</p>` : '';
+    return `<div class="handover-bar">${renderHandoverToggle(stop)}${renderStopCue(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p>${remove}</div>${note}${handoverMapLinks(stop)}`;
   }
 
   function renderHandoverTerminal(stop) {
@@ -8381,6 +8472,7 @@
                 ${removeBtn}
               </div>
             </div>
+            ${String(s.missingPragueNote || '').trim() ? `<p class="prague-missing-note">${escapeHtml(s.missingPragueNote)}</p>` : ''}
             ${handoverMapLinks(s)}
             ${renderRoughHandoverDetails(s)}
           </div>

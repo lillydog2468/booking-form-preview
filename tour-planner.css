@@ -669,6 +669,12 @@
       font-size: 14px; font-weight: 800; line-height: 1.3;
       overflow-wrap: anywhere;
     }
+    .prague-missing-note {
+      margin: 2px 0 0;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
     .prague-route { margin: 2px 0 6px; }
     .prague-route-link {
       font-size: 12px;
