@@ -6388,11 +6388,23 @@
 
   function routeQueryText(address, name) {
     const street = String(address || '').trim();
-    if (street) return street;
+    if (street) return cleanMapsQuery(street);
     const hotel = String(name || '').trim();
     if (!hotel) return '';
-    if (/prague|praha/i.test(hotel)) return hotel;
-    return hotel + ', Prague';
+    if (/prague|praha/i.test(hotel)) return cleanMapsQuery(hotel);
+    return cleanMapsQuery(hotel + ', Prague');
+  }
+
+  /** A short geocodable query. Drop the district after an en dash and the postcode. */
+  function cleanMapsQuery(text) {
+    let query = String(text || '').trim();
+    if (!query) return '';
+    query = query.split(/\s+[–—]\s+/)[0].trim();
+    query = query.replace(/,?\s*\b\d{3}\s?\d{2}\b/g, '');
+    query = query.replace(/,\s*prague(?:\s*\d+)?\b/ig, ', Praha');
+    query = query.replace(/,\s*praha(?:\s*\d+)?\b/ig, ', Praha');
+    query = query.replace(/\s{2,}/g, ' ').replace(/\s+,/g, ',').replace(/,\s*,/g, ',').replace(/,\s*$/g, '').trim();
+    return query;
   }
 
   function routePointForStop(stop) {
@@ -6437,13 +6449,21 @@
   }
 
   function googleMapsDirectionsUrl(points) {
-    const list = (points || []).map(point => String(point || '').trim()).filter(Boolean);
+    const list = (points || []).map(point => cleanMapsQuery(point)).filter(Boolean);
     if (!list.length) return '';
-    // Path form, not ?destination=&waypoints=. The Google Maps app on iPhone
-    // and iPad keeps only the destination and drops waypoints. An empty origin
-    // (the double slash) starts the route from the current location.
-    const path = list.map(point => encodeURIComponent(point)).join('/');
-    return 'https://www.google.com/maps/dir//' + path + '?travelmode=driving';
+    // /maps/dir//stop1/stop2 leaves the start blank. Maps then asks for a
+    // starting point and does not draw the route; the phone app keeps the
+    // first stop. The first hotel is the origin and the last is the destination.
+    // A middle hotel is a waypoint. Two hotels need no waypoint parameter.
+    const destination = encodeURIComponent(list[list.length - 1]);
+    if (list.length === 1) {
+      return 'https://www.google.com/maps/dir/?api=1&destination=' + destination + '&travelmode=driving';
+    }
+    let url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(list[0])
+      + '&destination=' + destination + '&travelmode=driving';
+    const middles = list.slice(1, -1);
+    if (middles.length) url += '&waypoints=' + middles.map(encodeURIComponent).join('|');
+    return url;
   }
 
   function pragueRoutePoints(day, kind) {
