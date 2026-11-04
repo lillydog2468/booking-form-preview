@@ -163,6 +163,14 @@
     });
   }
 
+  function phoneNavChoices(day) {
+    var route = root.PragueRoute;
+    if (!route || typeof route.phoneChoices !== 'function') return [];
+    return ['pickup', 'dropoff'].map(function (kind) {
+      return route.phoneChoices(day, kind);
+    }).filter(function (choice) { return choice && choice.both; });
+  }
+
   function weekModel(plan, options) {
     var source = plan || {};
     var opts = options || {};
@@ -186,6 +194,7 @@
         heading: (weekday(date) + ' ' + dayMon(date)).trim(),
         today: !!today && date === today,
         stops: stopRows(stored, guests, opts.places || []),
+        nav: phoneNavChoices(stored),
       };
     });
     if (days.length && !days.some(function (day) { return day.today; })) days[0].open = true;
@@ -211,6 +220,12 @@
     model.days.forEach(function (day) {
       lines.push(day.heading);
       if (!day.stops.length) lines.push('Nothing on this day');
+      (day.nav || []).forEach(function (choice) {
+        if (choice.both) lines.push('Navigate to both: ' + choice.both);
+        if (choice.all) lines.push('Navigate to all hotels: ' + choice.all);
+        lines.push('Navigate to each hotel separately');
+        choice.each.forEach(function (row) { lines.push('  ' + row.label + ': ' + row.href); });
+      });
       day.stops.forEach(function (stop) {
         var when = stop.time || 'Time not set';
         lines.push(when + '  ' + stop.cue.emoji + ' ' + stop.place);
@@ -222,8 +237,26 @@
     return lines.join('\n').replace(/\n+$/, '\n');
   }
 
+  function navLink(href, label, which) {
+    return '<a class="prague-route-link phone-hotel-nav-link" data-phone-nav="' + esc(which) + '" href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
+  }
+
+  function mapsHtml(day) {
+    return (day.nav || []).map(function (choice) {
+      var links = '';
+      if (choice.both) links += navLink(choice.both, 'Navigate to both', 'both');
+      if (choice.all) links += navLink(choice.all, 'Navigate to all hotels', 'all');
+      var each = (choice.each || []).map(function (row) {
+        return navLink(row.href, row.label, 'one');
+      }).join('');
+      var heading = each ? '<p class="phone-hotel-nav-label">Navigate to each hotel separately</p>' + each : '';
+      return '<nav class="phone-hotel-nav" aria-label="Hotel navigation">' + links + heading + '</nav>';
+    }).join('');
+  }
+
   function asHtml(model) {
     var days = model.days.map(function (day) {
+      var maps = mapsHtml(day);
       var stops = day.stops.length
         ? day.stops.map(function (stop) {
           var guests = stop.guests.length ? '<br>' + esc(stop.guests.join(', ')) : '';
@@ -231,7 +264,7 @@
           return '<p><b>' + esc(stop.time || 'Time not set') + '</b> ' + esc(stop.cue.emoji + ' ' + stop.place) + guests + map + '</p>';
         }).join('')
         : '<p>Nothing on this day</p>';
-      return '<h2>' + esc(day.heading) + '</h2>' + stops;
+      return '<h2>' + esc(day.heading) + '</h2>' + maps + stops;
     }).join('');
     return '<h1>' + esc(model.title) + '</h1>' + days;
   }
@@ -252,6 +285,7 @@
   function render(plan, options) {
     var note = build(plan, options);
     var days = note.days.map(function (day) {
+      var maps = mapsHtml(day);
       var stops = day.stops.length
         ? day.stops.map(function (stop) {
           var guests = stop.guests.length ? '<p class="phone-week-guests">' + esc(stop.guests.join(', ')) + '</p>' : '';
@@ -261,7 +295,7 @@
           return '<article class="phone-week-stop stop-tone-' + esc(stop.cue.id) + '"><p class="phone-week-time">' + esc(stop.time || '—') + '</p><p class="phone-week-place"><span class="stop-cue type-icon-badge type-' + esc(stop.cue.tone) + '">' + esc(stop.cue.emoji) + ' <span class="stop-cue-label">' + esc(stop.cue.label) + '</span></span> ' + esc(stop.place) + '</p>' + guests + map + '</article>';
         }).join('')
         : '<p class="phone-week-empty">Nothing on this day</p>';
-      return '<details class="phone-week-day' + (day.today ? ' is-today' : '') + '"' + (day.open ? ' open' : '') + '><summary>' + esc(day.heading) + (day.today ? ' · Today' : '') + '</summary>' + stops + '</details>';
+      return '<details class="phone-week-day' + (day.today ? ' is-today' : '') + '"' + (day.open ? ' open' : '') + '><summary>' + esc(day.heading) + (day.today ? ' · Today' : '') + '</summary>' + maps + stops + '</details>';
     }).join('');
     return '<div class="phone-week"><p class="phone-week-title">' + esc(note.title) + '</p><div class="phone-week-actions"><button type="button" class="phone-week-send" id="btnSendWeekToNotes">Send week to Notes</button><button type="button" class="phone-week-copy" id="btnCopyWeek">Copy</button></div>' + days + '</div>';
   }

@@ -6451,19 +6451,67 @@
   function googleMapsDirectionsUrl(points) {
     const list = (points || []).map(point => cleanMapsQuery(point)).filter(Boolean);
     if (!list.length) return '';
-    // /maps/dir//stop1/stop2 leaves the start blank. Maps then asks for a
-    // starting point and does not draw the route; the phone app keeps the
-    // first stop. The first hotel is the origin and the last is the destination.
-    // A middle hotel is a waypoint. Two hotels need no waypoint parameter.
+    // No origin: Maps starts at the user's current location. The last hotel is
+    // the destination and every earlier hotel is a waypoint, in order. A path
+    // that begins "My Location" is searched as a place name, and /dir// asks
+    // for a starting point instead of using the device location.
     const destination = encodeURIComponent(list[list.length - 1]);
-    if (list.length === 1) {
-      return 'https://www.google.com/maps/dir/?api=1&destination=' + destination + '&travelmode=driving';
-    }
-    let url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(list[0])
-      + '&destination=' + destination + '&travelmode=driving';
-    const middles = list.slice(1, -1);
-    if (middles.length) url += '&waypoints=' + middles.map(encodeURIComponent).join('|');
+    let url = 'https://www.google.com/maps/dir/?api=1&destination=' + destination + '&travelmode=driving';
+    const earlier = list.slice(0, -1);
+    if (earlier.length) url += '&waypoints=' + earlier.map(encodeURIComponent).join('|');
     return url;
+  }
+
+  function pragueHotelPoints(day, kind) {
+    const want = kind === 'dropoff' ? 'dropoff' : 'pickup';
+    const auto = want === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+    const stops = (day && day.blocks || []).filter(stop => {
+      if (!isRealBlock(stop)) return false;
+      const dropoff = stop.handoverKind === 'dropoff';
+      if (Array.isArray(stop.praguePickups) && stop.praguePickups.length) return want === 'dropoff' ? dropoff : !dropoff;
+      return stop.autoStop === auto;
+    });
+    const copy = { blocks: stops.slice() };
+    sortDayBlocks(copy);
+    const points = [];
+    copy.blocks.forEach(stop => {
+      routePointsForStop(stop).forEach(point => { if (point && points.indexOf(point) < 0) points.push(point); });
+    });
+    return points;
+  }
+
+  function praguePhoneChoices(day, kind) {
+    const points = pragueHotelPoints(day, kind);
+    if (!points.length) return null;
+    return {
+      both: points.length >= 2 ? googleMapsDirectionsUrl(points.slice(0, 2)) : '',
+      all: googleMapsDirectionsUrl(points),
+      each: points.map(point => ({ label: point, href: googleMapsDirectionsUrl([point]) })),
+    };
+  }
+
+  // One builder for the detailed planner, the rough plan, and the phone week.
+  window.PragueRoute = {
+    directionsUrl: googleMapsDirectionsUrl,
+    dayHref: function (day, kind) {
+      const want = kind === 'dropoff' ? 'dropoff' : 'pickup';
+      if (!pragueDayHasCombinedRoute(day, want)) return '';
+      return pragueMapsForDay(day, want).combined || '';
+    },
+    phoneChoices: praguePhoneChoices,
+  };
+
+  function pragueChoicesNavHtml(day) {
+    const choices = ['pickup', 'dropoff'].map(kind => praguePhoneChoices(day, kind)).filter(choice => choice && choice.both);
+    const link = (href, label, which) => `<a class="prague-route-link phone-hotel-nav-link" data-phone-nav="${escapeHtml(which)}" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+    return choices.map(choice => {
+      let links = '';
+      if (choice.both) links += link(choice.both, 'Navigate to both', 'both');
+      if (choice.all) links += link(choice.all, 'Navigate to all hotels', 'all');
+      const each = (choice.each || []).map(row => link(row.href, row.label, 'one')).join('');
+      const heading = each ? `<p class="phone-hotel-nav-label">Navigate to each hotel separately</p>${each}` : '';
+      return `<li class="rough-hotel-nav"><nav class="phone-hotel-nav" aria-label="Hotel navigation">${links}${heading}</nav></li>`;
+    }).join('');
   }
 
   function pragueRoutePoints(day, kind) {
@@ -8550,7 +8598,6 @@
     const isToday = day.date && day.date === today;
     const stops = (day.blocks || []).filter(s => isRealBlock(s) && (s.type === 'handover' || String(s.title || '').trim()));
     const placeStops = stops.filter(s => !isRoughSystemStop(s));
-    const routeShown = {};
     const rows = stops.map((s, idx) => {
       const system = isRoughSystemStop(s);
       const time = String(s.time || '').trim();
@@ -8571,10 +8618,8 @@
       const markEmpties = planShowsEmptyMarkers(state.plan);
       const noPlace = markEmpties && !system && stopNeedsPlaceLink(s);
       const flagged = notesAreFlagged(s.notes);
-      const route = routeLinkBeforeStop(day, state.plan, s, routeShown);
-      const routeRow = route ? `<li class="prague-route-row">${route}</li>` : '';
       if (s.type === 'handover') {
-        return routeRow + `<li class="rough-stop handover-rough ${stopToneClass(s)}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
+        return `<li class="rough-stop handover-rough ${stopToneClass(s)}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
           <div class="handover-card">
             <div class="handover-bar">
               <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag up or down, or to another day">⠿</button>
@@ -8595,7 +8640,7 @@
           </div>
         </li>`;
       }
-      return routeRow + `<li class="rough-stop ${stopToneClass(s)}${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
+      return `<li class="rough-stop ${stopToneClass(s)}${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
         <div class="rough-stop-top">
           <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag up or down, or to another day">⠿</button>
           ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
@@ -8642,7 +8687,7 @@
             </button>
           </div>
         </div>
-        <ul class="rough-day-list">${dayIndex === 0 ? '<li class="rough-hotel-add"><button type="button" class="btn btn-outline btn-sm" data-add-hotel-handover="pickup">Add hotel pick-ups</button></li>' : ''}${rows}${dayIndex === ((state.plan && state.plan.days || []).length - 1) ? '<li class="rough-hotel-add"><button type="button" class="btn btn-outline btn-sm" data-add-hotel-handover="dropoff">Add hotel drop-offs</button></li>' : ''}</ul>
+        <ul class="rough-day-list">${pragueChoicesNavHtml(day)}${dayIndex === 0 ? '<li class="rough-hotel-add"><button type="button" class="btn btn-outline btn-sm" data-add-hotel-handover="pickup">Add hotel pick-ups</button></li>' : ''}${rows}${dayIndex === ((state.plan && state.plan.days || []).length - 1) ? '<li class="rough-hotel-add"><button type="button" class="btn btn-outline btn-sm" data-add-hotel-handover="dropoff">Add hotel drop-offs</button></li>' : ''}</ul>
         ${empty}
       </section>
     `;
@@ -13331,8 +13376,76 @@ function renderDayTabs() {
     };
     state.mainTab = 'visits';
   }
+  function installMapsFixture() {
+    const obecni = 'U Obecního dvora 7, Prague 1 – Staré Město, 110 00';
+    const atlantic = 'Hotel Atlantic, Na Poříčí 9, Prague 1';
+    state.catalogue = [];
+    state.bookings = [];
+    state.people = [];
+    state.liveBookings = false;
+    state.planViewOnly = true;
+    state.mainTab = 'planner';
+    state.phoneWeek = false;
+    state.selectedDay = 0;
+    state.viewPref = 'detailed';
+    state.bookingKey = '310';
+    state.plan = {
+      bookingKey: '310',
+      groupName: 'Booking 310',
+      arrivalDate: '2027-05-10',
+      departureDate: '2027-05-14',
+      guests: [
+        { id: 'g1', name: 'Jennifer Lindsay' },
+        { id: 'g2', name: 'Gail DeLuca' },
+        { id: 'g3', name: 'Kay Enk' },
+        { id: 'g4', name: 'Maggie Cox' },
+      ],
+      days: [
+        {
+          date: '2027-05-10',
+          blocks: [{
+            id: 'combo',
+            type: 'handover',
+            handoverKind: 'pickup',
+            placeKind: 'hotel',
+            autoStop: 'prague-pickup',
+            time: '08:00',
+            hotelName: obecni,
+            address: '',
+            title: 'Pick-up · U Obecního dvora',
+            praguePickups: [
+              { time: '08:00', hotel: obecni, address: '' },
+              { time: '08:05', hotel: atlantic, address: '' },
+            ],
+          }, { id: 'pass', type: 'factory', time: '11:00', title: 'Pass' }],
+        },
+        { date: '2027-05-11', blocks: [{ id: 'gb', type: 'factory', time: '09:30', title: 'GB Beads' }] },
+        { date: '2027-05-12', blocks: [] },
+        { date: '2027-05-13', blocks: [] },
+        {
+          date: '2027-05-14',
+          blocks: [{
+            id: 'drop',
+            type: 'handover',
+            handoverKind: 'dropoff',
+            placeKind: 'hotel',
+            autoStop: 'prague-dropoff',
+            time: '18:00',
+            hotelName: obecni,
+            title: 'Drop-off · U Obecního dvora',
+          }],
+        },
+      ],
+    };
+    state.plans = { '310': state.plan };
+    normalizePlan(state.plan);
+    window.__mapsFixture = { state: state, render: render };
+  }
   state.cloudAllowed = false;
-  if (/(?:\?|&)visitsFixture=1(?:&|$)/.test(location.search)) {
+  if (/(?:\?|&)mapsFixture=1(?:&|$)/.test(location.search)) {
+    installMapsFixture();
+    render();
+  } else if (/(?:\?|&)visitsFixture=1(?:&|$)/.test(location.search)) {
     installVisitsFixture();
     render();
   } else {

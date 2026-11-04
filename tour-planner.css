@@ -175,6 +175,13 @@
     .phone-week-guests { margin: 0 0 8px; font-size: 16px; color: var(--text-secondary); }
     .phone-week-nav { display: inline-flex; align-items: center; text-decoration: none; background: #111827; color: #fff; padding: 8px 14px; }
     .phone-week-empty, .phone-week-wait { padding: 12px 14px; font-size: 16px; }
+    .phone-week .prague-route { margin: 4px 14px 8px; }
+    .rough-hotel-nav { list-style: none; margin: 0 0 8px; }
+    .rough-day .phone-hotel-nav { margin: 4px 8px 8px; }
+    .rough-day .phone-hotel-nav-link { font-size: 14px; font-weight: 650; }
+    .phone-hotel-nav { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 14px 12px; }
+    .phone-hotel-nav-label { margin: 4px 0 0; font-size: 14px; font-weight: 650; color: var(--text-secondary); }
+    .phone-week .phone-hotel-nav-link { font-size: 16px; font-weight: 650; }
     .topbar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
     .topbar h1 { font-size: 16px; font-weight: 800; letter-spacing: -.3px; }
     .topbar .sub { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
