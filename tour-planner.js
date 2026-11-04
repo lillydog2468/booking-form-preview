@@ -6294,7 +6294,15 @@
 
   function routePointsForStop(stop) {
     if (stop && Array.isArray(stop.praguePickups) && stop.praguePickups.length) {
-      return stop.praguePickups.map(row => routeQueryText(row && row.address, row && row.hotel)).filter(Boolean);
+      const rows = stop.praguePickups.slice().sort((a, b) => {
+        const am = timeToMinutes(a && a.time);
+        const bm = timeToMinutes(b && b.time);
+        if (am == null && bm == null) return 0;
+        if (am == null) return 1;
+        if (bm == null) return -1;
+        return am - bm;
+      });
+      return rows.map(row => routeQueryText(row && row.address, row && row.hotel)).filter(Boolean);
     }
     const one = routePointForStop(stop);
     return one ? [one] : [];
@@ -6319,12 +6327,11 @@
   function googleMapsDirectionsUrl(points) {
     const list = (points || []).map(point => String(point || '').trim()).filter(Boolean);
     if (!list.length) return '';
-    const destination = encodeURIComponent(list[list.length - 1]);
-    let url = 'https://www.google.com/maps/dir/?api=1&destination=' + destination + '&travelmode=driving';
-    if (list.length > 1) {
-      url += '&waypoints=' + list.slice(0, -1).map(point => encodeURIComponent(point)).join('|');
-    }
-    return url;
+    // Path form, not ?destination=&waypoints=. The Google Maps app on iPhone
+    // and iPad keeps only the destination and drops waypoints. An empty origin
+    // (the double slash) starts the route from the current location.
+    const path = list.map(point => encodeURIComponent(point)).join('/');
+    return 'https://www.google.com/maps/dir//' + path + '?travelmode=driving';
   }
 
   function pragueRouteLinkHtml(day, kind) {
