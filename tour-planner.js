@@ -5411,7 +5411,8 @@
       const address = pragueHotelAddress(group.hotel, places);
       if (address) stop.address = address;
       stop.missingPragueNote = note;
-      stop.title = 'Pick-up · ' + time + ' ' + group.hotel + (who ? (' · ' + who) : '');
+      stop.pragueLine = time + ' ' + group.hotel + (who ? (' – ' + who) : '');
+      stop.title = 'Pick-up · ' + stop.pragueLine;
       touched += 1;
     });
     day.blocks = day.blocks.filter(stop => {
@@ -5457,6 +5458,8 @@
     let touched = 0;
     groups.forEach(group => {
       forgetDismissedHotelStop(day, group.hotel, kind);
+      const who = guestListLabel(group.guests);
+      const line = time + ' ' + group.hotel + (who ? (' – ' + who) : '');
       const existing = findPragueEndStop(day, group.hotel, kind);
       if (existing) {
         existing.time = time;
@@ -5465,11 +5468,9 @@
         if (!existing.id) existing.id = uid('s');
         if (!existing.type) existing.type = 'handover';
         if (!existing.handoverKind) existing.handoverKind = kind === 'dropoff' ? 'dropoff' : 'pickup';
-        if (!String(existing.title || '').trim()) {
-          const who = guestListLabel(group.guests);
-          existing.title = (kind === 'dropoff' ? 'Drop-off' : 'Pick-up') + ' · ' + group.hotel + (who ? (' · ' + who) : '');
-        }
         existing.autoStop = kind === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+        existing.pragueLine = line;
+        existing.title = (kind === 'dropoff' ? 'Drop-off · ' : 'Pick-up · ') + line;
         touched += 1;
         return;
       }
@@ -5477,7 +5478,9 @@
       stop.time = time;
       stop.period = pragueEndPeriod(time);
       stop.autoStop = kind === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+      stop.pragueLine = line;
       if (typeof refreshHandoverTitle === 'function') refreshHandoverTitle(stop);
+      stop.title = (kind === 'dropoff' ? 'Drop-off · ' : 'Pick-up · ') + line;
       if (kind === 'pickup') day.blocks.unshift(stop);
       else day.blocks.push(stop);
       touched += 1;
@@ -6423,14 +6426,47 @@
     return 'https://www.google.com/maps/dir//' + path + '?travelmode=driving';
   }
 
-  function pragueRouteLinkHtml(day, kind) {
+  function pragueRoutePoints(day, kind) {
     const points = [];
     dayRouteStops(day, kind).forEach(stop => {
       routePointsForStop(stop).forEach(point => points.push(point));
     });
-    const href = googleMapsDirectionsUrl(points);
+    return points;
+  }
+
+  function pragueMapsForDay(day, kind) {
+    const points = pragueRoutePoints(day, kind);
+    return {
+      individuals: points.map(point => googleMapsDirectionsUrl([point])).filter(Boolean),
+      combined: googleMapsDirectionsUrl(points),
+    };
+  }
+
+  function pragueHotelMapsLink(point) {
+    const href = googleMapsDirectionsUrl(point ? [point] : []);
     if (!href) return '';
-    return `<a class="prague-route-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">Open in Maps</a>`;
+    return `<a class="prague-hotel-maps" href="${escapeHtml(href)}" target="_blank" rel="noopener">Maps</a>`;
+  }
+
+  function pragueHotelLinesHtml(stop) {
+    if (!stop) return '';
+    const rows = Array.isArray(stop.praguePickups) && stop.praguePickups.length
+      ? stop.praguePickups.map(row => ({
+        text: [row.time, row.hotel].filter(Boolean).join(' ') + (row.guests ? (' – ' + row.guests) : ''),
+        point: routeQueryText(row.address, row.hotel),
+      }))
+      : (stop.pragueLine || stop.autoStop === 'prague-pickup' || stop.autoStop === 'prague-dropoff'
+        ? [{ text: stop.pragueLine || [stop.time, stop.hotelName].filter(Boolean).join(' '), point: routePointForStop(stop) }]
+        : []);
+    return rows.filter(row => row.point).map(row => {
+      return `<p class="prague-hotel-line"><span>${escapeHtml(row.text)}</span> ${pragueHotelMapsLink(row.point)}</p>`;
+    }).join('');
+  }
+
+  function pragueRouteLinkHtml(day, kind) {
+    const href = pragueMapsForDay(day, kind).combined;
+    if (!href) return '';
+    return `<a class="prague-route-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">Open in Maps (all hotels)</a>`;
   }
 
   function planDayIsEdge(day, plan, edge) {
@@ -6519,7 +6555,7 @@
     const remove = stop && stop.id ? stopDeleteButton(stop.id) : '';
     const missing = String(stop && stop.missingPragueNote || '').trim();
     const note = missing ? `<p class="prague-missing-note">${escapeHtml(missing)}</p>` : '';
-    return `<div class="handover-bar">${renderHandoverToggle(stop)}${renderStopCue(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p>${remove}</div>${note}${handoverMapLinks(stop)}`;
+    return `<div class="handover-bar">${renderHandoverToggle(stop)}${renderStopCue(stop)}<p class="handover-oneline">${escapeHtml(handoverCompactLine(stop))}</p>${remove}</div>${pragueHotelLinesHtml(stop)}${note}${handoverMapLinks(stop)}`;
   }
 
   function renderHandoverTerminal(stop) {
@@ -8472,6 +8508,7 @@
                 ${removeBtn}
               </div>
             </div>
+            ${pragueHotelLinesHtml(s)}
             ${String(s.missingPragueNote || '').trim() ? `<p class="prague-missing-note">${escapeHtml(s.missingPragueNote)}</p>` : ''}
             ${handoverMapLinks(s)}
             ${renderRoughHandoverDetails(s)}
