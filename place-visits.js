@@ -257,6 +257,11 @@
         for (var b = 0; b < blocks.length; b++) {
           var stop = blocks[b];
           if (!stop || typeof stop !== 'object') continue;
+          var stopId = stop.id == null ? '' : String(stop.id).trim();
+          var stopTitle = stop.title == null ? '' : String(stop.title).trim();
+          if (!stopTitle && stop.name != null) stopTitle = String(stop.name).trim();
+          var stopType = stop.type == null ? '' : String(stop.type).trim();
+          if (!stopId && !stopTitle && !stopType) continue;
           var matched = placeWanted ? stopMatches(stop, placeId, names) : isListedStop(stop, placeWanted);
           if (matched) matches.push(copyStop(stop, true));
           else if (placeWanted) others.push(copyStop(stop, false));

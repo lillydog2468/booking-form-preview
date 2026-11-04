@@ -375,6 +375,31 @@
     return v != null && String(v).trim() !== '';
   }
 
+  // A plan stop is real only when it has an id, a title, or a type.
+  // A leftover {time, period, travelMode, travelMinutes} is not a stop.
+  function isRealBlock(block) {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) return false;
+    var id = block.id == null ? '' : String(block.id).trim();
+    var title = block.title == null ? '' : String(block.title).trim();
+    if (!title && block.name != null) title = String(block.name).trim();
+    var type = block.type == null ? '' : String(block.type).trim();
+    return !!(id || title || type);
+  }
+
+  function isTravelShell(item) {
+    if (!isObj(item) || isRealBlock(item)) return false;
+    return item.time != null || item.period != null || item.travelMode != null || item.travelMinutes != null;
+  }
+
+  function dropUnrealBlocks(plan) {
+    if (!plan || typeof plan !== 'object' || !Array.isArray(plan.days)) return plan;
+    plan.days.forEach(function (day) {
+      if (!day || !Array.isArray(day.blocks)) return;
+      day.blocks = day.blocks.filter(isRealBlock);
+    });
+    return plan;
+  }
+
   function itemKey(item) {
     if (!isObj(item)) return '';
     if (present(item.id)) return 'id:' + String(item.id).trim();
@@ -513,6 +538,13 @@
     var leftC = cList.filter(function (c) { return !usedC[c.key]; });
     var pairCount = Math.min(leftB.length, leftC.length);
     for (var i = 0; i < pairCount; i++) {
+      var bItem = leftB[i].item;
+      var cItem = leftC[i].item;
+      var bId = isObj(bItem) && present(bItem.id);
+      var cId = isObj(cItem) && present(cItem.id);
+      // Rows with ids already failed the id match above. Gluing them back
+      // together by list position turns a deleted stop into a blank block.
+      if (bId || cId || isTravelShell(bItem) || isTravelShell(cItem)) continue;
       paired.push({ b: leftB[i], c: leftC[i] });
       usedB[leftB[i].key] = true;
       usedC[leftC[i].key] = true;
@@ -528,7 +560,11 @@
         var want = itemKey(entry.item);
         if (want) found = sList.find(function (s) { return !s.used && itemKey(s.item) === want; });
       }
-      if (!found) found = sList.find(function (s) { return !s.used && s.index === entry.index; });
+      if (!found && !(isObj(entry.item) && present(entry.item.id))) {
+        found = sList.find(function (s) {
+          return !s.used && s.index === entry.index && !(isObj(s.item) && present(s.item.id));
+        });
+      }
       if (found) found.used = true;
       if (found && found.item == null) return { item: null, nullSlot: true };
       return { item: found ? found.item : null, nullSlot: false };
@@ -551,6 +587,7 @@
       out.push(applyObjectPatch(sItem ? cloneJson(sItem) : {}, pair.b.item, pair.c.item));
     });
     added.forEach(function (cEntry) {
+      if (isTravelShell(cEntry.item)) return;
       var taken = takeServer(cEntry);
       var sItem = taken.item;
       out.push(overlayKnown(sItem ? cloneJson(sItem) : {}, cEntry.item));
@@ -563,7 +600,10 @@
         s.used = true;
         return;
       }
-      if (!baselineRaws[s.raw]) out.push(cloneJson(s.item));
+      if (!baselineRaws[s.raw]) {
+        if (isTravelShell(s.item)) return;
+        out.push(cloneJson(s.item));
+      }
     });
     return out;
   }
@@ -1574,6 +1614,8 @@
     cloneJson: cloneJson,
     sameJson: sameJson,
     applyEditedPatch: applyEditedPatch,
+    isRealBlock: isRealBlock,
+    dropUnrealBlocks: dropUnrealBlocks,
     overlayDetails: overlayDetails,
     guestBeds: guestBeds,
     guestRoomCount: guestRoomCount,

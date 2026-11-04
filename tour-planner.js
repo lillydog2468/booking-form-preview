@@ -899,6 +899,24 @@
     if (albumId) row.albumId = albumId;
     return row;
   }
+  function isRealBlock(block) {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) return false;
+    const id = block.id == null ? '' : String(block.id).trim();
+    let title = block.title == null ? '' : String(block.title).trim();
+    if (!title && block.name != null) title = String(block.name).trim();
+    const type = block.type == null ? '' : String(block.type).trim();
+    return !!(id || title || type);
+  }
+
+  function dropUnrealBlocks(plan) {
+    if (!plan || typeof plan !== 'object' || !Array.isArray(plan.days)) return plan;
+    plan.days.forEach(day => {
+      if (!day || !Array.isArray(day.blocks)) return;
+      day.blocks = day.blocks.filter(isRealBlock);
+    });
+    return plan;
+  }
+
   function ensureStopTicks(s) {
     if (!s) return s;
     if (typeof s.messageSent !== 'boolean') s.messageSent = !!s.messageSent;
@@ -1021,7 +1039,7 @@
     if (!day || typeof day !== 'object' || Array.isArray(day)) return emptyStoredDay(fallback);
     const date = day.date ? String(day.date) : fallback;
     const blocks = Array.isArray(day.blocks)
-      ? day.blocks.filter(s => s && typeof s === 'object')
+      ? day.blocks.filter(isRealBlock)
       : [];
     day.date = date;
     day.blocks = blocks;
@@ -1166,6 +1184,7 @@
     (plan.days || []).forEach((d, dayIndex) => {
       if (!d || typeof d !== 'object') return;
       if (!Array.isArray(d.blocks)) d.blocks = [];
+      d.blocks = d.blocks.filter(isRealBlock);
       // Drop default “Leave hotel at 09:00” skeletons on Day 2+ (kept only if Keith linked a place or wrote notes).
       if (dayIndex > 0) {
         d.blocks = d.blocks.filter(s => s && !isDefaultLeaveHotelStop(s));
@@ -1300,9 +1319,22 @@
   function minutesForTravelMode(mode) {
     return mode === 'traffic' ? PRAGUE_TRAFFIC_MIN : PRAGUE_CLEAR_MIN;
   }
-  function seedTravelMinutes(day, blockIndex) {
-    if (!day || !day.blocks || !day.blocks[blockIndex]) return;
+  function blockIndexForTravel(day, blockIndexOrId) {
+    if (!day || !Array.isArray(day.blocks)) return -1;
+    if (typeof blockIndexOrId === 'number') {
+      if (blockIndexOrId < 0 || blockIndexOrId >= day.blocks.length) return -1;
+      return isRealBlock(day.blocks[blockIndexOrId]) ? blockIndexOrId : -1;
+    }
+    const id = blockIndexOrId == null ? '' : String(blockIndexOrId).trim();
+    if (!id) return -1;
+    return day.blocks.findIndex(block => isRealBlock(block) && String(block.id) === id);
+  }
+
+  function seedTravelMinutes(day, blockIndexOrId) {
+    const blockIndex = blockIndexForTravel(day, blockIndexOrId);
+    if (blockIndex < 0) return;
     const cur = ensureStopTicks(day.blocks[blockIndex]);
+    if (!isRealBlock(cur)) return;
     if (isPragueBeadingTravel(day, blockIndex, cur)) {
       if (cur.travelMinutes != null) {
         // Stock clear (85) with no explicit mode: prefer weekday-morning traffic when the day date says so.
@@ -1711,8 +1743,8 @@
   function refreshArrivalDayTravelLabels() {
     const day = arrivalDay(state.plan);
     if (!day || !Array.isArray(day.blocks)) return;
-    day.blocks.forEach((s, i) => {
-      if (!s || typeof s !== 'object') return;
+    day.blocks.filter(isRealBlock).forEach(s => {
+      const i = day.blocks.indexOf(s);
       ensureStopTicks(s);
       if (!isPragueBeadingTravel(day, i, s)) return;
       const stock = s.travelMinutes === PRAGUE_CLEAR_MIN || s.travelMinutes === PRAGUE_TRAFFIC_MIN || s.travelMinutes == null;
@@ -2028,7 +2060,7 @@
     days.forEach(d => {
       if (!d || typeof d !== 'object') return;
       (d.blocks || []).forEach(b => {
-        if (!b) return;
+        if (!isRealBlock(b)) return;
         score += 5;
         const title = String(b.title || '').trim();
         if (title && !genericTitle.test(title)) score += 25;
@@ -2079,6 +2111,8 @@
     return keep;
   }
   function preferRicherPlan(localPlan, cloudPlan) {
+    dropUnrealBlocks(localPlan);
+    dropUnrealBlocks(cloudPlan);
     if (!cloudPlan) return localPlan || null;
     if (!localPlan) return cloudPlan;
     const localScore = planRichnessScore(localPlan);
@@ -2337,7 +2371,7 @@
 
       const timed = {};
       (day && day.blocks || []).forEach(s => {
-        if (!s) return;
+        if (!isRealBlock(s)) return;
         const title = String(s.title || s.name || 'Stop').trim() || 'Stop';
         if (notesAreFlagged(s.notes)) {
           const flagKind = /\bFLAG\b/i.test(String(s.notes || '')) && /\bGAP\b/i.test(String(s.notes || ''))
@@ -2576,7 +2610,7 @@
 
   function countPlanBlocks(plan) {
     if (!plan || !Array.isArray(plan.days)) return 0;
-    return plan.days.reduce((n, d) => n + ((d && d.blocks) ? d.blocks.length : 0), 0);
+    return plan.days.reduce((n, d) => n + ((d && d.blocks) ? d.blocks.filter(isRealBlock).length : 0), 0);
   }
 
   function legacyRow(key, plan) {
@@ -5201,6 +5235,116 @@
     const want = kind === 'dropoff' ? 'dropoff' : 'pickup';
     return (day && day.dismissedHotelStops || []).some(row => row && hotelNameKey(row.hotel) === key && row.kind === want);
   }
+  function forgetDismissedHotelStop(day, hotelName, kind) {
+    if (!day || !Array.isArray(day.dismissedHotelStops)) return;
+    const key = hotelNameKey(hotelName);
+    const want = kind === 'dropoff' ? 'dropoff' : 'pickup';
+    day.dismissedHotelStops = day.dismissedHotelStops.filter(row => !(row && hotelNameKey(row.hotel) === key && row.kind === want));
+  }
+  function pragueEndPeriod(time) {
+    if (typeof periodForTime === 'function') return periodForTime(time);
+    const hour = Number(String(time || '').split(':')[0]);
+    if (!Number.isFinite(hour)) return 'Untimed';
+    if (hour < 12) return 'Morning';
+    if (hour < 17) return 'Afternoon';
+    return 'Evening';
+  }
+  function pragueEndGroups(guests, plan, kind, dayIso) {
+    const groups = [];
+    function queue(hotel, guest) {
+      const name = String(hotel || '').trim();
+      const key = hotelNameKey(name);
+      if (!key) return;
+      let group = groups.find(row => row.key === key);
+      if (!group) {
+        group = { key, hotel: name, guests: [] };
+        groups.push(group);
+      }
+      if (guest && !group.guests.some(have => {
+        const sameId = guest.id != null && have.id != null && String(guest.id) !== '' && String(have.id) === String(guest.id);
+        const sameName = hotelNameKey(have.name) && hotelNameKey(have.name) === hotelNameKey(guest.name);
+        return sameId || sameName;
+      })) group.guests.push(guest);
+    }
+    (guests || []).forEach(guest => {
+      const hotel = kind === 'dropoff' ? pragueHotelAfterTour(guest, dayIso) : pragueHotelBeforeTour(guest, dayIso);
+      if (hotel) queue(hotel, guest);
+    });
+    if (!groups.length) {
+      const shared = plan && plan.pragueHotel && String(plan.pragueHotel.name || '').trim();
+      if (shared) {
+        queue(shared, null);
+        if (groups[0]) groups[0].guests = (guests || []).filter(guest => guest && (guest.name || guest.id));
+      }
+    }
+    return groups;
+  }
+  function findPragueEndStop(day, hotel, kind) {
+    return (day && day.blocks || []).find(stop => stop && stopHasHotel(stop, hotel, kind)) || null;
+  }
+  /** First-day Prague pick-ups at 08:00, last-day Prague drop-offs at 18:00. A press puts dismissed ones back. */
+  function placePragueEnds(day, groups, kind, time, places) {
+    if (!day || !groups || !groups.length) return 0;
+    if (!Array.isArray(day.blocks)) day.blocks = [];
+    let touched = 0;
+    groups.forEach(group => {
+      forgetDismissedHotelStop(day, group.hotel, kind);
+      const existing = findPragueEndStop(day, group.hotel, kind);
+      if (existing) {
+        existing.time = time;
+        existing.timeApprox = false;
+        existing.period = pragueEndPeriod(time);
+        if (!existing.id) existing.id = uid('s');
+        if (!existing.type) existing.type = 'handover';
+        if (!existing.handoverKind) existing.handoverKind = kind === 'dropoff' ? 'dropoff' : 'pickup';
+        if (!String(existing.title || '').trim()) {
+          const who = guestListLabel(group.guests);
+          existing.title = (kind === 'dropoff' ? 'Drop-off' : 'Pick-up') + ' · ' + group.hotel + (who ? (' · ' + who) : '');
+        }
+        existing.autoStop = kind === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+        touched += 1;
+        return;
+      }
+      const stop = hotelBookendStop(kind, { name: group.hotel, guests: group.guests }, places, group.guests);
+      stop.time = time;
+      stop.period = pragueEndPeriod(time);
+      stop.autoStop = kind === 'dropoff' ? 'prague-dropoff' : 'prague-pickup';
+      if (typeof refreshHandoverTitle === 'function') refreshHandoverTitle(stop);
+      if (kind === 'pickup') day.blocks.unshift(stop);
+      else day.blocks.push(stop);
+      touched += 1;
+    });
+    if (touched) sortDayBlocks(day);
+    return touched;
+  }
+  function addPragueEnds(plan, booking, places) {
+    if (!plan || !Array.isArray(plan.days) || !plan.days.length) return 0;
+    const arrival = String((plan.arrivalDate) || (booking && booking.tour_arrival_date) || '').slice(0, 10);
+    const departure = String((plan.departureDate) || (booking && booking.departure_date) || '').slice(0, 10);
+    const firstIso = arrival || String((plan.days[0] && plan.days[0].date) || '').slice(0, 10);
+    const lastIso = lastTourDayIso(plan, booking) || departure || String((plan.days[plan.days.length - 1] && plan.days[plan.days.length - 1].date) || '').slice(0, 10);
+    const firstDay = plan.days.find(day => day && String(day.date || '').slice(0, 10) === firstIso) || plan.days[0];
+    const lastDay = plan.days.find(day => day && String(day.date || '').slice(0, 10) === lastIso) || plan.days[plan.days.length - 1];
+    const guests = plannerGuestList(plan, booking);
+    const pickups = pragueEndGroups(guests, plan, 'pickup', firstIso);
+    const dropoffs = pragueEndGroups(guests, plan, 'dropoff', lastIso);
+    return placePragueEnds(firstDay, pickups, 'pickup', '08:00', places)
+      + placePragueEnds(lastDay, dropoffs, 'dropoff', '18:00', places);
+  }
+  function addPraguePickupsAndDropoffs() {
+    if (!state.plan || !Array.isArray(state.plan.days) || !state.plan.days.length) {
+      toast('Add tour dates (or days) first');
+      return;
+    }
+    const added = addPragueEnds(state.plan, bookingRecordForPlan(state.plan), state.catalogue);
+    if (!added) {
+      toast('No Prague hotel on this tour');
+      return;
+    }
+    scheduleAutoSave();
+    render();
+    toast('Prague pick-ups and drop-offs added');
+  }
   function rememberDismissedHotelStop(day, stop) {
     if (!day || !stop || stop.type !== 'handover') return;
     const hotel = stop.placeKind === 'airport'
@@ -6043,6 +6187,109 @@
     return `<button type="button" class="btn btn-outline btn-sm navigate-stop" data-navigate="1" data-navigate-scheme="${escapeHtml(urls.scheme)}" data-navigate-https="${escapeHtml(urls.https)}">Navigate</button>`;
   }
 
+  function routePointForStop(stop) {
+    if (!stop || !isRealBlock(stop)) return '';
+    const address = String(stop.address || '').trim();
+    if (address) return address;
+    let name = String(stop.hotelName || '').trim();
+    if (!name) {
+      name = String(stop.title || '').split('·')[0].replace(/pick-up|drop-off/ig, '').trim();
+    }
+    if (!name) return '';
+    if (/prague|praha/i.test(name)) return name;
+    return name + ', Prague';
+  }
+
+  function dayRouteStops(day, kind) {
+    const want = kind === 'dropoff' ? 'dropoff' : 'pickup';
+    const blocks = (day && day.blocks || []).filter(stop => {
+      if (!isRealBlock(stop)) return false;
+      if (stop.type === 'handover') {
+        if (stop.placeKind === 'note') return false;
+        const stopKind = stop.handoverKind === 'dropoff' ? 'dropoff' : 'pickup';
+        return stopKind === want;
+      }
+      return want === 'pickup' && stop.type === 'pickup';
+    });
+    const copy = { blocks: blocks.slice() };
+    sortDayBlocks(copy);
+    return copy.blocks;
+  }
+
+  function googleMapsDirectionsUrl(points) {
+    const list = (points || []).map(point => String(point || '').trim()).filter(Boolean);
+    if (!list.length) return '';
+    const destination = encodeURIComponent(list[list.length - 1]);
+    let url = 'https://www.google.com/maps/dir/?api=1&destination=' + destination + '&travelmode=driving';
+    if (list.length > 1) {
+      url += '&waypoints=' + list.slice(0, -1).map(point => encodeURIComponent(point)).join('|');
+    }
+    return url;
+  }
+
+  function pragueRouteLinkHtml(day, kind) {
+    const points = dayRouteStops(day, kind).map(routePointForStop).filter(Boolean);
+    const href = googleMapsDirectionsUrl(points);
+    if (!href) return '';
+    return `<a class="prague-route-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">Open in Maps</a>`;
+  }
+
+  function planDayIsEdge(day, plan, edge) {
+    if (!day || !plan) return false;
+    const days = plan.days || [];
+    const iso = String(day.date || '').slice(0, 10);
+    if (edge === 'last') {
+      const last = lastTourDayIso(plan, null);
+      if (last && iso) return iso === last;
+      return days.length > 0 && days[days.length - 1] === day;
+    }
+    const arrival = String(plan.arrivalDate || '').slice(0, 10);
+    if (arrival && iso) return iso === arrival;
+    return days.length > 0 && days[0] === day;
+  }
+
+  function pragueRouteForDay(day, plan) {
+    if (!day || !plan) return '';
+    const parts = [];
+    if (planDayIsEdge(day, plan, 'first')) {
+      const link = pragueRouteLinkHtml(day, 'pickup');
+      if (link) parts.push(link);
+    }
+    if (planDayIsEdge(day, plan, 'last')) {
+      const link = pragueRouteLinkHtml(day, 'dropoff');
+      if (link) parts.push(link);
+    }
+    if (!parts.length) return '';
+    return `<p class="prague-route">${parts.join(' ')}</p>`;
+  }
+
+  function stopStartsRoute(day, stop, kind) {
+    const stops = dayRouteStops(day, kind);
+    return !!(stops.length && stop && String(stops[0].id) === String(stop.id));
+  }
+
+  function routeLinkBeforeStop(day, plan, stop, shown) {
+    if (!day || !plan || !stop) return '';
+    const flags = shown || {};
+    const bits = [];
+    if (!flags.pickup && planDayIsEdge(day, plan, 'first') && stopStartsRoute(day, stop, 'pickup')) {
+      const link = pragueRouteLinkHtml(day, 'pickup');
+      if (link) {
+        bits.push(link);
+        flags.pickup = true;
+      }
+    }
+    if (!flags.dropoff && planDayIsEdge(day, plan, 'last') && stopStartsRoute(day, stop, 'dropoff')) {
+      const link = pragueRouteLinkHtml(day, 'dropoff');
+      if (link) {
+        bits.push(link);
+        flags.dropoff = true;
+      }
+    }
+    if (!bits.length) return '';
+    return `<p class="prague-route">${bits.join(' ')}</p>`;
+  }
+
   function handoverMapLinks(stop) {
     const HS = window.HandoverStops;
     if (!stop || stop.placeKind === 'airport') return '';
@@ -6228,7 +6475,7 @@
       if (!stop) return;
       rememberDismissedHotelStop(day, stop);
       rememberDismissedSkeleton(day, stop);
-      day.blocks = day.blocks.filter(s => s && String(s.id) !== String(id));
+      day.blocks = day.blocks.filter(s => isRealBlock(s) && String(s.id) !== String(id));
       found = true;
     });
     if (!found) return;
@@ -7984,8 +8231,9 @@
     sortDayBlocks(day);
     const today = todayISO();
     const isToday = day.date && day.date === today;
-    const stops = (day.blocks || []).filter(s => s && (s.type === 'handover' || String(s.title || '').trim()));
+    const stops = (day.blocks || []).filter(s => isRealBlock(s) && (s.type === 'handover' || String(s.title || '').trim()));
     const placeStops = stops.filter(s => !isRoughSystemStop(s));
+    const routeShown = {};
     const rows = stops.map((s, idx) => {
       const system = isRoughSystemStop(s);
       const time = String(s.time || '').trim();
@@ -8006,8 +8254,10 @@
       const markEmpties = planShowsEmptyMarkers(state.plan);
       const noPlace = markEmpties && !system && stopNeedsPlaceLink(s);
       const flagged = notesAreFlagged(s.notes);
+      const route = routeLinkBeforeStop(day, state.plan, s, routeShown);
+      const routeRow = route ? `<li class="prague-route-row">${route}</li>` : '';
       if (s.type === 'handover') {
-        return `<li class="rough-stop handover-rough ${stopToneClass(s)}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
+        return routeRow + `<li class="rough-stop handover-rough ${stopToneClass(s)}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(handoverCompactLine(s))}">
           <div class="handover-card">
             <div class="handover-bar">
               <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag up or down, or to another day">⠿</button>
@@ -8026,7 +8276,7 @@
           </div>
         </li>`;
       }
-      return `<li class="rough-stop ${stopToneClass(s)}${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
+      return routeRow + `<li class="rough-stop ${stopToneClass(s)}${system ? ' system' : ''}${missingMarkerClass(noPlace || flagged)}" data-rough-stop-id="${escapeHtml(s.id)}" title="${escapeHtml(String(s.title || label))}">
         <div class="rough-stop-top">
           <button type="button" class="rough-drag" aria-label="Drag stop" title="Drag up or down, or to another day">⠿</button>
           ${renderTimeWheelControl(s, 'rough', 'Time for ' + label)}
@@ -8323,7 +8573,7 @@
   function renderDayGlance(day) {
     if (!day) return '';
     sortDayBlocks(day);
-    const stops = (day.blocks || []).filter(s => s && (s.type === 'handover' || String(s.title || '').trim()));
+    const stops = (day.blocks || []).filter(s => isRealBlock(s) && (s.type === 'handover' || String(s.title || '').trim()));
     if (!stops.length) {
       return `<div class="day-glance" aria-label="Day at a glance">
         <div class="day-glance-label">Day at a glance</div>
@@ -8331,6 +8581,7 @@
       </div>`;
     }
     const markEmpties = planShowsEmptyMarkers(state.plan);
+    const routeShown = {};
     const rows = stops.map((s, idx) => {
       const time = String(s.time || '').trim();
       const label = glanceLabelForStop(s);
@@ -8342,7 +8593,9 @@
       const flagged = notesAreFlagged(s.notes);
       const mark = noPlace || flagged;
       const ticks = renderBookingTicksHtml(s, { compact: true });
-      return `<li class="day-glance-item ${stopToneClass(s)}${ticks ? ' has-ticks' : ''}${missingMarkerClass(mark)}" data-glance-index="${idx}" data-glance-stop-id="${escapeHtml(s.id)}">
+      const route = routeLinkBeforeStop(day, state.plan, s, routeShown);
+      const routeRow = route ? `<li class="prague-route-row">${route}</li>` : '';
+      return routeRow + `<li class="day-glance-item ${stopToneClass(s)}${ticks ? ' has-ticks' : ''}${missingMarkerClass(mark)}" data-glance-index="${idx}" data-glance-stop-id="${escapeHtml(s.id)}">
         <span class="day-glance-handle" title="Drag up or down" aria-hidden="true">⠿</span>
         ${renderTimeWheelControl(s, 'glance', 'Time for ' + label)}
         <span class="day-glance-icon" aria-hidden="true">${renderStopCue(s)}</span>
@@ -8387,8 +8640,11 @@
     const blocks = day.blocks || [];
     const markEmpties = planShowsEmptyMarkers(state.plan);
     let html = '<div class="timeline">';
+    const routeShown = {};
     blocks.forEach((s, i) => {
-      if (!s || typeof s !== 'object') return;
+      if (!isRealBlock(s)) return;
+      const route = routeLinkBeforeStop(day, state.plan, s, routeShown);
+      if (route) html += route;
       ensureStopTicks(s);
       if (s.type === 'handover') ensureHandoverFields(s);
       // Fill blank stop address from Places catalogue when linked by placeId
@@ -9809,7 +10065,7 @@ function renderDayTabs() {
 
   function weekLookStops(day) {
     const blocks = (day && Array.isArray(day.blocks) ? day.blocks.slice() : []).filter(s => {
-      if (!s) return false;
+      if (!isRealBlock(s)) return false;
       if (s.type === 'handover') return true;
       return String(s.title || '').trim() || String(s.time || '').trim();
     });
@@ -9837,6 +10093,7 @@ function renderDayTabs() {
       const dateLine = day.date ? formatDateDMY(day.date) : 'Date not set';
       const isToday = !!(day.date && day.date === today);
       const stops = weekLookStops(day);
+      const routeShown = {};
       const rows = stops.length
         ? stops.map(s => {
           const time = String(s.time || '').trim();
@@ -9849,7 +10106,9 @@ function renderDayTabs() {
           const timeLine = isAutoGeneratedStop(s)
             ? `<span class="stop-time-line">${timeHtml}${stopDeleteButton(s.id)}</span>`
             : timeHtml;
-          return `<li class="look-stop ${stopToneClass(s)}">${timeLine}${renderStopCue(s)}<span class="look-name">${escapeHtml(label)}</span></li>`;
+          const route = routeLinkBeforeStop(day, plan, s, routeShown);
+          const routeRow = route ? `<li class="prague-route-row">${route}</li>` : '';
+          return routeRow + `<li class="look-stop ${stopToneClass(s)}">${timeLine}${renderStopCue(s)}<span class="look-name">${escapeHtml(label)}</span></li>`;
         }).join('')
         : '<li class="look-empty">No stops this day</li>';
       const zoomBtn = zoom == null
@@ -10125,6 +10384,7 @@ function renderDayTabs() {
     const options = (opts && typeof opts === 'object') ? opts : {};
     const resetScroll = !!options.resetScroll;
     const uiSnap = resetScroll ? null : captureUiState();
+    dropUnrealBlocks(state.plan);
 
     const view = effectiveView();
     syncViewChrome(view);
@@ -10218,6 +10478,7 @@ function renderDayTabs() {
         ${renderSharedAlbumsEditor()}
         <button type="button" class="btn btn-outline btn-sm" id="btnRebuildDays">Rebuild days from dates</button>
         <button type="button" class="btn btn-outline btn-sm" id="btnSuggestRoughWeek" title="Lay down a draft week from Places and usual tour patterns — you can edit everything after">Suggest a rough week</button>
+        <button type="button" class="btn btn-outline btn-sm btn-quiet" id="btnAddPragueEnds" title="First day: Prague hotel pick-up at 08:00. Last day: Prague hotel drop-off at 18:00. Pressing this puts back any you had removed.">Add Prague pick-ups &amp; drop-offs</button>
         <div class="template-row">
           <button type="button" class="btn btn-outline btn-sm" id="btnDayTrip" title="One day, typically about £85 per person, for 2 guests">Day trip template</button>
           <button type="button" class="btn btn-outline btn-sm" id="btnFourNight" title="Arrive Monday, 4 nights, Park hotel in Smržovka, 3 guests">4-night template</button>
@@ -10263,6 +10524,7 @@ function renderDayTabs() {
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button type="button" class="btn btn-outline btn-sm" id="btnAddDay">Add a day</button>
             <button type="button" class="btn btn-outline btn-sm" id="btnSuggestRoughWeek" title="Lay down a draft week from Places and usual tour patterns — you can edit everything after">Suggest a rough week</button>
+            <button type="button" class="btn btn-outline btn-sm btn-quiet" id="btnAddPragueEnds" title="First day: Prague hotel pick-up at 08:00. Last day: Prague hotel drop-off at 18:00. Pressing this puts back any you had removed.">Add Prague pick-ups &amp; drop-offs</button>
             <button type="button" class="btn btn-outline btn-sm" id="btnGotoPlaces">Manage Places</button>
             <button type="button" class="btn btn-primary btn-sm phone-only" id="btnOpenSheet">Quick add</button>
           </div>
@@ -10849,6 +11111,7 @@ function renderDayTabs() {
     q('#btnAddDay')?.addEventListener('click', addManualDay);
     q('#btnRebuildDays')?.addEventListener('click', rebuildFromDates);
     document.querySelectorAll('#btnSuggestRoughWeek').forEach(btn => btn.addEventListener('click', suggestRoughWeek));
+    document.querySelectorAll('#btnAddPragueEnds').forEach(btn => btn.addEventListener('click', addPraguePickupsAndDropoffs));
     document.querySelectorAll('#btnDayTrip').forEach(btn => btn.addEventListener('click', applyDayTripTemplate));
     document.querySelectorAll('#btnFourNight').forEach(btn => btn.addEventListener('click', applyFourNightTemplate));
     bindBookingDetails();

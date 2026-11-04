@@ -4952,6 +4952,9 @@
       .eq('booking_id', Number(bookingId))
       .maybeSingle();
     if (error) throw error;
+    if (data && data.payload && window.BookingExtras && BookingExtras.dropUnrealBlocks) {
+      BookingExtras.dropUnrealBlocks(data.payload);
+    }
     return data || null;
   }
   async function updatePlanPayload(bookingId, build) {

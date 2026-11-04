@@ -137,9 +137,19 @@
     return mapUrls(stop, places).scheme || '';
   }
 
+  function isRealBlock(block) {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) return false;
+    if (root.BookingExtras && typeof root.BookingExtras.isRealBlock === 'function') return root.BookingExtras.isRealBlock(block);
+    var id = block.id == null ? '' : String(block.id).trim();
+    var title = block.title == null ? '' : String(block.title).trim();
+    if (!title && block.name != null) title = String(block.name).trim();
+    var type = block.type == null ? '' : String(block.type).trim();
+    return !!(id || title || type);
+  }
+
   function stopRows(day, guests, places) {
     return ((day && day.blocks) || []).filter(function (stop) {
-      return stop && (stop.type === 'handover' || String(stop.title || '').trim() || String(stop.time || '').trim() || String(stop.hotelName || '').trim());
+      return isRealBlock(stop) && (stop.type === 'handover' || String(stop.title || '').trim() || String(stop.time || '').trim() || String(stop.hotelName || '').trim());
     }).map(function (stop) {
       var cue = cueFor(stop);
       return {
