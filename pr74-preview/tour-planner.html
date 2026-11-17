@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+  <script>
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Tour planner — Keith Dudman beading tours</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="place-categories.js"></script>
+  <script src="phone-week.js"></script>
+  <script src="global-search.js"></script>
+  <script src="booking-config.js"></script>
+  <script src="booking-format.js"></script>
+  <script src="auth-gate.js"></script>
+  <script src="booking-extras.js"></script>
+  <script src="hotel-directory.js"></script>
+  <script src="handover-stops.js"></script>
+  <script src="place-pin.js"></script>
+  <script src="place-visits.js"></script>
+  
+  <link rel="stylesheet" href="tour-planner.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+</head>
+<body>
+  <div class="wip-banner">Work in progress — day planner for Keith Dudman’s beading tours around Jablonec nad Nisou</div>
+  <header class="topbar">
+      <div class="topbar-inner">
+        <div class="group-heading-bar" id="groupHeadingBar">
+        <p class="group-heading" id="groupHeading" aria-live="polite">Tour group</p>
+        <p class="group-dates" id="groupDates"></p>
+      </div>
+      <div id="plannerNavMount"></div>
+    </div>
+  </header>
+  <div class="planner-options">
+    <nav class="page-links" aria-label="Other pages">
+      <a href="booking-form.html" id="navBookings">Bookings</a>
+      <a href="analytics.html" id="navAnalytics">Analytics</a>
+      <a href="hotels.html" id="navHotels">Hotels</a>
+      <a href="places-stats.html" id="navPlacesStats">Places stats</a>
+    </nav>
+    <div id="globalSearchMount" class="global-search-mount" aria-live="polite"></div>
+    <label class="autosave-toggle" title="Auto-save changes after 2 seconds of inactivity">
+      <input type="checkbox" id="autosaveToggle" onchange="toggleAutoSave(this.checked)">
+      <span class="toggle-track"></span>
+      Auto-save
+    </label>
+    <span class="autosave-status" id="autosaveStatus"></span>
+    <button type="button" class="btn btn-outline btn-sm" id="btnForceCloudSave" title="Upload the plan open on this device to Supabase now">Force save to cloud</button>
+    <button type="button" class="btn btn-outline btn-sm" id="btnExportPlan" title="Download current plan as JSON backup">Export JSON</button>
+    <div class="year-filter-wrap">
+      <label class="field-label" for="yearFilter">Year</label>
+      <select id="yearFilter" class="year-select" aria-label="Filter tours by year"></select>
+    </div>
+    <select id="groupSelect" class="group-select" aria-label="Tour group"></select>
+    <div class="view-nav" role="group" aria-label="How this plan is shown">
+      <button type="button" id="btnLookView">Week</button>
+      <button type="button" id="btnPhoneView">Phone</button>
+      <button type="button" id="btnSimplePlan" title="Big, read-only list of each day's places and times">Simple plan</button>
+      <button type="button" id="btnDetailedView">Detailed</button>
+    </div>
+    <button type="button" class="btn btn-outline btn-sm" id="btnTheme">Theme</button>
+    <details class="page-help">
+      <summary>Help</summary>
+      <div class="page-help-body">
+        <p>The top bar is the tour and the sections. Week, Phone, Simple plan and Detailed change how the open section looks. Drag a stop by the handle to reorder it in the day, or onto another day. Navigate opens directions and leaves the stop editable.</p>
+      </div>
+    </details>
+  </div>
+
+  <main class="wrap" id="app">
+    <p class="muted">Loading…</p>
+  </main>
+
+  <div class="sheet" id="sheet" aria-hidden="true">
+    <div class="sheet-panel" role="dialog" aria-labelledby="sheetTitle">
+      <div class="row-between" style="margin-bottom:10px;">
+        <h2 id="sheetTitle" style="font-size:18px;font-weight:800;">Add a stop</h2>
+        <button type="button" class="btn btn-outline btn-sm" id="sheetClose">Close</button>
+      </div>
+      <div id="sheetBody"></div>
+    </div>
+  </div>
+  <div class="toast-wrap" id="toasts"></div>
+
+<script src="tour-planner.js" defer></script>
+
+</body>
+</html>
