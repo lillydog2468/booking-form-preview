@@ -6502,15 +6502,18 @@
   };
 
   function pragueChoicesNavHtml(day) {
-    const choices = ['pickup', 'dropoff'].map(kind => praguePhoneChoices(day, kind)).filter(choice => choice && choice.both);
     const link = (href, label, which) => `<a class="prague-route-link phone-hotel-nav-link" data-phone-nav="${escapeHtml(which)}" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
-    return choices.map(choice => {
+    return ['pickup', 'dropoff'].map(kind => {
+      const choice = praguePhoneChoices(day, kind);
+      if (!choice || !choice.both) return '';
+      const first = (choice.each && choice.each[0] && choice.each[0].label) || '';
+      const title = kind === 'dropoff' ? 'Prague drop-off' : 'Prague pick-up';
       let links = '';
       if (choice.both) links += link(choice.both, 'Navigate to both', 'both');
       if (choice.all) links += link(choice.all, 'Navigate to all hotels', 'all');
       const each = (choice.each || []).map(row => link(row.href, row.label, 'one')).join('');
-      const heading = each ? `<p class="phone-hotel-nav-label">Navigate to each hotel separately</p>${each}` : '';
-      return `<li class="rough-hotel-nav"><nav class="phone-hotel-nav" aria-label="Hotel navigation">${links}${heading}</nav></li>`;
+      const heading = each ? `<p class="phone-hotel-nav-label">Navigate to each hotel separately</p><div class="prague-nav-each">${each}</div>` : '';
+      return `<li class="rough-hotel-nav"><details class="prague-nav-fold"><summary class="prague-nav-fold-summary"><span class="prague-nav-fold-title">${escapeHtml(title)}</span>${first ? `<span class="prague-nav-fold-place">${escapeHtml(first)}</span>` : ''}</summary><nav class="phone-hotel-nav" aria-label="${escapeHtml(title)}">${links}${heading}</nav></details></li>`;
     }).join('');
   }
 

@@ -571,6 +571,12 @@
       position: sticky;
       top: 0;
       z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      text-align: left;
+      font-family: inherit;
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.04em;
@@ -582,6 +588,7 @@
       background: var(--year-band-header, var(--surface-alt));
       color: var(--year-band-fg, var(--text));
       box-shadow: 0 1px 0 rgba(0,0,0,.04);
+      cursor: pointer;
     }
     .records-year-header:first-child { margin-top: 2px; }
     .record-item.year-band {
@@ -615,17 +622,79 @@
       position: sticky;
       top: 0;
       z-index: 4;
-      gap: 10px;
+      gap: 6px;
       flex-wrap: wrap;
-      padding: 12px 14px;
-      margin: 0 0 18px;
-      border-radius: 12px;
+      padding: 4px 8px;
+      margin: 0 0 8px;
+      border-radius: 10px;
       border: 1px solid var(--year-band-border, var(--border));
       background: var(--year-band-header, var(--surface-alt));
       box-shadow: 0 1px 0 rgba(0,0,0,.04);
     }
     .tab-panel-header.year-band h2 {
       color: var(--year-band-fg, var(--text));
+      font-size: 15px;
+      line-height: 1.2;
+    }
+    .form-header-fold {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .form-header-fold:hover { background: rgba(0,0,0,.06); }
+    .tab-panel-header.is-collapsed {
+      padding: 2px 8px;
+      margin-bottom: 6px;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+    .tab-panel-header.is-collapsed .tab-panel-header-title {
+      flex: 1 1 auto;
+      justify-content: flex-start;
+      flex-wrap: nowrap;
+      gap: 8px;
+      min-width: 0;
+    }
+    .tab-panel-header.is-collapsed h2 {
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tab-panel-header.is-collapsed .year-tint-badge { flex: 0 0 auto; }
+    .tab-panel-header.is-collapsed .form-header-actions,
+    .tab-panel-header.is-collapsed .booking-id-tag,
+    .tab-panel-header.is-collapsed .cancelled-tag,
+    .tab-panel-header.is-collapsed .tour-full-badge,
+    .tab-panel-header.is-collapsed .delay-until {
+      display: none !important;
+    }
+    .tab-panel.layout-mode .layout-zoom-controls {
+      gap: 4px;
+      margin-right: 2px;
+      padding: 2px 4px;
+    }
+    .tab-panel.layout-mode .zoom-range { width: 72px; }
+    .tab-panel.layout-mode .zoom-btn { width: 22px; height: 22px; }
+    .tab-panel.layout-mode .zoom-value { min-width: 34px; font-size: 11px; }
+    .tab-panel.layout-mode .layout-zoom-label { font-size: 10px; letter-spacing: 0; }
+    @media (min-width: 601px) {
+      .tab-panel.layout-mode .form-header-actions { gap: 4px; align-items: center; }
+      .tab-panel.layout-mode .form-header-actions .btn {
+        min-height: 28px;
+        padding: 2px 8px;
+        font-size: 12px;
+      }
     }
     .year-tint-badge {
       display: inline-flex;

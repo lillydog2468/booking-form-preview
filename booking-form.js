@@ -148,6 +148,30 @@
     setLayoutZoom(Math.floor(scale * 20) / 20); // snap to 0.05 steps
   }
 
+  function layoutHeaderCollapsed() {
+    try { return localStorage.getItem('layout_header_open') !== '1'; }
+    catch (err) { return true; }
+  }
+
+  function applyLayoutHeaderFold() {
+    const collapsed = layoutHeaderCollapsed();
+    document.querySelectorAll('.tab-panel-header').forEach(header => {
+      header.classList.toggle('is-collapsed', collapsed);
+      const btn = header.querySelector('.form-header-fold');
+      if (!btn) return;
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      btn.setAttribute('aria-label', collapsed ? 'Show booking actions' : 'Hide booking actions');
+      const caret = btn.querySelector('.form-header-caret');
+      if (caret) caret.textContent = collapsed ? '▸' : '▾';
+    });
+  }
+
+  function toggleLayoutHeader() {
+    try { localStorage.setItem('layout_header_open', layoutHeaderCollapsed() ? '1' : '0'); }
+    catch (err) { /* keep the on-screen fold */ }
+    applyLayoutHeaderFold();
+  }
+
   function applyStoredSidebarState() {
     const sidebar = el('sidebar');
     if (!sidebar) return;
@@ -1561,7 +1585,8 @@
   function buildFormHTML(tabId) {
     const t = tabId;
     return `
-    <div class="tab-panel-header" id="t${t}_formHeader">
+    <div class="tab-panel-header${layoutHeaderCollapsed() ? ' is-collapsed' : ''}" id="t${t}_formHeader">
+      <button type="button" class="form-header-fold" aria-expanded="${layoutHeaderCollapsed() ? 'false' : 'true'}" aria-label="${layoutHeaderCollapsed() ? 'Show booking actions' : 'Hide booking actions'}" onclick="toggleLayoutHeader()"><span class="form-header-caret" aria-hidden="true">${layoutHeaderCollapsed() ? '▸' : '▾'}</span></button>
       <div class="tab-panel-header-title">
         <h2 id="t${t}_formTitle">New Booking</h2>
         <span class="booking-id-tag" id="t${t}_bookingIdTag" hidden></span>
@@ -8728,6 +8753,42 @@
 	    }
 	  }
 
+	  function sidebarYearKey(year) {
+	    return year == null ? 'none' : String(year);
+	  }
+
+	  function readSidebarYearOpenMap() {
+	    try {
+	      if (typeof localStorage === 'undefined' || !localStorage.getItem) return {};
+	      const raw = JSON.parse(localStorage.getItem('booking_sidebar_year_open') || '{}');
+	      return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+	    } catch (_) { return {}; }
+	  }
+
+	  function sidebarYearIsOpen(year) {
+	    const map = readSidebarYearOpenMap();
+	    const key = sidebarYearKey(year);
+	    if (Object.prototype.hasOwnProperty.call(map, key)) return !!map[key];
+	    return true;
+	  }
+
+	  function setSidebarYearOpen(year, open) {
+	    const map = readSidebarYearOpenMap();
+	    map[sidebarYearKey(year)] = !!open;
+	    try {
+	      if (typeof localStorage !== 'undefined' && localStorage.setItem) {
+	        localStorage.setItem('booking_sidebar_year_open', JSON.stringify(map));
+	      }
+	    } catch (_) { /* ignore */ }
+	  }
+
+	  function toggleSidebarYear(yearKey) {
+	    const year = yearKey == null || yearKey === '' || yearKey === 'none' ? null : Number(yearKey);
+	    const normalised = Number.isFinite(year) ? year : null;
+	    setSidebarYearOpen(normalised, !sidebarYearIsOpen(normalised));
+	    applySidebarList();
+	  }
+
 	  function renderRecords(records) {
 	    const list = el('recordsList');
 	    if (!records.length) {
@@ -8750,7 +8811,12 @@
 	      if (yearKey !== lastYearKey) {
 	        lastYearKey = yearKey;
 	        const label = undatedRow ? 'Undated' : String(y);
-	        parts.push(`<div class="records-year-header year-band year-band-${band}" role="presentation">${escapeHtml(label)}</div>`);
+	        const open = sidebarYearIsOpen(y);
+	        const key = sidebarYearKey(y);
+	        parts.push(`<button type="button" class="records-year-header year-band year-band-${band}${open ? ' is-open' : ' is-closed'}" data-year-key="${escapeHtml(key)}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${escapeHtml((open ? 'Hide ' : 'Show ') + label)}" onclick="toggleSidebarYear(this.getAttribute('data-year-key'))"><span class="table-year-toggle" aria-hidden="true">${open ? '▾' : '▸'}</span><span class="records-year-label">${escapeHtml(label)}</span></button>`);
+	        if (!open) continue;
+	      } else if (!sidebarYearIsOpen(y)) {
+	        continue;
 	      }
 	      const cancelled = bookingIsCancelled(r);
 	      const unconfirmed = !cancelled && String(r.status || '').trim().toLowerCase() === 'unconfirmed';
@@ -9076,7 +9142,7 @@
     return pg ? pg[1] : '';
   }
   async function insertMembers(members, bookingId) {
-    if (!members.length) return;
+    if (!members || !members.length) return [];
     let rows = members.map(m => ({
       first_name: m.first_name,
       last_name: m.last_name,
@@ -9097,7 +9163,7 @@
     }));
     const optional = ['deposit_date', 'final_payment_date', 'deposit', 'final_payment', 'email', 'arrival_flight', 'arrival_date', 'arrival_time', 'departure_flight', 'departure_date', 'departure_time', 'flight_note', 'prague_stays'];
     const dropped = new Set();
-    let res = await sb.from('members').insert(rows);
+    let res = await sb.from('members').insert(rows).select('id');
     while (res.error && isMissingColumnError(res.error) && dropped.size < optional.length) {
       const named = missingColumnFromError(res.error);
       const drop = (named && optional.includes(named) && !dropped.has(named))
@@ -9110,9 +9176,52 @@
         delete copy[drop];
         return copy;
       });
-      res = await sb.from('members').insert(rows);
+      res = await sb.from('members').insert(rows).select('id');
     }
     if (res.error) throw res.error;
+    return res.data || [];
+  }
+
+  async function insertFlights(flights, bookingId) {
+    if (!flights || !flights.length) return [];
+    const rows = flights.map(f => ({
+      flight_number: f.flight_number,
+      arrival_date: f.arrival_date,
+      arrival_time: f.arrival_time,
+      departure_date: f.departure_date,
+      departure_time: f.departure_time,
+      comments: f.comments,
+      booking_id: bookingId,
+    }));
+    const res = await sb.from('flights').insert(rows).select('id');
+    if (res.error) throw res.error;
+    return res.data || [];
+  }
+
+  // A save deletes every guest and flight row and inserts them again, so the
+  // database ids change. Write the new ids back in payload order before the
+  // booking list reloads. Blank guest rows are not inserted, so they are skipped.
+  function noteInsertedChildIds(tabId, kind, inserted) {
+    const tabData = tabs.get(tabId);
+    if (!tabData) return;
+    const ids = (Array.isArray(inserted) ? inserted : []).map(row => (
+      row && row.id != null && String(row.id) !== '' ? String(row.id) : ''
+    ));
+    const known = ids.filter(Boolean);
+    if (kind === 'members') {
+      const named = memberRows(tabId).filter(memberRowNamed);
+      named.forEach((row, index) => {
+        if (ids[index]) row.dataset.memberId = ids[index];
+      });
+      tabData.loadedMemberIds = known.slice();
+      return;
+    }
+    const list = document.getElementById('t' + tabId + '_flights_list');
+    const dom = list ? [...list.querySelectorAll('.flight-row')] : [];
+    dom.forEach((row, index) => {
+      if (ids[index]) row.dataset.flightId = ids[index];
+    });
+    tabData.loadedFlightIds = known.slice();
   }
 
   function refreshUneditedBookingTabs() {
@@ -9397,10 +9506,12 @@
         if (error) throw error;
 
         await sb.from('members').delete().eq('booking_id', bid);
-        await insertMembers(_members, bid);
+        const insertedMembers = await insertMembers(_members, bid);
+        noteInsertedChildIds(tabId, 'members', insertedMembers);
 
         await sb.from('flights').delete().eq('booking_id', bid);
-        if (_flights.length) await sb.from('flights').insert(_flights.map(f => ({ flight_number: f.flight_number, arrival_date: f.arrival_date, arrival_time: f.arrival_time, departure_date: f.departure_date, departure_time: f.departure_time, comments: f.comments, booking_id: bid })));
+        const insertedFlights = await insertFlights(_flights, bid);
+        noteInsertedChildIds(tabId, 'flights', insertedFlights);
 
         if (!tabIsDayTrip(tabId)) {
           await sb.from('booking_hotels').delete().eq('booking_id', bid);
@@ -9434,8 +9545,10 @@
         if (delBtn) delBtn.style.display = 'inline-flex';
         applyTabYearTint(tabId);
 
-        await insertMembers(_members, newId);
-        if (_flights.length) await sb.from('flights').insert(_flights.map(f => ({ flight_number: f.flight_number, arrival_date: f.arrival_date, arrival_time: f.arrival_time, departure_date: f.departure_date, departure_time: f.departure_time, comments: f.comments, booking_id: newId })));
+        const insertedMembers = await insertMembers(_members, newId);
+        noteInsertedChildIds(tabId, 'members', insertedMembers);
+        const insertedFlights = await insertFlights(_flights, newId);
+        noteInsertedChildIds(tabId, 'flights', insertedFlights);
         if (_hotel_stays.length && !tabIsDayTrip(tabId)) await sb.from('booking_hotels').insert(_hotel_stays.map(s => ({ hotel_id: s.hotel_id, custom_hotel_name: s.custom_hotel_name, nights: s.nights, sort_order: s.sort_order, booking_id: newId })));
         if (hotelExpensePayload.length) await sb.from('booking_expenses').insert(hotelExpensePayload.map(e => ({ hotel_id: e.hotel_id, custom_hotel_name: e.custom_hotel_name, cost: e.cost, currency: e.currency || 'GBP', comments: e.comments, booking_id: newId })));
         if (_additional_expenses.length) await sb.from('booking_expenses').insert(_additional_expenses.map(e => ({ description: e.description, cost: e.cost, currency: e.currency, comments: e.comments, booking_id: newId })));
