@@ -176,9 +176,36 @@
     .phone-week-nav { display: inline-flex; align-items: center; text-decoration: none; background: #111827; color: #fff; padding: 8px 14px; }
     .phone-week-empty, .phone-week-wait { padding: 12px 14px; font-size: 16px; }
     .phone-week .prague-route { margin: 4px 14px 8px; }
-    .rough-hotel-nav { list-style: none; margin: 0 0 8px; }
-    .rough-day .phone-hotel-nav { margin: 4px 8px 8px; }
-    .rough-day .phone-hotel-nav-link { font-size: 14px; font-weight: 650; }
+    .rough-hotel-nav { list-style: none; margin: 0 0 4px; }
+    .prague-nav-fold { margin: 0 4px; }
+    .prague-nav-fold-summary {
+      display: flex; align-items: baseline; gap: 6px;
+      cursor: pointer; list-style: none;
+      padding: 1px 4px; font-size: 12px; line-height: 1.3; min-width: 0;
+    }
+    .prague-nav-fold-summary::-webkit-details-marker { display: none; }
+    .prague-nav-fold-summary::before { content: '▸'; font-size: 10px; flex: 0 0 auto; }
+    .prague-nav-fold[open] > .prague-nav-fold-summary::before { content: '▾'; }
+    .prague-nav-fold-title { font-weight: 700; flex: 0 0 auto; }
+    .prague-nav-fold-place {
+      font-weight: 500; color: var(--text-secondary);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    }
+    .rough-day .prague-nav-fold .phone-hotel-nav {
+      display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
+      gap: 2px 8px; margin: 2px 4px 4px 16px;
+    }
+    .rough-day .prague-nav-fold .phone-hotel-nav-link { font-size: 12px; font-weight: 600; line-height: 1.25; }
+    .rough-day .prague-nav-fold .phone-hotel-nav-label {
+      flex: 1 0 100%; margin: 2px 0 0; font-size: 11px; font-weight: 650;
+    }
+    .rough-day .prague-nav-fold .prague-nav-each {
+      display: flex; flex-direction: column; gap: 1px; width: 100%; min-width: 0;
+    }
+    .rough-day .prague-nav-fold .prague-nav-each .phone-hotel-nav-link {
+      font-size: 11px; font-weight: 500; max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .phone-hotel-nav { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 14px 12px; }
     .phone-hotel-nav-label { margin: 4px 0 0; font-size: 14px; font-weight: 650; color: var(--text-secondary); }
     .phone-week .phone-hotel-nav-link { font-size: 16px; font-weight: 650; }
