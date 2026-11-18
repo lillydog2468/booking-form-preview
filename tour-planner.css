@@ -2859,9 +2859,12 @@
     .ov-empty { margin: 12px; color: var(--text-secondary); }
     .ov-selected { margin: 4px 0; font-size: 11px; }
     @media (max-width: 760px) {
-      .ov-body { flex-direction: column; }
-      .ov-tray { flex: 1 1 auto; width: 100%; max-height: 240px; }
-      .ov-day { flex-basis: calc(100vw - 78px); min-width: calc(100vw - 78px); }
-      .ov-scroll { scroll-snap-type: x mandatory; }
+      .ov-body { flex-direction: column; align-items: stretch; }
+      .ov-tray { flex: 1 1 auto; width: 100%; max-width: 100%; max-height: 240px; }
+      .ov-scroll {
+        width: 100%; max-width: 100%; align-self: stretch;
+        container-type: inline-size; scroll-snap-type: x mandatory;
+      }
+      .ov-day { flex-basis: calc(100cqw - 60px); min-width: calc(100cqw - 60px); }
       .ov-head, .ov-hours-spacer { height: 108px; }
     }
