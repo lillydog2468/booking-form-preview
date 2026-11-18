@@ -11,6 +11,7 @@
     sample: false,
     plan: null,
     places: [],
+    members: [],
     row: null,
     day: 0,
     phone: false,
@@ -115,11 +116,13 @@
     var days = state.plan.days || [];
     var col = document.querySelector('[data-ov-col="' + (days.length - 1) + '"]');
     if (!col) return;
-    var mark = document.createElement('div');
-    mark.className = 'ov-mark';
-    mark.style.top = ((WeekOverview.END_MIN - WeekOverview.START_MIN) * WeekOverview.PX_PER_MIN - 16) + 'px';
-    mark.textContent = '16:00 Drop-off';
-    col.appendChild(mark);
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ov-mark ov-mark-btn';
+    button.setAttribute('data-ov-marker', 'dropoff');
+    button.style.top = ((WeekOverview.END_MIN - WeekOverview.START_MIN) * WeekOverview.PX_PER_MIN) + 'px';
+    button.textContent = '18:00 Drop-off';
+    col.appendChild(button);
   }
 
   function renderDayChips(days) {
@@ -184,6 +187,50 @@
     });
   }
 
+  function cardFacts(card, place) {
+    if (place) {
+      var tone = placeTone(place);
+      return {
+        icon: tone && tone.cue && tone.cue.emoji ? tone.cue.emoji : '',
+        name: place.nickname || place.name || 'Place',
+        time: '',
+      };
+    }
+    var emoji = card.querySelector('.ov-emoji');
+    var nameEl = card.querySelector('.ov-name');
+    var timeEl = card.querySelector('.ov-time');
+    var name = nameEl ? nameEl.textContent : '';
+    if (emoji && emoji.textContent) name = name.split(emoji.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    var time = timeEl ? timeEl.textContent.replace('≈', '').trim() : '';
+    return { icon: emoji ? emoji.textContent : '', name: name || 'Stop', time: time };
+  }
+
+  function showDragLabel(current, facts, x, y) {
+    var label = current;
+    if (!label && window.DragLabel) label = DragLabel.create(facts);
+    if (label && window.DragLabel) DragLabel.move(label, x, y);
+    return label;
+  }
+
+  function fillDropPreview(snap, facts, time) {
+    snap.className = 'ov-snap ov-drop-preview';
+    snap.replaceChildren();
+    if (facts.icon) {
+      var icon = document.createElement('span');
+      icon.className = 'drag-label-icon';
+      icon.textContent = facts.icon;
+      snap.appendChild(icon);
+    }
+    var name = document.createElement('span');
+    name.className = 'drag-label-name';
+    name.textContent = facts.name || '';
+    snap.appendChild(name);
+    var clock = document.createElement('span');
+    clock.className = 'drag-label-time';
+    clock.textContent = time || facts.time || '';
+    snap.appendChild(clock);
+  }
+
   function bindPlacePointer(card) {
     card.addEventListener('pointerdown', function (event) {
       if (event.button != null && event.button !== 0) return;
@@ -193,6 +240,7 @@
       var origin = { x: event.clientX, y: event.clientY, t: Date.now(), decided: '' };
       var ghost = null;
       var snap = null;
+      var facts = cardFacts(card, state.places.find(function (item) { return item.id === id; }));
       var hold = setTimeout(function () {
         if (origin.decided) return;
         if (Planner2.placeGesture(0, 0, Date.now() - origin.t) === 'drag') beginDrag(origin.x, origin.y);
@@ -203,20 +251,14 @@
         var previous = card.style.pointerEvents;
         card.style.pointerEvents = 'none';
         if (ghost) ghost.style.pointerEvents = 'none';
+        document.querySelectorAll('.drag-label').forEach(function (el) { el.style.pointerEvents = 'none'; });
         var under = document.elementFromPoint(x, y);
         card.style.pointerEvents = previous;
         if (!under || !under.closest) return null;
         return under.closest('[data-ov-col]');
       }
       function follow(x, y) {
-        if (!ghost) {
-          ghost = card.cloneNode(true);
-          ghost.classList.add('ov-ghost');
-          ghost.style.width = Math.max(140, card.offsetWidth) + 'px';
-          document.body.appendChild(ghost);
-        }
-        ghost.style.left = (x + 12) + 'px';
-        ghost.style.top = (y + 12) + 'px';
+        ghost = showDragLabel(ghost, facts, x, y);
         if (snap) { snap.remove(); snap = null; }
         document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
         var col = columnAt(x, y);
@@ -224,9 +266,8 @@
         col.classList.add('is-drop');
         var mins = minutesOn(col, y);
         snap = document.createElement('div');
-        snap.className = 'ov-snap';
         snap.style.top = ((mins - WeekOverview.START_MIN) * WeekOverview.PX_PER_MIN) + 'px';
-        snap.textContent = WeekOverview.formatMinutes(mins);
+        fillDropPreview(snap, facts, WeekOverview.formatMinutes(mins));
         col.appendChild(snap);
       }
       function beginDrag(x, y) {
@@ -241,7 +282,8 @@
         clearTimeout(hold);
         document.body.classList.remove('is-dragging');
         document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
-        if (ghost) ghost.remove();
+        if (window.DragLabel) DragLabel.remove(ghost);
+        else if (ghost) ghost.remove();
         if (snap) snap.remove();
         ghost = null;
         snap = null;
@@ -348,6 +390,7 @@
         var lifted = false;
         var ghost = null;
         var snap = null;
+        var facts = cardFacts(card);
         var finished = false;
         function columnAt(x, y) {
           var hidden = [];
@@ -357,7 +400,7 @@
             el.style.pointerEvents = 'none';
           }
           cover(card);
-          document.querySelectorAll('.ov-ghost').forEach(cover);
+          document.querySelectorAll('.ov-ghost, .drag-label, .ov-drop-preview').forEach(cover);
           var under = null;
           try { under = document.elementFromPoint(x, y); } catch (_) { under = null; }
           hidden.forEach(function (pair) { pair[0].style.pointerEvents = pair[1]; });
@@ -371,7 +414,8 @@
           card.classList.remove('dragging');
           card.style.pointerEvents = '';
           root.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
-          if (ghost) ghost.remove();
+          if (window.DragLabel) DragLabel.remove(ghost);
+          else if (ghost) ghost.remove();
           if (snap) snap.remove();
           ghost = null;
           snap = null;
@@ -379,15 +423,7 @@
         function follow(x, y) {
           card.classList.add('dragging');
           card.style.pointerEvents = 'none';
-          if (!ghost) {
-            ghost = card.cloneNode(true);
-            ghost.classList.add('ov-ghost');
-            ghost.style.pointerEvents = 'none';
-            ghost.style.width = Math.max(120, card.offsetWidth) + 'px';
-            document.body.appendChild(ghost);
-          }
-          ghost.style.left = (x + 12) + 'px';
-          ghost.style.top = (y + 12) + 'px';
+          ghost = showDragLabel(ghost, facts, x, y);
           var scroller = document.getElementById('p2Scroll');
           if (scroller) {
             var rect = scroller.getBoundingClientRect();
@@ -403,9 +439,8 @@
           col.classList.add('is-drop');
           var mins = minutesOn(col, y);
           snap = document.createElement('div');
-          snap.className = 'ov-snap';
           snap.style.top = ((mins - WeekOverview.START_MIN) * WeekOverview.PX_PER_MIN) + 'px';
-          snap.textContent = WeekOverview.formatMinutes(mins);
+          fillDropPreview(snap, facts, WeekOverview.formatMinutes(mins));
           col.appendChild(snap);
         }
         function lift(x, y) {
@@ -463,6 +498,13 @@
         event.stopPropagation();
         var day = mark.closest('[data-ov-day]');
         openPickup(day ? Number(day.getAttribute('data-ov-day')) : 0);
+      });
+    });
+    root.querySelectorAll('[data-ov-marker="dropoff"]').forEach(function (mark) {
+      mark.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        openDropoff();
       });
     });
     root.querySelectorAll('[data-ov-col]').forEach(function (col) {
@@ -528,24 +570,50 @@
     }, { passive: true });
   }
 
-  function pickupNavHtml(rows) {
-    var list = rows || [];
-    if (!list.length) return '<p class="p2-note">No hotel pick-ups on this day.</p>';
+  function mapsPref() {
+    var apple = !(window.PlacePopup && PlacePopup.prefersApple) || PlacePopup.prefersApple();
+    return { prefersApple: apple };
+  }
+
+  function hotelNavHtml(list, towardExit, emptyNote) {
+    var rows = list || [];
+    if (!rows.length) return '<p class="p2-note">' + esc(emptyNote || 'No hotels on this stop.') + '</p>';
+    var ordered = window.PragueExit
+      ? PragueExit.order(rows.map(function (row) { return row.point; }), { towardExit: towardExit !== false })
+      : { points: rows.map(function (row) { return row.point; }), reason: '' };
+    var byPoint = {};
+    rows.forEach(function (row) { byPoint[row.point] = row; });
     var html = '';
-    if (list.length > 1) {
-      var ordered = window.PragueExit
-        ? PragueExit.order(list.map(function (row) { return row.point; }), { towardExit: true })
-        : { points: list.map(function (row) { return row.point; }), reason: '' };
-      var all = Planner2.appleAllHref(ordered.points);
+    if (ordered.points.length > 1) {
+      var all = Planner2.routeHref(ordered.points, mapsPref());
       var note = ordered.reason ? ' title="' + esc(ordered.reason) + '"' : '';
       if (all) html += '<a class="p2-nav" href="' + esc(all) + '"' + note + ' target="_blank" rel="noopener">Navigate to all hotels</a>';
     }
     html += '<p class="p2-nav-label">Navigate to each hotel separately</p>';
-    list.forEach(function (row) {
-      var href = Planner2.appleStopHref(row.point);
+    ordered.points.forEach(function (point) {
+      var row = byPoint[point] || { point: point, label: point };
+      var href = Planner2.routeHref([point], mapsPref());
       var label = [row.time, row.label].filter(Boolean).join(' · ');
       html += '<a class="p2-nav" href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(label || 'Hotel') + '</a>';
     });
+    return html;
+  }
+
+  function pickupNavHtml(rows) {
+    return hotelNavHtml(rows, true, 'No hotel pick-ups on this day.');
+  }
+
+  function dropoffNavHtml(info) {
+    var data = info || { airport: '', hotels: [] };
+    if (data.airport && !(data.hotels || []).length) {
+      var href = Planner2.routeHref([data.airport], mapsPref());
+      return '<a class="p2-nav" href="' + esc(href) + '" target="_blank" rel="noopener">Navigate to the airport</a>';
+    }
+    var html = hotelNavHtml(data.hotels, false, 'No Prague hotel on this drop-off.');
+    if (data.airport) {
+      var airportHref = Planner2.routeHref([data.airport], mapsPref());
+      html += '<a class="p2-nav" href="' + esc(airportHref) + '" target="_blank" rel="noopener">Navigate to the airport</a>';
+    }
     return html;
   }
 
@@ -553,6 +621,12 @@
     var day = (state.plan && state.plan.days || [])[dayIndex] || { blocks: [] };
     $('p2SheetTitle').textContent = 'Prague pick-up';
     $('p2SheetBody').innerHTML = pickupNavHtml(Planner2.pickupRows(day));
+    $('p2Sheet').hidden = false;
+  }
+
+  function openDropoff() {
+    $('p2SheetTitle').textContent = 'Prague drop-off';
+    $('p2SheetBody').innerHTML = dropoffNavHtml(Planner2.dropoffRows(state.plan));
     $('p2Sheet').hidden = false;
   }
 
@@ -608,10 +682,12 @@
     var stop = found.stop;
     state.editingStop = stopId;
     var rows = Planner2.pickupRows({ blocks: [stop] });
+    var drop = stop.handoverKind === 'dropoff' || stop.autoStop === 'prague-dropoff' || stop.autoStop === 'airport-dropoff';
     var place = stop.placeId ? placeForStop(stop) : null;
     var pop = place && window.PlacePopup ? PlacePopup.popupHtml(place) : '';
-    $('p2SheetTitle').textContent = rows.length > 1 ? 'Prague pick-up' : (stop.title || 'Stop');
-    $('p2SheetBody').innerHTML = (rows.length > 1 ? pickupNavHtml(rows) : '')
+    var nav = drop ? dropoffNavHtml(Planner2.dropoffRows(state.plan)) : (rows.length ? pickupNavHtml(rows) : '');
+    $('p2SheetTitle').textContent = drop ? 'Prague drop-off' : (rows.length > 1 ? 'Prague pick-up' : (stop.title || 'Stop'));
+    $('p2SheetBody').innerHTML = nav
       + pop
       + '<label class="p2-field">Time<input type="time" id="p2EditTime" value="' + esc(stop.time || '') + '"></label>'
       + '<label class="p2-field">Name<input type="text" id="p2EditTitle" value="' + esc(stop.title || '') + '"></label>'
@@ -739,6 +815,10 @@
       state.plan = Planner2.emptyPlanFromBooking(booking.data || { id: ONLY, group_name: Planner2.GROUP_NAME });
     }
     if (booking.data && booking.data.group_name) state.plan.groupName = booking.data.group_name;
+    var members = await state.sb.from('members')
+      .select('id, first_name, last_name, prague_stays, arrival_date, departure_date, arrival_flight, departure_flight, arrival_time, departure_time')
+      .eq('booking_id', ONLY);
+    state.members = !members.error && members.data ? members.data : [];
     var places = await state.sb.from('planner_places')
       .select('*')
       .order('sort_order', { ascending: true });
@@ -813,6 +893,35 @@
       placesBtn.addEventListener('click', function () {
         state.tray = !state.tray;
         render();
+      });
+    }
+    var suggest = $('b2Suggest');
+    if (suggest) {
+      suggest.addEventListener('click', function () {
+        if (!window.RoughWeek || !state.plan) return;
+        var busy = RoughWeek.busyDays(state.plan);
+        var replaceBusy = true;
+        if (busy.length) {
+          replaceBusy = window.confirm('Day ' + busy.join(', ') + ' already has several stops.\n\nOK replaces those days with the rough draft.\nCancel only fills the quieter days.');
+        }
+        RoughWeek.apply(state.plan, state.places || [], { replaceBusy: replaceBusy });
+        afterEdit();
+      });
+    }
+    var ends = $('b2PragueEnds');
+    if (ends) {
+      ends.addEventListener('click', function () {
+        if (!window.RoughWeek || !state.plan) return;
+        if (RoughWeek.hasEnds(state.plan)) {
+          var ok = window.confirm('This replaces the Prague pick-ups and drop-offs already on the week. Other appointments stay.');
+          if (!ok) return;
+        }
+        var result = RoughWeek.addEnds(state.plan, state.members || []);
+        if (!result.pickups && !result.dropoffs) {
+          setStatus('No Prague hotel on this booking');
+          return;
+        }
+        afterEdit();
       });
     }
     var search = $('p2Search');

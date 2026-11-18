@@ -1,7 +1,7 @@
 /*
  * Pure rules for the new test planner.
  * It opens one booking only: Jennifer Lindsay, booking 310.
- * Times use the Overview clock (8:00–16:00, 15-minute snap).
+ * Times use the Overview clock (8:00–18:00, 15-minute snap).
  * Nothing here talks to the network.
  */
 (function (root) {
@@ -210,10 +210,68 @@
     return rows;
   }
 
+  var AIRPORT_POINT = 'Václav Havel Airport Prague (PRG), Aviatická, 161 00 Prague 6, Czech Republic';
+
+  function dropoffRows(plan) {
+    var days = plan && plan.days || [];
+    var last = days[days.length - 1] || { blocks: [] };
+    var airport = '';
+    var hotels = [];
+    function addHotel(label, point) {
+      var text = String(point || label || '').trim();
+      if (!text) return;
+      if (hotels.some(function (row) { return row.point === text || row.label === text; })) return;
+      hotels.push({
+        time: '',
+        label: String(label || text).trim(),
+        point: text,
+      });
+    }
+    (last.blocks || []).forEach(function (stop) {
+      if (!stop) return;
+      var drop = stop.handoverKind === 'dropoff' || stop.autoStop === 'prague-dropoff' || stop.autoStop === 'airport-dropoff';
+      if (!drop) return;
+      if (stop.placeKind === 'airport' || stop.autoStop === 'airport-dropoff') {
+        airport = String(stop.address || AIRPORT_POINT).trim() || AIRPORT_POINT;
+        return;
+      }
+      var listed = Array.isArray(stop.praguePickups) ? stop.praguePickups : [];
+      if (listed.length) {
+        listed.forEach(function (row) {
+          addHotel(row && row.hotel, (row && (row.address || row.hotel)) || '');
+        });
+        return;
+      }
+      addHotel(stop.hotelName, stop.address || stop.hotelName);
+    });
+    if (!hotels.length && !airport) {
+      days.forEach(function (day) {
+        pickupRows(day).forEach(function (row) { addHotel(row.label, row.point); });
+      });
+    }
+    return { airport: airport, hotels: hotels };
+  }
+
   function appleStopHref(point) {
     var text = String(point || '').trim();
     if (!text) return '';
     return 'https://maps.apple.com/?daddr=' + encodeURIComponent(text) + '&dirflg=d';
+  }
+
+  function googleAllHref(points) {
+    var list = (points || []).map(function (point) { return String(point || '').trim(); }).filter(Boolean);
+    if (!list.length) return '';
+    var url = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(list[list.length - 1]) + '&travelmode=driving';
+    var earlier = list.slice(0, -1);
+    if (earlier.length) url += '&waypoints=' + earlier.map(function (point) { return encodeURIComponent(point); }).join('|');
+    return url;
+  }
+
+  function routeHref(points, nav) {
+    var apple = true;
+    if (nav && typeof nav.prefersApple === 'boolean') apple = nav.prefersApple;
+    else if (typeof root.PlacePopup !== 'undefined' && root.PlacePopup.prefersApple) apple = root.PlacePopup.prefersApple();
+    return apple ? appleAllHref(points) : googleAllHref(points);
   }
 
   function appleAllHref(points) {
@@ -429,8 +487,11 @@
     primaryType: primaryType,
     placeGesture: placeGesture,
     pickupRows: pickupRows,
+    dropoffRows: dropoffRows,
     appleStopHref: appleStopHref,
     appleAllHref: appleAllHref,
+    googleAllHref: googleAllHref,
+    routeHref: routeHref,
     guestLine: guestLine,
     enumerateDates: enumerateDates,
     emptyPlanFromBooking: emptyPlanFromBooking,

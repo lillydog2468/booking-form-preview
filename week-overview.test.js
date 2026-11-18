@@ -18,7 +18,7 @@ test('a pointer offset snaps to the quarter hour inside the visible day', () => 
   assert.equal(WO.formatMinutes(WO.snapMinutes(9 * 60 + 7)), '09:00');
   assert.equal(WO.formatMinutes(WO.snapMinutes(9 * 60 + 8)), '09:15');
   assert.equal(WO.START_MIN, 8 * 60);
-  assert.equal(WO.END_MIN, 16 * 60);
+  assert.equal(WO.END_MIN, 18 * 60);
   assert.equal(WO.PLACE_FLOOR_MIN, 9 * 60 + 15);
   assert.equal(WO.minutesFromOffset(0, 8 * 60, 1, 16 * 60), 8 * 60);
   assert.equal(WO.formatMinutes(WO.minutesFromOffset(90, 8 * 60, 1, 16 * 60)), '09:30');
@@ -29,7 +29,8 @@ test('a pointer offset snaps to the quarter hour inside the visible day', () => 
   assert.equal(WO.clampPlannedMinutes(8 * 60 + 30, 1), 9 * 60 + 15);
   assert.equal(WO.clampPlannedMinutes(9 * 60, 2), 9 * 60 + 15);
   assert.equal(WO.clampPlannedMinutes(9 * 60 + 15, 2), 9 * 60 + 15);
-  assert.equal(WO.clampPlannedMinutes(18 * 60, 4), 16 * 60);
+  assert.equal(WO.clampPlannedMinutes(18 * 60, 4), 18 * 60);
+  assert.equal(WO.clampPlannedMinutes(19 * 60, 4), 18 * 60);
   assert.equal(WO.clampPlannedMinutes(11 * 60, 3), 11 * 60);
 });
 
@@ -42,7 +43,7 @@ test('stops sit on a shared clock, side by side when they overlap, and untimed s
     { time: '18:00', type: 'handover' },
   ]);
   assert.equal(range.start, 8 * 60);
-  assert.equal(range.end, 16 * 60);
+  assert.equal(range.end, 18 * 60);
   const laid = WO.layoutDay([
     { id: 'a', time: '09:00', type: 'factory', title: 'Matubo' },
     { id: 'b', time: '09:30', type: 'shop', title: 'Antik' },
@@ -68,22 +69,30 @@ test('stops sit on a shared clock, side by side when they overlap, and untimed s
   assert.equal(WO.durationOf({ type: 'snack' }), 30);
 });
 
-test('a stop outside 8:00–16:00 stays on the day, pinned off the clock, and a pickup stays short', () => {
+test('a stop outside 8:00–18:00 stays on the day, and a long title is given room', () => {
   const bounds = WO.weekBounds([{ time: '22:10', type: 'handover' }]);
   assert.equal(bounds.start, 8 * 60);
-  assert.equal(bounds.end, 16 * 60);
+  assert.equal(bounds.end, 18 * 60);
+  const longTitle = 'Drop-off · 18:00 U Obecního dvora 7, Prague 1 – Staré Město, 110 00 – Jennifer Lindsay and Gail DeLuca';
   const laid = WO.layoutDay([
     { id: 'early', time: '07:30', type: 'factory', title: 'Press' },
-    { id: 'drop', time: '18:00', type: 'handover', handoverKind: 'dropoff', title: 'Drop-off' },
-    { id: 'four', time: '16:00', type: 'viewpoint', title: 'Tower' },
+    { id: 'drop', time: '19:30', type: 'handover', handoverKind: 'dropoff', title: 'Drop-off' },
+    { id: 'four', time: '18:00', type: 'viewpoint', title: 'Tower' },
+    { id: 'thu', time: '10:45', type: 'handover', handoverKind: 'dropoff', title: longTitle },
+    { id: 'museum', time: '17:00', type: 'museum', title: 'Glass and jewellery museum in Jablonec' },
   ], { start: bounds.start, end: bounds.end, px: 1 });
   assert.equal(laid.early.length, 1);
   assert.equal(laid.early[0].id, 'early');
   assert.equal(laid.late.length, 1);
-  assert.equal(laid.late[0].time, '18:00');
-  assert.equal(laid.blocks.length, 1);
-  assert.equal(laid.blocks[0].stop.id, 'four');
-  assert.equal(laid.blocks[0].start, 16 * 60);
+  assert.equal(laid.late[0].time, '19:30');
+  const four = laid.blocks.find(function (block) { return block.stop.id === 'four'; });
+  const thu = laid.blocks.find(function (block) { return block.stop.id === 'thu'; });
+  const museum = laid.blocks.find(function (block) { return block.stop.id === 'museum'; });
+  assert.equal(four.start, 18 * 60);
+  assert.ok(four.height >= WO.MIN_BLOCK);
+  assert.ok(thu.height >= WO.textHeight(longTitle, 1));
+  assert.equal(museum.start, 17 * 60);
+  assert.ok(museum.top + museum.height <= (bounds.end - bounds.start) + WO.TAIL_PX + museum.height);
   assert.equal(WO.durationOf({ type: 'handover', handoverKind: 'dropoff' }), 25);
 });
 
@@ -132,11 +141,11 @@ test('the week render places each stop at its time and names the hotel night', (
   assert.match(html, /data-ov-col="0"/);
   assert.match(html, /data-ov-col="1"/);
   assert.match(html, /data-ov-start="480"/);
-  assert.match(html, /data-ov-end="960"/);
+  assert.match(html, /data-ov-end="1080"/);
   assert.match(html, /08:00 Prague pick-up/);
   assert.match(html, /09:00 Leave hotel/);
   assert.equal(model.start, 8 * 60);
-  assert.equal(model.end, 16 * 60);
+  assert.equal(model.end, 18 * 60);
   const focused = WO.build({
     days: [
       { date: '2027-05-10', blocks: [{ id: 'a', time: '09:00', type: 'shop', title: 'Antik' }] },

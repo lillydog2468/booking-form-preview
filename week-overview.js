@@ -9,7 +9,9 @@
   'use strict';
 
   var START_MIN = 8 * 60;
-  var END_MIN = 16 * 60;
+  var END_MIN = 18 * 60;
+  var MIN_BLOCK = 44;
+  var TAIL_PX = 72;
   var PLACE_FLOOR_MIN = 9 * 60 + 15;
   var LEAVE_HOTEL_MIN = 9 * 60;
   var SNAP_MIN = 15;
@@ -141,6 +143,14 @@
     });
   }
 
+  function textHeight(label, lanes) {
+    var perLine = Math.max(12, Math.floor(32 / Math.max(1, Number(lanes) || 1)));
+    var lines = Math.ceil(String(label || '').trim().length / perLine);
+    if (!lines || lines < 1) lines = 1;
+    if (lines > 6) lines = 6;
+    return 20 + lines * 16;
+  }
+
   function layoutDay(stops, range) {
     var timed = [];
     var untimed = [];
@@ -175,15 +185,17 @@
     if (!Number.isFinite(px) || px <= 0) px = PX_PER_MIN;
     return {
       blocks: timed.map(function (item) {
+        var label = String(item.stop.title || item.stop.name || '').trim();
+        var needed = Math.max(MIN_BLOCK, textHeight(label, item.lanes));
+        var natural = Math.max(needed, item.duration * px);
         var top = (item.start - origin) * px;
-        var height = Math.max(30, item.duration * px);
+        var height = natural;
         if (item.start >= limit) {
-          var edge = (limit - origin) * px;
-          top = Math.max(0, edge - 30);
-          height = 30;
+          top = Math.max(0, (limit - origin) * px);
+          height = needed;
         } else {
           var room = (limit - item.start) * px;
-          if (room > 0) height = Math.min(height, Math.max(30, room));
+          if (room > 0) height = Math.max(needed, Math.min(natural, Math.max(room, needed)));
         }
         return {
           stop: item.stop,
@@ -346,7 +358,7 @@
   function blockHtml(block) {
     var width = 100 / block.lanes;
     var left = block.lane * width;
-    var style = 'top:' + roundPx(block.top) + 'px;height:' + roundPx(block.height) + 'px;left:calc(' + left + '% + 2px);width:calc(' + width + '% - 4px);';
+    var style = 'top:' + roundPx(block.top) + 'px;min-height:' + roundPx(block.height) + 'px;height:auto;left:calc(' + left + '% + 2px);width:calc(' + width + '% - 4px);';
     var guests = block.guests ? '<span class="ov-guests">' + esc(block.guests) + '</span>' : '';
     var approx = block.approx ? '<span class="ov-approx" title="Approximate time">≈</span>' : '';
     return '<div class="ov-stop stop-tone-' + esc(block.tone) + '" role="button" tabindex="0" data-ov-stop="' + esc(block.id) + '" style="' + style + '" title="' + esc(block.time + ' ' + block.label) + '">'
@@ -415,7 +427,7 @@
       }).join('');
       var col = day.missing
         ? '<div class="ov-col is-missing">Missing day</div>'
-        : '<div class="ov-col" data-ov-col="' + day.index + '" data-ov-floor="' + (day.index > 0 ? PLACE_FLOOR_MIN : START_MIN) + '" style="height:' + roundPx(view.height) + 'px">' + lines + marker + blocks + pins + '</div>';
+        : '<div class="ov-col" data-ov-col="' + day.index + '" data-ov-floor="' + (day.index > 0 ? PLACE_FLOOR_MIN : START_MIN) + '" style="height:' + roundPx(view.height + TAIL_PX) + 'px">' + lines + marker + blocks + pins + '</div>';
       return '<section class="ov-day' + today + '" data-ov-day="' + day.index + '" aria-label="' + esc(day.weekday + ' ' + day.dateLabel) + '">'
         + '<header class="ov-head"><p class="ov-dow">' + (day.today ? 'Today · ' : '') + esc(day.weekday) + '</p><p class="ov-date">' + esc(day.dateLabel) + '</p>' + from + night + untimedRow + '</header>'
         + col
@@ -435,6 +447,9 @@
     LEAVE_HOTEL_MIN: LEAVE_HOTEL_MIN,
     SNAP_MIN: SNAP_MIN,
     PX_PER_MIN: PX_PER_MIN,
+    MIN_BLOCK: MIN_BLOCK,
+    TAIL_PX: TAIL_PX,
+    textHeight: textHeight,
     minutesOf: minutesOf,
     formatMinutes: formatMinutes,
     snapMinutes: snapMinutes,

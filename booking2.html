@@ -26,6 +26,10 @@
     <p class="b2-back"><a class="b2-back-link" href="booking-form.html">Back to bookings</a></p>
     <p class="b2-kicker">Test booking</p>
     <h1><span id="b2Title">Jennifer Lindsay</span> <span class="b2-brief" id="b2Brief"></span> <span class="b2-inline-status" id="b2Status"></span><span class="b2-inline-status" id="p2Status"></span></h1>
+    <div class="b2-tools">
+      <button type="button" class="b2-tool" id="b2Suggest" title="Lay down a draft week from the usual places. You can edit everything after.">Suggest a rough week</button>
+      <button type="button" class="b2-tool" id="b2PragueEnds" title="Day one pick-ups from 08:00. Last day drop-off at 18:00.">Prague pick-ups &amp; drop-offs</button>
+    </div>
     <button type="button" class="b2-details-toggle" id="b2DetailsToggle" aria-expanded="false" aria-controls="b2Summary">Show details</button>
     <p class="b2-dates" id="b2Dates"></p>
     <p class="b2-note" id="b2Note">This page opens only Jennifer Lindsay’s group, booking 310. Booking details are read-only. The week plan is on this page.</p>
@@ -54,6 +58,8 @@
     </div>
   </div>
   <script src="prague-exit.js"></script>
+  <script src="drag-label.js"></script>
+  <script src="rough-week.js"></script>
   <script src="place-popup.js"></script>
   <script src="plan-sync.js"></script>
   <script src="planner2.js" defer></script>
