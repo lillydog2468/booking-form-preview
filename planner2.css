@@ -165,62 +165,50 @@ html.is-phone .p2-tray { position: static; flex: none; width: 100%; height: auto
 html.is-phone .p2-scroll { width: 100%; overflow-x: hidden; }
 html.is-phone .ov-day ~ .ov-day { display: none; }
 @media (min-width: 761px) {
-  .b2-top { position: sticky; top: 0; z-index: 6; background: #f4f3f0; }
-  .b2-top h1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  body.is-scrolled .b2-back,
-  body.is-scrolled .b2-kicker,
-  body.is-scrolled .b2-dates,
-  body.is-scrolled .b2-note,
-  body.is-scrolled .b2-summary,
-  body.is-scrolled .p2-bar { display: none; }
-  body.is-scrolled .b2-top { padding: 6px 16px; }
-  body.is-scrolled .b2-top h1 { font-size: 16px; }
-  .p2-main { min-height: 150vh; }
+  html, body { height: 100%; overflow: hidden; }
+  body { display: flex; flex-direction: column; background: #fff; }
+  .plan-save-status { flex: none; width: auto; margin: 0; border-radius: 0; }
+  .b2-top { flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #fff; }
+  .b2-top h1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 0; font-size: 18px; }
+  .b2-back, .b2-kicker, .b2-dates, .b2-note, .b2-summary, .p2-bar { display: none; }
+  body.b2-details-open .b2-top { flex-wrap: wrap; align-items: flex-start; }
+  body.b2-details-open .b2-back,
+  body.b2-details-open .b2-kicker,
+  body.b2-details-open .b2-dates,
+  body.b2-details-open .b2-note { display: block; flex: 1 0 100%; }
+  body.b2-details-open .b2-summary { display: block; flex: none; max-height: 28vh; overflow: auto; margin: 0; border-radius: 0; border-left: 0; border-right: 0; }
+  .b2-details-toggle { margin-left: auto; }
+  .p2-main { flex: 1 1 auto; min-height: 0; gap: 0; padding: 0; align-items: stretch; }
   .p2-tray {
-    position: fixed;
-    top: 210px;
-    left: 8px;
-    bottom: 8px;
-    width: 440px;
-    height: auto;
-    max-height: none;
-    z-index: 4;
-    overflow: hidden;
+    position: relative; top: auto; right: auto; bottom: auto; left: auto;
+    flex: 0 0 380px; width: 380px; height: auto; max-height: none;
+    align-self: stretch; margin: 0; border-radius: 0; border-top: 0; border-bottom: 0; border-left: 0;
+    display: flex; flex-direction: column; overflow: hidden;
   }
-  body.is-scrolled .p2-tray,
-  body.is-scrolled .p2-scroll { top: 44px; }
-  .p2-groups { display: block; overflow: visible; }
-  .p2-group {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-content: start;
-    gap: 0 8px;
-    margin: 4px 0 2px;
-  }
+  .p2-groups { flex: 1 1 auto; min-height: 0; overflow: auto; display: block; }
+  .p2-group { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin: 4px 0 2px; }
   .p2-group h3 { grid-column: 1 / -1; margin: 0; font-size: 10px; }
   .p2-card { padding: 0 2px; margin: 0; min-height: 16px; font-size: 11px; line-height: 1.1; }
   .p2-used { display: none; }
   .p2-scroll {
-    position: fixed;
-    top: 210px;
-    right: 8px;
-    bottom: 8px;
-    left: 456px;
-    z-index: 4;
-    overflow: auto;
+    position: relative; top: auto; right: auto; bottom: auto; left: auto;
+    flex: 1 1 auto; min-width: 0; min-height: 0; height: auto;
+    overflow: auto; margin: 0; border-radius: 0; border-top: 0; border-bottom: 0; border-right: 0;
     background: #fff;
   }
   .p2-main, .p2-tray, .p2-scroll, .ov-grid, .ov-stop, .p2-card, .p2-bar, .b2-top, .p2-btn, h1, h2, h3 {
-    -webkit-user-select: none;
-    user-select: none;
+    -webkit-user-select: none; user-select: none;
   }
-  input, textarea, [contenteditable] {
-    -webkit-user-select: text;
-    user-select: text;
-  }
+  input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
 }
-@media (min-width: 761px) and (max-height: 700px) {
-  .p2-groups { overflow-y: auto; }
+@media (max-width: 760px) {
+  html, body { height: auto; overflow: auto; }
+  body { display: block; background: #f4f3f0; }
+  .b2-back, .b2-kicker, .b2-dates { display: block; }
+  .b2-summary { display: block; }
+  .b2-details-toggle, .b2-brief { display: none; }
+  .p2-main { min-height: 0; gap: 10px; padding: 0 12px 24px; }
+  .p2-tray, .p2-scroll { position: static; width: 100%; height: auto; max-height: none; flex: none; overflow: visible; }
 }
 .place-pop { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
 .place-pop-note, .place-pop-muted { margin: 0; font-size: 12px; color: #6e695f; }
@@ -230,13 +218,4 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
 @media (min-width: 761px) {
   .p2-days { display: none; }
   #p2Places { display: none; }
-  html, body { height: auto; overflow-y: auto; }
-  .p2-tray {
-    position: sticky;
-    top: 8px;
-    align-self: flex-start;
-    height: calc(100vh - 16px);
-    max-height: calc(100vh - 16px);
-  }
-  .p2-scroll { overflow: visible; }
 }

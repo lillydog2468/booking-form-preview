@@ -844,9 +844,6 @@
       var sel = window.getSelection && window.getSelection();
       if (sel && sel.removeAllRanges) sel.removeAllRanges();
     });
-    window.addEventListener('scroll', function () {
-      document.body.classList.toggle('is-scrolled', window.scrollY > 24);
-    }, { passive: true });
     window.addEventListener('resize', function () {
       var was = state.phone;
       if (phoneNow() !== was) render();

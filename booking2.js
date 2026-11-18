@@ -29,6 +29,19 @@
     var view = state.view;
     if (!view) return;
     $('b2Title').textContent = view.groupName || Booking2.GROUP_NAME;
+    var rooms = view.rooms || {};
+    var roomCount = function (value) {
+      var text = String(value == null ? '' : value).trim();
+      return text && text !== '0' ? text : '';
+    };
+    var roomBits = [
+      roomCount(rooms.singles) ? roomCount(rooms.singles) + ' single' : '',
+      roomCount(rooms.twins) ? roomCount(rooms.twins) + ' twin' : '',
+      roomCount(rooms.doubles) ? roomCount(rooms.doubles) + ' double' : '',
+    ].filter(Boolean).join(', ');
+    var people = view.headcount ? (view.headcount + (Number(view.headcount) === 1 ? ' person' : ' people')) : '';
+    var brief = $('b2Brief');
+    if (brief) brief.textContent = [people, roomBits].filter(Boolean).join(' · ');
     var nights = view.nights == null ? '' : (view.nights + (view.nights === 1 ? ' night' : ' nights'));
     $('b2Dates').textContent = [view.arrival, view.departure].filter(Boolean).join(' – ') + (nights ? ' · ' + nights : '');
     var note = 'This page opens only Jennifer Lindsay’s group, booking 310. Booking details are read-only. The week plan is on this page.';
@@ -185,6 +198,15 @@
       organiser: organiser,
     }));
     setStatus('Read only');
+  }
+
+  var detailsBtn = document.getElementById('b2DetailsToggle');
+  if (detailsBtn) {
+    detailsBtn.addEventListener('click', function () {
+      var open = document.body.classList.toggle('b2-details-open');
+      detailsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      detailsBtn.textContent = open ? 'Hide details' : 'Show details';
+    });
   }
 
   var params = new URLSearchParams(location.search);
