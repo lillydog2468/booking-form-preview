@@ -39,6 +39,8 @@ function hasPrimary(html) {
   assert.equal(menu.includes('>Hotels<'), false);
   assert.match(menu, />Analytics</);
   assert.match(menu, />Tax summary</);
+  assert.match(menu, />Admin</);
+  assert.match(menu, />2027 interest</);
   assert.match(html, /src="site-nav\.js"/);
 }
 

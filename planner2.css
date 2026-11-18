@@ -103,7 +103,7 @@ body {
   position: absolute; z-index: 2; overflow: hidden; border-radius: 8px;
   padding: 3px 16px 3px 7px; cursor: grab; touch-action: none;
   font-size: 12px; line-height: 1.2;
-  -webkit-user-select: none; user-select: none;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .p2-scroll, .ov-grid, .ov-head, .ov-mark, .p2-card {
   -webkit-user-select: none; user-select: none;

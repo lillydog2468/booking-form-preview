@@ -195,10 +195,14 @@
         if (origin.decided) return;
         if (Planner2.placeGesture(0, 0, Date.now() - origin.t) === 'drag') beginDrag(origin.x, origin.y);
       }, 320);
+      var lastX = origin.x;
+      var lastY = origin.y;
       function columnAt(x, y) {
-        if (ghost) ghost.style.visibility = 'hidden';
+        var previous = card.style.pointerEvents;
+        card.style.pointerEvents = 'none';
+        if (ghost) ghost.style.pointerEvents = 'none';
         var under = document.elementFromPoint(x, y);
-        if (ghost) ghost.style.visibility = '';
+        card.style.pointerEvents = previous;
         if (!under || !under.closest) return null;
         return under.closest('[data-ov-col]');
       }
@@ -247,6 +251,8 @@
       }
       function move(e) {
         if (e.pointerId !== pointer || origin.decided === 'scroll') return;
+        lastX = e.clientX;
+        lastY = e.clientY;
         if (origin.decided === 'drag') {
           if (e.cancelable) e.preventDefault();
           follow(e.clientX, e.clientY);
@@ -268,10 +274,12 @@
         if (e.pointerId !== pointer) return;
         detach();
         var decided = origin.decided;
-        var col = decided === 'drag' ? columnAt(e.clientX, e.clientY) : null;
-        var mins = col ? minutesOn(col, e.clientY) : null;
+        var x = e && Number.isFinite(e.clientX) ? e.clientX : lastX;
+        var y = e && Number.isFinite(e.clientY) ? e.clientY : lastY;
+        var col = decided === 'drag' ? columnAt(x, y) : null;
+        var mins = col ? minutesOn(col, y) : null;
         clearDrag();
-        if (decided === 'scroll' || e.type === 'pointercancel') return;
+        if (decided === 'scroll') return;
         if (decided !== 'drag') {
           var tapped = state.places.find(function (item) { return item.id === id; });
           if (tapped && window.PlaceEditor) {
@@ -330,61 +338,121 @@
         if (event.pointerType === 'mouse') event.preventDefault();
         if (event.target.closest && event.target.closest('.ov-x')) return;
         var stopId = card.getAttribute('data-ov-stop');
-        var origin = { x: event.clientX, y: event.clientY, moved: false };
+        var pointerId = event.pointerId;
+        var touch = event.pointerType !== 'mouse';
+        var origin = { x: event.clientX, y: event.clientY };
+        var lastX = event.clientX;
+        var lastY = event.clientY;
+        var lifted = false;
         var ghost = null;
         var snap = null;
-        function clear() {
+        var finished = false;
+        function columnAt(x, y) {
+          var hidden = [];
+          function cover(el) {
+            if (!el || hidden.some(function (pair) { return pair[0] === el; })) return;
+            hidden.push([el, el.style.pointerEvents]);
+            el.style.pointerEvents = 'none';
+          }
+          cover(card);
+          document.querySelectorAll('.ov-ghost').forEach(cover);
+          var under = null;
+          try { under = document.elementFromPoint(x, y); } catch (_) { under = null; }
+          hidden.forEach(function (pair) { pair[0].style.pointerEvents = pair[1]; });
+          if (!under || !under.closest) return null;
+          var col = under.closest('[data-ov-col]');
+          if (col) return col;
+          var day = under.closest('[data-ov-day]');
+          return day ? day.querySelector('[data-ov-col]') : null;
+        }
+        function clearMarks() {
           card.classList.remove('dragging');
+          card.style.pointerEvents = '';
           root.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
           if (ghost) ghost.remove();
           if (snap) snap.remove();
+          ghost = null;
+          snap = null;
         }
-        function at(x, y) {
-          var under = document.elementFromPoint(x, y);
-          var col = under && under.closest ? under.closest('[data-ov-col]') : null;
-          if (col) return col;
-          var day = under && under.closest ? under.closest('[data-ov-day]') : null;
-          return day ? day.querySelector('[data-ov-col]') : null;
-        }
-        function move(e) {
-          if (!origin.moved && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < 8) return;
-          origin.moved = true;
-          e.preventDefault();
+        function follow(x, y) {
           card.classList.add('dragging');
+          card.style.pointerEvents = 'none';
           if (!ghost) {
             ghost = card.cloneNode(true);
             ghost.classList.add('ov-ghost');
+            ghost.style.pointerEvents = 'none';
+            ghost.style.width = Math.max(120, card.offsetWidth) + 'px';
             document.body.appendChild(ghost);
           }
-          ghost.style.left = (e.clientX + 8) + 'px';
-          ghost.style.top = (e.clientY + 8) + 'px';
+          ghost.style.left = (x + 12) + 'px';
+          ghost.style.top = (y + 12) + 'px';
+          var scroller = document.getElementById('p2Scroll');
+          if (scroller) {
+            var rect = scroller.getBoundingClientRect();
+            if (x < rect.left + 56) scroller.scrollLeft -= 24;
+            else if (x > rect.right - 56) scroller.scrollLeft += 24;
+            if (y < rect.top + 56) scroller.scrollTop -= 16;
+            else if (y > rect.bottom - 56) scroller.scrollTop += 16;
+          }
           if (snap) { snap.remove(); snap = null; }
-          var col = at(e.clientX, e.clientY);
           root.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
+          var col = columnAt(x, y);
           if (!col) return;
           col.classList.add('is-drop');
-          var mins = minutesOn(col, e.clientY);
+          var mins = minutesOn(col, y);
           snap = document.createElement('div');
           snap.className = 'ov-snap';
           snap.style.top = ((mins - WeekOverview.START_MIN) * WeekOverview.PX_PER_MIN) + 'px';
           snap.textContent = WeekOverview.formatMinutes(mins);
           col.appendChild(snap);
         }
-        function up(e) {
-          card.removeEventListener('pointermove', move);
-          card.removeEventListener('pointerup', up);
-          card.removeEventListener('pointercancel', up);
-          var moved = origin.moved;
-          var col = moved ? at(e.clientX, e.clientY) : null;
-          var mins = col ? minutesOn(col, e.clientY) : null;
-          clear();
-          if (!moved) { openEditor(stopId); return; }
+        function lift(x, y) {
+          if (lifted) return;
+          lifted = true;
+          clearTimeout(hold);
+          try { card.setPointerCapture(pointerId); } catch (_) { /* the finger can still move */ }
+          follow(x, y);
+        }
+        var hold = touch ? setTimeout(function () { lift(lastX, lastY); }, 300) : null;
+        function move(e) {
+          if (e.pointerId !== pointerId) return;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          var dist = Math.hypot(e.clientX - origin.x, e.clientY - origin.y);
+          if (!lifted) {
+            if (!touch && dist >= 6) lift(e.clientX, e.clientY);
+            else if (touch && dist > 14 && Math.abs(e.clientY - origin.y) > Math.abs(e.clientX - origin.x)) {
+              clearTimeout(hold);
+              finished = true;
+              detach();
+            }
+            return;
+          }
+          if (e.cancelable) e.preventDefault();
+          follow(e.clientX, e.clientY);
+        }
+        function finish(e) {
+          if (finished || (e && e.pointerId != null && e.pointerId !== pointerId)) return;
+          finished = true;
+          detach();
+          var x = e && Number.isFinite(e.clientX) ? e.clientX : lastX;
+          var y = e && Number.isFinite(e.clientY) ? e.clientY : lastY;
+          var col = lifted ? columnAt(x, y) : null;
+          var mins = col ? minutesOn(col, y) : null;
+          clearMarks();
+          if (!lifted) { openEditor(stopId); return; }
           if (!col || mins == null) return;
           if (Planner2.placeStop(state.plan, stopId, Number(col.getAttribute('data-ov-col')), WeekOverview.formatMinutes(mins))) afterEdit();
         }
-        card.addEventListener('pointermove', move);
-        card.addEventListener('pointerup', up);
-        card.addEventListener('pointercancel', up);
+        function detach() {
+          clearTimeout(hold);
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', finish);
+          window.removeEventListener('pointercancel', finish);
+        }
+        window.addEventListener('pointermove', move, { passive: false });
+        window.addEventListener('pointerup', finish);
+        window.addEventListener('pointercancel', finish);
       });
     });
     root.querySelectorAll('[data-ov-marker="pickup"]').forEach(function (mark) {
