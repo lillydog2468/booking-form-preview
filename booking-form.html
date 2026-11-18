@@ -12,10 +12,11 @@
     })();
   </script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no">
   <title>Booking Form</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="phone-layout.js"></script>
   <script src="booking-config.js"></script>
   <script src="planning-hide.js"></script>
   <script src="booking-format.js"></script>
@@ -179,7 +180,7 @@
     <div class="form-view active" id="formView">
       <!-- ── Sidebar ── -->
       <div class="sidebar" id="sidebar">
-        <div class="sidebar-header" onclick="if(window.innerWidth<=600)toggleSidebarCollapse()">
+        <div class="sidebar-header" onclick="if(document.documentElement.classList.contains('is-phone')||window.innerWidth<=600)toggleSidebarCollapse()">
           <h2>Bookings <span class="sidebar-toggle-hint">(tap to expand)</span></h2>
           <div class="sidebar-actions">
             <button class="sidebar-collapse-btn" onclick="event.stopPropagation();toggleSidebarCollapse()" title="Hide/Show bookings panel">

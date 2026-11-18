@@ -159,7 +159,33 @@ body.is-dragging, body.is-dragging * { cursor: grabbing; -webkit-user-select: no
   .ov-day { flex: 1 1 auto; width: auto; min-width: 0; max-width: 100%; }
   .ov-day ~ .ov-day { display: none; }
 }
+html.is-phone body { height: auto; display: block; overflow: auto; }
+html.is-phone .p2-main { flex-direction: column; max-width: 100%; }
+html.is-phone .p2-tray { position: static; flex: none; width: 100%; height: auto; max-height: 240px; }
+html.is-phone .p2-scroll { width: 100%; overflow-x: hidden; }
+html.is-phone .ov-day ~ .ov-day { display: none; }
 @media (min-width: 761px) {
   .p2-days { display: none; }
   #p2Places { display: none; }
+  html, body { height: 100%; }
+  body {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .b2-summary { flex: 0 1 auto; max-height: 30vh; overflow: auto; }
+  .p2-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
+    padding-bottom: 12px;
+  }
+  .p2-tray {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    align-self: stretch;
+  }
+  .p2-scroll { min-height: 0; overflow: auto; }
 }

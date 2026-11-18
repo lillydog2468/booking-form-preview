@@ -6575,6 +6575,11 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     return copy.blocks;
   }
 
+  function orderedHotelPoints(points, kind) {
+    if (!window.PragueExit || !points || points.length < 2) return { points: points || [], fallback: false, reason: '' };
+    return PragueExit.order(points, { towardExit: kind !== 'dropoff' });
+  }
+
   function googleMapsDirectionsUrl(points) {
     const list = (points || []).map(point => cleanMapsQuery(point)).filter(Boolean);
     if (!list.length) return '';
@@ -6610,10 +6615,13 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
   function praguePhoneChoices(day, kind) {
     const points = pragueHotelPoints(day, kind);
     if (!points.length) return null;
+    const pair = orderedHotelPoints(points.slice(0, 2), kind);
+    const all = orderedHotelPoints(points, kind);
     return {
-      both: points.length >= 2 ? googleMapsDirectionsUrl(points.slice(0, 2)) : '',
-      all: googleMapsDirectionsUrl(points),
+      both: points.length >= 2 ? googleMapsDirectionsUrl(pair.points) : '',
+      all: googleMapsDirectionsUrl(all.points),
       each: points.map(point => ({ label: point, href: googleMapsDirectionsUrl([point]) })),
+      orderNote: all.reason || '',
     };
   }
 
@@ -6654,9 +6662,11 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
 
   function pragueMapsForDay(day, kind) {
     const points = pragueRoutePoints(day, kind);
+    const ordered = orderedHotelPoints(points, kind);
     return {
       individuals: points.map(point => googleMapsDirectionsUrl([point])).filter(Boolean),
-      combined: googleMapsDirectionsUrl(points),
+      combined: googleMapsDirectionsUrl(ordered.points),
+      orderNote: ordered.reason || '',
     };
   }
 
@@ -6702,7 +6712,8 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     const label = (maps.individuals.length >= 2 || pragueDayHasCombinedRoute(day, kind))
       ? 'Open in Maps (all hotels)'
       : 'Open in Maps';
-    return `<a class="prague-route-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">${label}</a>`;
+    const note = maps.orderNote ? ` title="${escapeHtml(maps.orderNote)}"` : '';
+    return `<a class="prague-route-link" href="${escapeHtml(href)}"${note} target="_blank" rel="noopener">${label}</a>`;
   }
 
   function planDayIsEdge(day, plan, edge) {

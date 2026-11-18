@@ -531,8 +531,12 @@
     if (!list.length) return '<p class="p2-note">No hotel pick-ups on this day.</p>';
     var html = '';
     if (list.length > 1) {
-      var all = Planner2.appleAllHref(list.map(function (row) { return row.point; }));
-      if (all) html += '<a class="p2-nav" href="' + esc(all) + '" target="_blank" rel="noopener">Navigate to all hotels</a>';
+      var ordered = window.PragueExit
+        ? PragueExit.order(list.map(function (row) { return row.point; }), { towardExit: true })
+        : { points: list.map(function (row) { return row.point; }), reason: '' };
+      var all = Planner2.appleAllHref(ordered.points);
+      var note = ordered.reason ? ' title="' + esc(ordered.reason) + '"' : '';
+      if (all) html += '<a class="p2-nav" href="' + esc(all) + '"' + note + ' target="_blank" rel="noopener">Navigate to all hotels</a>';
     }
     html += '<p class="p2-nav-label">Navigate to each hotel separately</p>';
     list.forEach(function (row) {

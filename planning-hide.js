@@ -19,7 +19,7 @@
     document.documentElement.classList.add('hide-old-planning');
     if (document.getElementById('planning-hide-style')) return;
     var css = [
-      'html.hide-old-planning a[href^="tour-planner.html"],',
+      'html.hide-old-planning a[href^="tour-planner.html"]:not(.planning-open),',
       'html.hide-old-planning [onclick*="openTourPlanner"]{display:none !important;}',
     ];
     if (onOldPlannerPage()) {

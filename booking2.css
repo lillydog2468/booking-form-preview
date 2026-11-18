@@ -36,7 +36,7 @@ body {
 .b2-more summary { cursor: pointer; font-size: 13px; font-weight: 650; color: #5c574e; }
 .b2-more-body { padding-top: 8px; }
 .b2-more-body h2 { margin: 10px 0 6px; font-size: 14px; }
-.b2-plan .p2-tray { height: calc(100vh - 268px); min-height: 320px; }
+.b2-plan .p2-tray { height: auto; min-height: 0; align-self: stretch; }
 .b2-strip {
   display: inline-block; margin: 0 0 6px; padding: 3px 8px; border-radius: 999px;
   font-size: 12px; font-weight: 700; border: 1px solid transparent;

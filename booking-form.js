@@ -1594,6 +1594,7 @@
         <h2 id="t${t}_formTitle">New Booking</h2>
         <span class="booking-id-tag" id="t${t}_bookingIdTag" hidden></span>
         <span class="year-tint-badge" id="t${t}_yearBadge" hidden></span>
+        <a class="planning-open" id="t${t}_planningBtn" hidden>Planning</a>
         <span class="cancelled-tag" id="t${t}_cancelledTag" hidden>Cancelled</span>
         <span class="tour-full-badge" id="t${t}_fullTag" hidden>FULL</span>
         <label class="delay-until" id="t${t}_delayUntilWrap" hidden>Delayed until <input type="text" id="t${t}_delay_until" inputmode="numeric" maxlength="4" placeholder="Year" autocomplete="off" title="Year this booking is delayed until"></label>
@@ -8473,6 +8474,7 @@
     paintEmptyFields(el('tabPanel_' + tabId));
     refreshDateFoldSummaries(tabId);
     refreshBookingLink(tabId);
+    paintPlanningButton(tabId);
     applyBookingCancelledChrome(tabId);
   }
 
@@ -8481,6 +8483,26 @@
     const fromTab = tabData && tabData.bookingId != null ? String(tabData.bookingId).trim() : '';
     if (fromTab) return fromTab;
     return String(tEl(tabId, 'id')?.value || '').trim();
+  }
+
+  function planningPageHref(id) {
+    const key = String(id || '').trim();
+    if (!key) return '';
+    if (key === '310') return 'booking2.html?booking=310';
+    return 'tour-planner.html?booking=' + encodeURIComponent(key);
+  }
+
+  function paintPlanningButton(tabId) {
+    const btn = tEl(tabId, 'planningBtn');
+    if (!btn) return;
+    const href = planningPageHref(openBookingId(tabId));
+    if (!href) {
+      btn.hidden = true;
+      btn.removeAttribute('href');
+      return;
+    }
+    btn.hidden = false;
+    btn.href = href;
   }
 
   function openTourPlanner(tabId) {
@@ -8867,17 +8889,19 @@
 	    const start = arr || dep;
 	    const y = start ? start.getUTCFullYear() : null;
 
-	    if (y == null || y < 1990 || y > 2100) {
-	      if (badge) { badge.hidden = true; badge.textContent = ''; }
-	      return;
-	    }
+    if (y == null || y < 1990 || y > 2100) {
+      if (badge) { badge.hidden = true; badge.textContent = ''; }
+      paintPlanningButton(tabId);
+      return;
+    }
 
 	    header.classList.add('year-band', 'year-band-' + yearBandIndex(y));
-	    if (badge) {
-	      badge.hidden = false;
-	      badge.textContent = String(y);
-	    }
-	  }
+    if (badge) {
+      badge.hidden = false;
+      badge.textContent = String(y);
+    }
+    paintPlanningButton(tabId);
+  }
 
 	  function sidebarYearKey(year) {
 	    return year == null ? 'none' : String(year);

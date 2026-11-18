@@ -25,7 +25,10 @@ function extractFunction(name) {
 
 function loadMaps() {
   const ctx = {};
+  ctx.window = ctx;
+  ctx.globalThis = ctx;
   vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'prague-exit.js'), 'utf8'), ctx);
   vm.runInContext([
     extractFunction('escapeHtml'),
     extractFunction('timeToMinutes'),
@@ -37,6 +40,7 @@ function loadMaps() {
     extractFunction('routePointForStop'),
     extractFunction('routePointsForStop'),
     extractFunction('dayRouteStops'),
+    extractFunction('orderedHotelPoints'),
     extractFunction('googleMapsDirectionsUrl'),
     extractFunction('pragueHotelPoints'),
     extractFunction('praguePhoneChoices'),
@@ -114,7 +118,7 @@ test('day one pick-ups become one Open in Maps link in time order', () => {
   assert.match(html, /rel="noopener"/);
   const href = html.match(/href="([^"]+)"/)[1].replace(/&amp;/g, '&');
   assert.match(html, /&amp;destination=/);
-  assert.equal(href, ctx.googleMapsDirectionsUrl(['Na Poříčí 40, Prague', 'U Obecního dvora, Prague']));
+  assert.equal(href, ctx.googleMapsDirectionsUrl(['U Obecního dvora, Prague', 'Na Poříčí 40, Prague']));
   assert.equal(ctx.pragueRouteLinkHtml({ blocks: [] }, 'dropoff'), '');
   const combined = {
     blocks: [{
@@ -132,7 +136,7 @@ test('day one pick-ups become one Open in Maps link in time order', () => {
     }],
   };
   const combinedHref = ctx.pragueRouteLinkHtml(combined, 'pickup').match(/href="([^"]+)"/)[1].replace(/&amp;/g, '&');
-  assert.equal(combinedHref, ctx.googleMapsDirectionsUrl(['Na Poříčí 40, Prague', 'U Obecního dvora, Prague']));
+  assert.equal(combinedHref, ctx.googleMapsDirectionsUrl(['U Obecního dvora, Prague', 'Na Poříčí 40, Prague']));
   const reversed = {
     blocks: [{
       id: 'combo',
@@ -207,8 +211,8 @@ test('booking 310 all-hotels link starts at the current location then both hotel
   const allParams = directions(three.all);
   assert.equal(bothParams.get('waypoints'), 'U Obecního dvora 7, Praha');
   assert.equal(bothParams.get('destination'), 'Hotel Atlantic, Na Poříčí 9, Praha');
-  assert.equal(allParams.get('waypoints'), 'U Obecního dvora 7, Praha|Hotel Atlantic, Na Poříčí 9, Praha');
-  assert.equal(allParams.get('destination'), 'Hotel Josef, Rybná 20, Praha');
+  assert.equal(allParams.get('waypoints'), 'U Obecního dvora 7, Praha|Hotel Josef, Rybná 20, Praha');
+  assert.equal(allParams.get('destination'), 'Hotel Atlantic, Na Poříčí 9, Praha');
   assert.equal(three.each.length, 3);
   assert.equal(new URL(three.each[2].href).searchParams.get('destination'), 'Hotel Josef, Rybná 20, Praha');
   assert.equal(new URL(three.each[2].href).searchParams.get('waypoints'), null);

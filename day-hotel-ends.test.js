@@ -22,13 +22,16 @@ function extractFunction(name) {
 
 function loadEnds() {
   const ctx = {
-    window: {},
+    window: null,
     PRAGUE_AIRPORT_NAME: 'Václav Havel Airport Prague (PRG)',
     PRAGUE_AIRPORT_ADDRESS: 'Aviatická, 161 00 Prague 6, Czech Republic',
   };
   let n = 0;
   ctx.uid = function (prefix) { n += 1; return (prefix || 'id') + n; };
+  ctx.window = ctx;
+  ctx.globalThis = ctx;
   vm.createContext(ctx);
+  vm.runInContext(require('fs').readFileSync(path.join(__dirname, 'prague-exit.js'), 'utf8'), ctx);
   vm.runInContext([
     extractFunction('addMinutes'),
     extractFunction('keepFinalDropoffsLast'),
@@ -80,6 +83,7 @@ function loadEnds() {
     extractFunction('routePointForStop'),
     extractFunction('routePointsForStop'),
     extractFunction('dayRouteStops'),
+    extractFunction('orderedHotelPoints'),
     extractFunction('googleMapsDirectionsUrl'),
     extractFunction('pragueRoutePoints'),
     extractFunction('pragueMapsForDay'),
@@ -522,8 +526,8 @@ test('a third Prague hotel adds a third Maps link and a third combined segment',
   assert.equal(maps.individuals.join('|'), [obecni, atlantic, josef].map(hotel => api.googleMapsDirectionsUrl([hotel])).join('|'));
   const params = new URL(maps.combined).searchParams;
   assert.equal(params.get('origin'), null);
-  assert.equal(params.get('waypoints'), 'U Obecního dvora 7, Praha|Hotel Atlantic, Na Poříčí 9, Praha');
-  assert.equal(params.get('destination'), 'Hotel Josef, Praha');
+  assert.equal(params.get('waypoints'), 'U Obecního dvora 7, Praha|Hotel Josef, Praha');
+  assert.equal(params.get('destination'), 'Hotel Atlantic, Na Poříčí 9, Praha');
   const drop = api.pragueMapsForDay(plan.days[1], 'dropoff');
   assert.ok(drop.individuals.length >= 1);
   assert.equal(drop.combined.indexOf('https://www.google.com/maps/dir/?api=1'), 0);

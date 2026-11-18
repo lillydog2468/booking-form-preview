@@ -824,6 +824,21 @@
       color: var(--year-band-fg, var(--text));
       white-space: nowrap;
     }
+    .planning-open {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--accent, #1a3d5c);
+      background: var(--accent, #1a3d5c);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .planning-open[hidden] { display: none !important; }
 
     /* Year identity on table view rows / year groups */
     .data-table tbody tr.year-band td {
@@ -3535,3 +3550,24 @@
     .date-popup-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
     .date-popup-day.is-selected { background: var(--accent); color: #fff; }
     .date-popup-day:disabled { visibility: hidden; }
+
+    /* Phone: one column, even if the window was measured wide before the viewport applied. */
+    html.is-phone body { overflow-x: hidden; }
+    html.is-phone .app,
+    html.is-phone .form-view { flex-direction: column; }
+    html.is-phone .sidebar {
+      width: 100%;
+      min-width: 0;
+      max-height: 200px;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    html.is-phone .layout-grid { grid-template-columns: 1fr; }
+    html.is-phone .layout-zoom-inner { transform: none; width: 100%; }
+    html.is-phone .layout-zoom-controls { display: none; }
+    html.is-phone .tab-panel-header { flex-wrap: wrap; }
+    html.is-phone .tab-panel-header h2 { font-size: 17px; }
+    html.is-phone .grid-2,
+    html.is-phone .grid-3,
+    html.is-phone .grid-4,
+    html.is-phone .grid-5 { display: flex; flex-wrap: wrap; }
