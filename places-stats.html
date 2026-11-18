@@ -287,6 +287,27 @@
     }
     .table-scroll { overflow: auto; max-height: 70vh; }
 
+    .view-switch { display: flex; gap: 6px; margin: 0 0 12px; }
+    .view-switch .btn { min-height: 36px; touch-action: manipulation; }
+    .view-switch .btn.on { background: var(--accent-soft); border-color: var(--accent); }
+    .place-list { display: flex; flex-direction: column; gap: 6px; }
+    .place-row {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      text-align: left; background: var(--surface); color: inherit;
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 10px; min-height: 42px; cursor: pointer;
+      font: inherit; touch-action: manipulation;
+    }
+    .place-row .place-icon { font-size: 16px; line-height: 1; }
+    .place-row .place-name { font-size: 14px; font-weight: 750; }
+    .place-row .type-pills { margin-left: auto; justify-content: flex-end; }
+
+    @media (max-width: 760px) {
+      .place-row { flex-wrap: wrap; align-items: flex-start; }
+      .place-row .type-pills { margin-left: 0; width: 100%; justify-content: flex-start; }
+      .filters input, .filters select { min-width: 0; flex: 1; }
+    }
+
     @media (max-width: 640px) {
       .topbar-inner, .wrap { padding-left: 14px; padding-right: 14px; }
       .card .value { font-size: 22px; }
@@ -336,57 +357,59 @@
   </header>
 
   <main class="wrap">
-    <div class="cards" id="summaryCards">
-      <div class="card"><div class="label">Plans scanned</div><div class="value" id="statPlans">—</div></div>
-      <div class="card"><div class="label">Place visits</div><div class="value" id="statVisits">—</div></div>
-      <div class="card"><div class="label">Distinct places</div><div class="value" id="statPlaces">—</div></div>
-      <div class="card"><div class="label">Types seen</div><div class="value" id="statTypes">—</div></div>
+    <div class="view-switch">
+      <button type="button" class="btn" id="historyToggle" aria-expanded="false" aria-controls="placesHistory">Places history</button>
     </div>
 
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <h2>Type breakdown</h2>
-        </div>
+    <section id="placesHistory" hidden>
+      <div class="cards" id="summaryCards">
+        <div class="card"><div class="label">Plans scanned</div><div class="value" id="statPlans">—</div></div>
+        <div class="card"><div class="label">Place visits</div><div class="value" id="statVisits">—</div></div>
+        <div class="card"><div class="label">Distinct places</div><div class="value" id="statPlaces">—</div></div>
+        <div class="card"><div class="label">Types seen</div><div class="value" id="statTypes">—</div></div>
       </div>
+      <section class="panel">
+        <div class="panel-head"><h2>Places ranked by visits</h2></div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Place</th>
+                <th>Type</th>
+                <th>Visits</th>
+                <th>Plans</th>
+                <th>Groups / plans</th>
+              </tr>
+            </thead>
+            <tbody id="placesBody"></tbody>
+          </table>
+        </div>
+      </section>
+      <details class="panel" id="unmatchedPanel" open>
+        <summary>Unmatched plan entries (<span id="unmatchedCount">0</span>)</summary>
+        <div id="duplicateNote" class="muted" style="margin:8px 0;"></div>
+        <div id="oftenMissing"></div>
+        <div id="unmatchedBody"></div>
+      </details>
+    </section>
+
+    <section class="panel">
       <div class="chips" id="typeChips"><div class="muted">Loading…</div></div>
     </section>
 
     <section class="panel">
       <div class="panel-head">
-        <div>
-          <h2>Places ranked by visits</h2>
-        </div>
+        <h2>Places</h2>
         <div class="filters">
-          <input type="search" id="searchBox" placeholder="Search place or group…" aria-label="Search places">
+          <input type="search" id="searchBox" placeholder="Search places…" aria-label="Search places">
           <select id="typeFilter" aria-label="Filter by type">
             <option value="">All types</option>
           </select>
         </div>
       </div>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Place</th>
-              <th>Type</th>
-              <th>Visits</th>
-              <th>Plans</th>
-              <th>Groups / plans</th>
-            </tr>
-          </thead>
-          <tbody id="placesBody"></tbody>
-        </table>
-        <div class="empty" id="placesEmpty" style="display:none;">No places in the catalogue yet.</div>
-      </div>
+      <div class="place-list" id="placeList"></div>
+      <div class="empty" id="placesEmpty" style="display:none;">No places in the catalogue yet.</div>
     </section>
-
-    <details class="panel" id="unmatchedPanel">
-      <summary>Unmatched plan entries (<span id="unmatchedCount">0</span>)</summary>
-      <div id="duplicateNote" class="muted" style="margin:8px 0;"></div>
-      <div id="oftenMissing"></div>
-      <div id="unmatchedBody"></div>
-    </details>
   </main>
 
   <script>
@@ -598,19 +621,47 @@
         : '<p class="muted">Every counted stop matched a catalogue place.</p>';
     }
 
-    function renderTable() {
-      const body = document.getElementById('placesBody');
+    function openPlace(id, event) {
+      if (event && event.target.closest('a')) return;
+      const row = rows.find(item => item.placeId === id);
+      if (row && window.PlaceEditor) {
+        PlaceEditor.open({
+          sb: sb,
+          place: row.row,
+          history: {
+            visits: row.visits,
+            years: [...(row.years || [])].sort(),
+            groups: [...row.groups.values()]
+          }
+        });
+      }
+    }
+
+    function renderList() {
+      const listEl = document.getElementById('placeList');
       const empty = document.getElementById('placesEmpty');
-      const list = filteredRows();
+      const list = filteredRows().slice().sort((a, b) => a.title.localeCompare(b.title, 'en-GB'));
       if (!list.length) {
-        body.innerHTML = '';
+        listEl.innerHTML = '';
         empty.style.display = 'block';
-        empty.textContent = rows.length
-          ? 'No places match your search or filter.'
-          : 'No place visits found in saved plans.';
+        empty.textContent = rows.length ? 'No places match your search or filter.' : 'No places in the catalogue yet.';
         return;
       }
       empty.style.display = 'none';
+      listEl.innerHTML = list.map(r => {
+        const icon = r.row && r.row.icon ? `<span class="place-icon">${esc(r.row.icon)}</span>` : '';
+        const pills = (r.types || [r.type || 'other']).map(t => `<span class="type-pill">${esc(categoryName(t))}</span>`).join('');
+        return `<button type="button" class="place-row" data-place-row="${esc(r.placeId)}">${icon}<span class="place-name">${esc(r.title)}</span><span class="type-pills">${pills}</span></button>`;
+      }).join('');
+      listEl.querySelectorAll('[data-place-row]').forEach(btn => {
+        btn.addEventListener('click', event => openPlace(btn.getAttribute('data-place-row'), event));
+      });
+    }
+
+    function renderTable() {
+      const body = document.getElementById('placesBody');
+      if (!body) return;
+      const list = filteredRows();
       body.innerHTML = list.map(r => {
         const groups = [...r.groups.values()]
           .sort((a, b) => a.groupName.localeCompare(b.groupName, 'en-GB'))
@@ -632,21 +683,7 @@
         </tr>`;
       }).join('');
       body.querySelectorAll('[data-place-row]').forEach(tr => {
-        tr.addEventListener('click', event => {
-          if (event.target.closest('a')) return;
-          const row = rows.find(item => item.placeId === tr.getAttribute('data-place-row'));
-          if (row && window.PlaceEditor) {
-            PlaceEditor.open({
-              sb: sb,
-              place: row.row,
-              history: {
-                visits: row.visits,
-                years: [...(row.years || [])].sort(),
-                groups: [...row.groups.values()]
-              }
-            });
-          }
-        });
+        tr.addEventListener('click', event => openPlace(tr.getAttribute('data-place-row'), event));
       });
     }
 
@@ -654,6 +691,7 @@
       renderSummary();
       renderTypeChips();
       fillTypeFilter();
+      renderList();
       renderTable();
       renderUnmatched();
     }
@@ -735,8 +773,16 @@
         setStatus(err.message || 'Failed to load', 'err');
       });
     });
-    document.getElementById('searchBox').addEventListener('input', renderTable);
-    document.getElementById('typeFilter').addEventListener('change', renderTable);
+    document.getElementById('searchBox').addEventListener('input', () => { renderList(); renderTable(); });
+    document.getElementById('typeFilter').addEventListener('change', () => { renderList(); renderTable(); });
+    document.getElementById('historyToggle').addEventListener('click', () => {
+      const panel = document.getElementById('placesHistory');
+      const open = panel.hidden;
+      panel.hidden = !open;
+      const btn = document.getElementById('historyToggle');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.classList.toggle('on', open);
+    });
 
     fixExternalNavLinks();
     AuthGate.require(sb, { title: 'Place statistics' }).then(session => {

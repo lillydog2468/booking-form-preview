@@ -21,5 +21,9 @@ test('the place editor saves one catalogue row and does not remove it', () => {
   assert.match(stats, /Often visited, not in the catalogue/);
   assert.match(stats, /Possible catalogue duplicates/);
   assert.match(stats, /PlaceEditor\.open/);
+  assert.match(stats, /id="historyToggle"/);
+  assert.match(stats, /id="placesHistory" hidden/);
+  assert.match(stats, /id="placeList"/);
+  assert.match(stats, />Places history</);
   assert.match(stats, /id === '310'/);
 });
