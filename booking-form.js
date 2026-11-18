@@ -1608,7 +1608,7 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3.26-6.93"/><path d="M3 2v5h5"/></svg>
           Reset
         </button>
-        <button type="button" class="btn btn-primary" onclick="openTourPlanner('${t}')" title="Open the day planner for this group — dates, hotel and guest names">Start planning</button>
+        ${(typeof HIDE_OLD_PLANNING !== 'undefined' && HIDE_OLD_PLANNING === true) ? '' : `<button type="button" class="btn btn-primary" onclick="openTourPlanner('${t}')" title="Open the day planner for this group — dates, hotel and guest names">Start planning</button>`}
         <button type="button" class="btn btn-outline btn-sm" id="t${t}_cancelBtn" hidden onclick="markBookingCancelled('${t}')">Mark cancelled</button>
         <button type="button" class="btn btn-outline btn-sm" id="t${t}_copyBtn" hidden onclick="openRescheduledFromTab('${t}')">Rescheduled</button>
         <button class="btn btn-danger btn-sm" id="t${t}_deleteBtn" style="display:none;" onclick="confirmDelete()">
@@ -8481,17 +8481,25 @@
       return `<a class="booking-link-pill" href="${escapeAttr(href)}" title="${escapeAttr(label + ': ' + shown)}"><span class="booking-link-k">${escapeHtml(label)}</span> ${escapeHtml(shown)}</a>`;
     };
     box.classList.toggle('is-collapsed', collapsed);
+    const hidePlanner = typeof HIDE_OLD_PLANNING !== 'undefined' && HIDE_OLD_PLANNING === true;
+    const plannerBtn = hidePlanner ? '' : `<a class="booking-link-planner" href="${escapeAttr(plannerLinkHref(tabId))}" title="Open a tour planner for this booking">Day planner</a>`;
+    const guestsBit = hidePlanner
+      ? fact('booking-link-guests', 'Guests', people)
+      : `<a class="booking-link-guests" href="${escapeAttr(plannerLinkHref(tabId, 'people'))}" title="${escapeAttr(people || 'Guest names')}"><span class="booking-link-k">Guests</span> ${escapeHtml(people || '—')}</a>`;
+    const hotelBit = hidePlanner ? fact('booking-link-pill', 'Hotel', link.hotel) : pill('Hotel', link.hotel, plannerLinkHref(tabId, 'hotels', link.year));
+    const placeBit = hidePlanner ? fact('booking-link-pill', 'Place', link.places.join(', ')) : pill('Place', link.places.join(', '), plannerLinkHref(tabId, 'places'));
+    const yearBit = hidePlanner ? fact('booking-link-pill', 'Year', link.year) : pill('Year', link.year, plannerLinkHref(tabId, 'hotels', link.year));
     box.innerHTML =
       `<button type="button" class="booking-link-fold" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${collapsed ? 'Show hotel, place, year and rooms' : 'Hide hotel, place, year and rooms'}" onclick="toggleBookingLink()"><span class="booking-link-caret" aria-hidden="true">${collapsed ? '▸' : '▾'}</span></button>` +
-      `<a class="booking-link-planner" href="${escapeAttr(plannerLinkHref(tabId))}" title="Open a tour planner for this booking">Day planner</a>` +
+      plannerBtn +
       fact('booking-link-group', 'Group', group) +
       fact('booking-link-org', 'Organiser', organiser) +
       fact('booking-link-dates', 'Dates', dates) +
-      `<a class="booking-link-guests" href="${escapeAttr(plannerLinkHref(tabId, 'people'))}" title="${escapeAttr(people || 'Guest names')}"><span class="booking-link-k">Guests</span> ${escapeHtml(people || '—')}</a>` +
+      guestsBit +
       `<span class="booking-link-extra">` +
-        pill('Hotel', link.hotel, plannerLinkHref(tabId, 'hotels', link.year)) +
-        pill('Place', link.places.join(', '), plannerLinkHref(tabId, 'places')) +
-        pill('Year', link.year, plannerLinkHref(tabId, 'hotels', link.year)) +
+        hotelBit +
+        placeBit +
+        yearBit +
         pill('Rooms', roomsText, 'hotels.html' + (link.year ? '?year=' + encodeURIComponent(link.year) : '')) +
       `</span>`;
     renderPairStats(tabId);

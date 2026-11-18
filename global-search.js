@@ -553,8 +553,10 @@
     let any = false;
     let idx = 0;
     flatResults = [];
+    const hidePlannerLinks = typeof HIDE_OLD_PLANNING !== 'undefined' && HIDE_OLD_PLANNING === true;
     sections.forEach(sec => {
-      const items = grouped[sec.key] || [];
+      let items = grouped[sec.key] || [];
+      if (hidePlannerLinks) items = items.filter(item => String(item.href || '').indexOf('tour-planner.html') !== 0);
       if (!items.length) return;
       any = true;
       html += '<div class="global-search-group-label">' + esc(sec.label) + '</div>';

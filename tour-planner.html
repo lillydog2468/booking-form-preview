@@ -20,6 +20,7 @@
   <script src="week-overview.js"></script>
   <script src="global-search.js"></script>
   <script src="booking-config.js"></script>
+  <script src="planning-hide.js"></script>
   <script src="booking-format.js"></script>
   <script src="auth-gate.js"></script>
   <script src="booking-extras.js"></script>
@@ -96,6 +97,9 @@
   </div>
   <div class="toast-wrap" id="toasts"></div>
 
+<script>
+  if (window.PlanningHide && PlanningHide.oldPlanningHidden()) PlanningHide.showNote(document.body);
+</script>
 <script src="tour-planner.js" defer></script>
 
 </body>
