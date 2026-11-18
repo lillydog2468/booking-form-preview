@@ -110,7 +110,16 @@ test('the page saves only booking 310 and leaves the old planner alone', () => {
   assert.match(app, /groupPlaces/);
   assert.equal(app.includes('slice(0, 40)'), false);
   assert.match(css, /\.p2-card/);
-  assert.match(css, /touch-action:\s*none/);
+  assert.match(css, /\.p2-groups[\s\S]*touch-action:\s*pan-y/);
+  assert.match(css, /\.p2-card[\s\S]*touch-action:\s*pan-y/);
+  assert.match(css, /-webkit-overflow-scrolling:\s*touch/);
+  assert.equal(P.placeGesture(0, 40, 30), 'scroll');
+  assert.equal(P.placeGesture(4, 28, 80), 'scroll');
+  assert.equal(P.placeGesture(20, 4, 40), 'drag');
+  assert.equal(P.placeGesture(2, 2, 320), 'drag');
+  assert.equal(P.placeGesture(4, 4, 80), 'wait');
+  assert.match(app, /placeGesture/);
+  assert.match(app, /gesture === 'scroll'/);
   assert.match(app, /Jennifer Lindsay/);
   assert.equal(oldHtml.includes('planner2'), false);
   assert.equal(oldJs.includes('planner2'), false);

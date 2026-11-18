@@ -135,8 +135,8 @@
         var tone = placeTone(place);
         var on = state.selected === place.id ? ' on' : '';
         var mark = used[String(place.id)] ? '<span class="p2-used">On this week</span>' : '';
-        return '<button type="button" class="p2-card' + on + '" data-place="' + esc(place.id) + '">'
-          + '<span class="p2-card-name">' + esc(place.nickname || place.name) + '</span>' + mark + '</button>';
+        return '<div role="button" tabindex="0" class="p2-card' + on + '" data-place="' + esc(place.id) + '">'
+          + '<span class="p2-card-name">' + esc(place.nickname || place.name) + '</span>' + mark + '</div>';
       }).join('');
       return '<section class="p2-group"><h3>' + esc(heading) + '</h3>' + cards + '</section>';
     }).join('') : '<p class="p2-note">No places.</p>';
@@ -161,56 +161,85 @@
     card.addEventListener('pointerdown', function (event) {
       if (event.button != null && event.button !== 0) return;
       var id = card.getAttribute('data-place');
-      var origin = { x: event.clientX, y: event.clientY, moved: false };
+      var pointer = event.pointerId;
+      var origin = { x: event.clientX, y: event.clientY, t: Date.now(), decided: '' };
       var ghost = null;
       var snap = null;
-      try { card.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
-      function clearDrag() {
-        card.classList.remove('dragging');
-        document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
-        if (ghost) ghost.remove();
-        if (snap) snap.remove();
-      }
+      var hold = setTimeout(function () {
+        if (origin.decided) return;
+        if (Planner2.placeGesture(0, 0, Date.now() - origin.t) === 'drag') beginDrag(origin.x, origin.y);
+      }, 320);
       function columnAt(x, y) {
+        if (ghost) ghost.style.visibility = 'hidden';
         var under = document.elementFromPoint(x, y);
+        if (ghost) ghost.style.visibility = '';
         if (!under || !under.closest) return null;
         return under.closest('[data-ov-col]');
       }
-      function move(e) {
-        if (e.pointerId !== event.pointerId) return;
-        if (!origin.moved && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < 8) return;
-        origin.moved = true;
-        e.preventDefault();
+      function follow(x, y) {
         if (!ghost) {
           ghost = card.cloneNode(true);
           ghost.classList.add('ov-ghost');
           ghost.style.width = Math.max(140, card.offsetWidth) + 'px';
           document.body.appendChild(ghost);
         }
-        ghost.style.left = (e.clientX + 12) + 'px';
-        ghost.style.top = (e.clientY + 12) + 'px';
+        ghost.style.left = (x + 12) + 'px';
+        ghost.style.top = (y + 12) + 'px';
         if (snap) { snap.remove(); snap = null; }
         document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
-        var col = columnAt(e.clientX, e.clientY);
+        var col = columnAt(x, y);
         if (!col) return;
         col.classList.add('is-drop');
-        var mins = minutesOn(col, e.clientY);
+        var mins = minutesOn(col, y);
         snap = document.createElement('div');
         snap.className = 'ov-snap';
         snap.style.top = ((mins - WeekOverview.START_MIN) * WeekOverview.PX_PER_MIN) + 'px';
         snap.textContent = WeekOverview.formatMinutes(mins);
         col.appendChild(snap);
       }
+      function beginDrag(x, y) {
+        if (origin.decided === 'scroll') return;
+        origin.decided = 'drag';
+        clearTimeout(hold);
+        try { card.setPointerCapture(pointer); } catch (_) { /* a scroll already owns the finger */ }
+        follow(x, y);
+      }
+      function clearDrag() {
+        clearTimeout(hold);
+        document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
+        if (ghost) ghost.remove();
+        if (snap) snap.remove();
+        ghost = null;
+        snap = null;
+      }
+      function detach() {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+      }
+      function move(e) {
+        if (e.pointerId !== pointer || origin.decided === 'scroll') return;
+        if (origin.decided === 'drag') {
+          follow(e.clientX, e.clientY);
+          return;
+        }
+        var gesture = Planner2.placeGesture(e.clientX - origin.x, e.clientY - origin.y, Date.now() - origin.t);
+        if (gesture === 'scroll') {
+          origin.decided = 'scroll';
+          clearTimeout(hold);
+          return;
+        }
+        if (gesture === 'drag') beginDrag(e.clientX, e.clientY);
+      }
       function up(e) {
-        if (e.pointerId !== event.pointerId) return;
-        card.removeEventListener('pointermove', move);
-        card.removeEventListener('pointerup', up);
-        card.removeEventListener('pointercancel', up);
-        var moved = origin.moved;
-        var col = moved ? columnAt(e.clientX, e.clientY) : null;
+        if (e.pointerId !== pointer) return;
+        detach();
+        var decided = origin.decided;
+        var col = decided === 'drag' ? columnAt(e.clientX, e.clientY) : null;
         var mins = col ? minutesOn(col, e.clientY) : null;
         clearDrag();
-        if (!moved) {
+        if (decided === 'scroll' || e.type === 'pointercancel') return;
+        if (decided !== 'drag') {
           state.selected = state.selected === id ? null : id;
           renderTray();
           return;
@@ -222,9 +251,9 @@
           afterEdit();
         }
       }
-      card.addEventListener('pointermove', move);
-      card.addEventListener('pointerup', up);
-      card.addEventListener('pointercancel', up);
+      window.addEventListener('pointermove', move, { passive: true });
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
     });
   }
 

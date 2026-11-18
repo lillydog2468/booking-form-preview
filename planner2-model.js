@@ -176,6 +176,20 @@
     return stop;
   }
 
+  /**
+   * A finger on a place card is either scrolling the list or starting a drag.
+   * Vertical movement scrolls. A sideways move, or a still finger held briefly, drags.
+   */
+  function placeGesture(dx, dy, heldMs) {
+    var adx = Math.abs(Number(dx) || 0);
+    var ady = Math.abs(Number(dy) || 0);
+    var held = Number(heldMs) || 0;
+    if (ady >= 10 && ady > adx) return 'scroll';
+    if (adx >= 14 && adx >= ady) return 'drag';
+    if (held >= 320 && adx < 10 && ady < 10) return 'drag';
+    return 'wait';
+  }
+
   function primaryType(place) {
     if (place && place.types && place.types.length) return String(place.types[0]);
     return String((place && place.type) || 'other');
@@ -365,6 +379,7 @@
     groupPlaces: groupPlaces,
     usedPlaceIds: usedPlaceIds,
     primaryType: primaryType,
+    placeGesture: placeGesture,
     guestLine: guestLine,
     enumerateDates: enumerateDates,
     emptyPlanFromBooking: emptyPlanFromBooking,
