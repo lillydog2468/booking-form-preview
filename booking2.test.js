@@ -67,6 +67,8 @@ test('the real booking is never written, and the old pages stay put', () => {
   assert.match(css, /\.b2-summary/);
   assert.match(app, /Planner2Page\.mount/);
   assert.match(plannerHtml, /location\.replace\('booking2\.html'/);
-  assert.equal(form.includes('booking2'), false);
-  assert.equal(oldPlanner.includes('booking2'), false);
+  assert.match(form, /href="booking2\.html"/);
+  assert.equal(form.includes('booking2.js'), false);
+  assert.match(oldPlanner, /href="booking2\.html"/);
+  assert.equal(oldPlanner.includes('booking2.js'), false);
 });

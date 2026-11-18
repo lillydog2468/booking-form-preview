@@ -6,7 +6,14 @@ body {
   color: #1c1b19;
   line-height: 1.45;
 }
-.b2-top { padding: 18px 20px 8px; }
+.b2-top { padding: 14px 20px 8px; }
+.b2-back { margin: 0 0 8px; }
+.b2-back-link {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 4px 12px;
+  border-radius: 999px; border: 1px solid #c4b49a; background: #fff; color: #1c1b19;
+  font-size: 13px; font-weight: 700; text-decoration: none; touch-action: manipulation;
+}
+.b2-back-link:hover { background: #fffdf8; }
 .b2-kicker { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #7a756c; }
 .b2-top h1 { margin: 2px 0 0; font-size: 28px; font-weight: 700; letter-spacing: -.03em; }
 .b2-dates { margin: 2px 0 0; color: #5c574e; font-size: 14px; }

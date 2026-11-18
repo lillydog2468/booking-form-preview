@@ -24,6 +24,7 @@
   <script src="global-search.js"></script>
   
   <link rel="stylesheet" href="booking-form.css">
+  <link rel="stylesheet" href="site-nav.css">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -100,23 +101,22 @@
 	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
 	          Year tours
 	        </button>
-	        <a class="view-nav-btn" id="navInterest" href="interest-2027.html" title="2027 interest" style="display:none;text-decoration:none;">
-	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-	          2027 interest
-	        </a>
-	        <a class="view-nav-btn" id="navAnalytics" href="analytics.html" title="Analytics" style="text-decoration:none;">
-	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17v-6"/><path d="M12 17V7"/><path d="M16 17v-3"/></svg>
-	          Analytics
-	        </a>
-	        <a class="view-nav-btn" id="navPlanner" href="tour-planner.html" title="Tour planner" style="text-decoration:none;">
-	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
-	          Planner
-	        </a>
-	        <a class="view-nav-btn" id="navHotels" href="hotels.html" title="Hotel stays for the year" style="text-decoration:none;">
-	          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21V12h6v9"/></svg>
-	          Hotels
-	        </a>
 	      </div>
+        <nav class="site-nav" aria-label="Pages">
+          <a class="site-nav-link" href="booking-form.html" aria-current="page">Bookings</a>
+          <a class="site-nav-link" href="places-stats.html">Places</a>
+          <a class="site-nav-link" href="booking2.html">Planning</a>
+          <div class="site-more">
+            <button type="button" class="site-more-btn" aria-expanded="false" aria-haspopup="true">More</button>
+            <div class="site-more-menu" hidden>
+              <a id="navAnalytics" href="analytics.html">Analytics</a>
+              <a id="navHotels" href="hotels.html">Hotels</a>
+              <a href="tax-summary.html">Tax summary</a>
+              <a id="navInterest" href="interest-2027.html" title="2027 interest" style="display:none;text-decoration:none;">2027 interest</a>
+              <a id="navPlanner" href="tour-planner.html">Tour planner</a>
+            </div>
+          </div>
+        </nav>
 	    </div>
 	    <div class="topbar-actions">
       <div id="globalSearchMount" class="global-search-mount" aria-live="polite"></div>
@@ -378,6 +378,7 @@
 </div>
 
 <script src="booking-extras.js"></script>
+<script src="site-nav.js"></script>
 <script src="booking-form.js" defer></script>
 
 </body>

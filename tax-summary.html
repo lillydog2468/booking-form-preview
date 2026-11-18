@@ -16,6 +16,8 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="booking-config.js"></script>
+  <script src="planning-hide.js"></script>
+  <link rel="stylesheet" href="site-nav.css">
   <script src="auth-gate.js"></script>
   <script src="booking-extras.js"></script>
   <script src="tax-summary.js"></script>
@@ -183,12 +185,21 @@
     <div class="topbar-inner">
       <div class="topbar-left">
         <h1>Tax summary</h1>
-        <nav class="view-nav" aria-label="Main">
-          <a href="booking-form.html">Bookings</a>
-          <a href="analytics.html">Analytics</a>
-          <a href="admin.html">Admin</a>
-          <a href="interest-2027.html" id="interestNav" hidden>2027 interest</a>
-          <a href="tax-summary.html" class="active">Tax summary</a>
+        <nav class="view-nav site-nav" aria-label="Pages">
+          <a class="site-nav-link" href="booking-form.html">Bookings</a>
+          <a class="site-nav-link" href="places-stats.html">Places</a>
+          <a class="site-nav-link" href="booking2.html">Planning</a>
+          <div class="site-more">
+            <button type="button" class="site-more-btn is-current" aria-expanded="false" aria-haspopup="true">More</button>
+            <div class="site-more-menu" hidden>
+              <a href="analytics.html">Analytics</a>
+              <a href="hotels.html">Hotels</a>
+              <a href="tax-summary.html" aria-current="page">Tax summary</a>
+              <a href="admin.html">Admin</a>
+              <a href="interest-2027.html" id="interestNav" hidden>2027 interest</a>
+              <a href="tour-planner.html">Tour planner</a>
+            </div>
+          </div>
         </nav>
       </div>
       <div class="topbar-actions">
@@ -565,5 +576,6 @@
       });
     });
   </script>
+<script src="site-nav.js"></script>
 </body>
 </html>

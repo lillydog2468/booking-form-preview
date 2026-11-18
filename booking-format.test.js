@@ -347,7 +347,7 @@ test('the planner menu no longer says WIP, and the tax page uses the site header
   const tax = fs.readFileSync(path.join(root, 'tax-summary.html'), 'utf8');
   assert.match(tax, /DM Sans/);
   assert.equal(tax.includes('Georgia'), false);
-  assert.match(tax, /class="view-nav"/);
+  assert.match(tax, /class="view-nav/);
   assert.match(tax, /id="interestNav" hidden/);
   assert.match(tax, /interestNav\.hidden = false/);
 });
