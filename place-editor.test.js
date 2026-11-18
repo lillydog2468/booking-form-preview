@@ -12,6 +12,12 @@ test('the place editor saves one catalogue row and does not remove it', () => {
   assert.equal(editor.includes('.delete('), false);
   assert.equal(editor.includes('Remove place'), false);
   assert.match(editor, /data-pe-save/);
+  assert.match(editor, /Save and close/);
+  assert.match(editor, /function saveAndClose/);
+  assert.equal(editor.includes('>Close<'), false);
+  assert.match(stats, /data-type-chip/);
+  assert.match(stats, /r\.row && r\.row\.notes/);
+  assert.match(stats, /applySavedPlace/);
   assert.match(editor, /<details class="pe-history">/);
   assert.match(editor, /<summary>Visit history<\/summary>/);
   assert.equal(editor.includes('<details class="pe-history" open'), false);

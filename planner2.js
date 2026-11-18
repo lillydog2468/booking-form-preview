@@ -253,7 +253,24 @@
         if (decided !== 'drag') {
           var tapped = state.places.find(function (item) { return item.id === id; });
           if (tapped && window.PlaceEditor) {
-            PlaceEditor.open({ sb: state.sb, place: tapped, readOnly: state.sample });
+            PlaceEditor.open({
+              sb: state.sb,
+              place: tapped,
+              readOnly: state.sample,
+              onSaved: function (saved) {
+                tapped.place_type = saved.place_type;
+                tapped.type = saved.place_type;
+                tapped.place_types = (saved.place_types || []).slice();
+                tapped.types = tapped.place_types.slice();
+                tapped.name = saved.name;
+                tapped.nickname = saved.nickname;
+                tapped.notes = saved.notes;
+                tapped.icon = saved.icon;
+                tapped.address = saved.address;
+                tapped.updated_at = saved.updated_at;
+                renderTray();
+              }
+            });
           }
           return;
         }

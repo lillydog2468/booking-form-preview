@@ -221,10 +221,17 @@
       border-radius: 999px;
       background: var(--accent-soft);
       border: 1px solid var(--border);
+      font: inherit;
       font-size: 12px;
       font-weight: 700;
+      color: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+      min-height: 32px;
     }
     .chip strong { font-weight: 800; }
+    .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+    .chip.on small { color: inherit; }
 
     table {
       width: 100%;
@@ -538,15 +545,28 @@
 
     function renderTypeChips() {
       const el = document.getElementById('typeChips');
-      const types = catalogueTypeIds().map(id => [id, typeTotals.get(id) || 0]);
+      const types = catalogueTypeIds();
       if (!types.length) {
         el.innerHTML = '<div class="muted">No typed visits yet.</div>';
         return;
       }
-      el.innerHTML = types.filter(([, n]) => n > 0).map(([type, n]) => {
+      const active = document.getElementById('typeFilter').value;
+      el.innerHTML = types.map(type => {
+        const n = typeTotals.get(type) || 0;
         const visits = visitTotals.get(type) || 0;
-        return `<span class="chip" title="${esc(categoryName(type))}"><span>${esc(categoryName(type))}</span><strong>${n}</strong><small style="font-weight:600;color:var(--muted,#6b7280);"> ${visits}</small></span>`;
+        const on = active === type ? ' on' : '';
+        return `<button type="button" class="chip${on}" data-type-chip="${esc(type)}" aria-pressed="${on ? 'true' : 'false'}"><span>${esc(categoryName(type))}</span><strong>${n}</strong><small> ${visits}</small></button>`;
       }).join('') || '<div class="muted">No catalogue places yet.</div>';
+      el.querySelectorAll('[data-type-chip]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sel = document.getElementById('typeFilter');
+          const id = btn.getAttribute('data-type-chip');
+          sel.value = sel.value === id ? '' : id;
+          renderList();
+          renderTable();
+          renderTypeChips();
+        });
+      });
     }
 
     function fillTypeFilter() {
@@ -567,6 +587,9 @@
         if (!q) return true;
         const hay = [
           r.title,
+          r.nickname || '',
+          (r.row && r.row.nickname) || '',
+          (r.row && r.row.notes) || '',
           r.placeId || '',
           types.map(categoryName).join(' '),
           types.join(' '),
@@ -621,6 +644,43 @@
         : '<p class="muted">Every counted stop matched a catalogue place.</p>';
     }
 
+    function recountCategories() {
+      typeTotals = new Map();
+      visitTotals = new Map();
+      rows.forEach(row => {
+        (row.types || []).forEach(type => {
+          typeTotals.set(type, (typeTotals.get(type) || 0) + 1);
+          visitTotals.set(type, (visitTotals.get(type) || 0) + (row.visits || 0));
+        });
+      });
+    }
+
+    function applySavedPlace(saved) {
+      const id = String(saved.client_id || saved.id || '');
+      const row = rows.find(item => item.placeId === id);
+      if (!row || !row.row) return;
+      const source = row.row;
+      source.place_type = saved.place_type;
+      source.place_types = (saved.place_types || []).slice();
+      source.type = saved.place_type;
+      source.types = source.place_types.slice();
+      source.name = saved.name;
+      source.nickname = saved.nickname;
+      source.notes = saved.notes;
+      source.icon = saved.icon;
+      source.address = saved.address;
+      source.contact_method = saved.contact_method;
+      source.contact_detail = saved.contact_detail;
+      source.updated_at = saved.updated_at;
+      const types = PlaceVisits.categoriesOf(source);
+      row.types = types.slice();
+      row.type = types[0] || 'other';
+      row.title = saved.name || row.title;
+      row.nickname = saved.nickname || '';
+      recountCategories();
+      renderAll();
+    }
+
     function openPlace(id, event) {
       if (event && event.target.closest('a')) return;
       const row = rows.find(item => item.placeId === id);
@@ -628,6 +688,7 @@
         PlaceEditor.open({
           sb: sb,
           place: row.row,
+          onSaved: applySavedPlace,
           history: {
             visits: row.visits,
             years: [...(row.years || [])].sort(),
@@ -774,7 +835,11 @@
       });
     });
     document.getElementById('searchBox').addEventListener('input', () => { renderList(); renderTable(); });
-    document.getElementById('typeFilter').addEventListener('change', () => { renderList(); renderTable(); });
+    document.getElementById('typeFilter').addEventListener('change', () => {
+      renderList();
+      renderTable();
+      renderTypeChips();
+    });
     document.getElementById('historyToggle').addEventListener('click', () => {
       const panel = document.getElementById('placesHistory');
       const open = panel.hidden;

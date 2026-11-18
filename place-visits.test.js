@@ -180,6 +180,19 @@ test('the catalogue is the place list and notes are not places', () => {
   assert.equal(summary.unmatched.length, 1);
   assert.equal(summary.unmatched[0].visits, 2);
   assert.equal(summary.placeCounts.factory, 1);
+  assert.deepEqual(PV.categoriesOf({
+    name: 'bakery Držkov',
+    place_type: 'restaurant',
+    place_types: ['snack'],
+    types: ['restaurant', 'shop'],
+    icon: '🥐',
+  }), ['snack']);
+  assert.deepEqual(PV.categoriesOf({
+    name: 'Antique Shop Beads',
+    place_type: 'shop',
+    place_types: ['antique'],
+  }), ['antique']);
+  assert.deepEqual(PV.categoriesOf({ place_type: 'factory', place_types: null }), ['factory']);
   assert.equal(summary.placeCounts.shop, 2);
   assert.equal(summary.visitCounts.factory, 2);
   const copies = PV.catalogueDuplicates([

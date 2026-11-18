@@ -198,13 +198,26 @@
   }
 
   function categoriesOf(place) {
-    var PC = root.PlaceCategories;
-    if (PC && PC.placeCategories) return PC.placeCategories(place);
-    var primary = text(place && (place.place_type || place.type)) || 'other';
-    var extra = place && (place.place_types || place.types);
-    var list = Array.isArray(extra) && extra.length ? extra.map(text).filter(Boolean) : [primary];
-    if (list.indexOf(primary) === -1) list.unshift(primary);
-    return list;
+    // Saved columns only. place_types wins over place_type, and a stale
+    // in-memory `types` list, a name keyword, or a plan-stop type cannot add
+    // a category back.
+    var stored = place && place.place_types;
+    var list = [];
+    if (Array.isArray(stored) && stored.length) {
+      stored.forEach(function (id) {
+        var clean = text(id);
+        if (clean && list.indexOf(clean) === -1) list.push(clean);
+      });
+    } else if (stored == null && place && place.place_type == null && Array.isArray(place.types) && place.types.length) {
+      place.types.forEach(function (id) {
+        var clean = text(id);
+        if (clean && list.indexOf(clean) === -1) list.push(clean);
+      });
+    }
+    var primary = text(place && (place.place_type != null && String(place.place_type).trim() !== '' ? place.place_type : place && place.type));
+    if (!list.length) list = [primary || 'other'];
+    if (list.indexOf(primary) === -1) primary = list[0];
+    return [primary].concat(list.filter(function (id) { return id !== primary; }));
   }
 
   function summariseCatalogue(catalogue, plans) {
@@ -504,6 +517,7 @@
     foldLoose: foldLoose,
     excludedStop: excludedStop,
     summariseCatalogue: summariseCatalogue,
+    categoriesOf: categoriesOf,
     catalogueDuplicates: catalogueDuplicates
   };
 })(typeof window !== 'undefined' ? window : globalThis);

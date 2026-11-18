@@ -35,8 +35,8 @@
     style.textContent = [
       '.pe-sheet{position:fixed;inset:0;z-index:80;background:rgba(28,27,25,.35);display:flex;align-items:flex-end;justify-content:center;}',
       '.pe-sheet[hidden]{display:none;}',
-      '.pe-card{width:min(560px,100%);max-height:92vh;overflow:auto;background:#fff;color:#1c1b19;border-radius:16px 16px 0 0;padding:14px 16px 22px;font-family:"DM Sans",system-ui,sans-serif;}',
-      '.pe-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}',
+      '.pe-card{width:min(560px,100%);max-height:92vh;overflow:auto;background:#fff;color:#1c1b19;border-radius:16px 16px 0 0;padding:0 16px 22px;font-family:"DM Sans",system-ui,sans-serif;}',
+      '.pe-head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;padding:14px 0 10px;}',
       '.pe-head h2{margin:0;font-size:18px;}',
       '.pe-btn{border:1px solid #e2ddd4;background:#fff;border-radius:999px;min-height:34px;padding:4px 12px;font:700 13px/1.2 inherit;cursor:pointer;touch-action:manipulation;}',
       '.pe-btn.primary{background:#1c1b19;color:#fff;border-color:#1c1b19;}',
@@ -58,9 +58,10 @@
   }
 
   function categories(place) {
-    var PC = root.PlaceCategories;
-    if (PC && PC.placeCategories) return PC.placeCategories(place);
+    if (root.PlaceVisits && PlaceVisits.categoriesOf) return PlaceVisits.categoriesOf(place);
     var primary = text(place && (place.place_type || place.type)) || 'other';
+    var stored = place && place.place_types;
+    if (Array.isArray(stored) && stored.length) return stored.map(text).filter(Boolean);
     return [primary];
   }
 
@@ -216,6 +217,48 @@
     openState = null;
   }
 
+  function listsEqual(left, right) {
+    var a = left || [];
+    var b = right || [];
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  function formSnapshot(card, place) {
+    var next = readForm(card, place);
+    var pin = root.PlacePin && PlacePin.readPin(place);
+    return {
+      name: text(next.name),
+      type: next.type,
+      types: next.types.slice(),
+      contactMethod: text(next.contactMethod),
+      contactDetail: text(next.contactDetail),
+      address: text(next.address),
+      nickname: text(next.nickname),
+      icon: text(next.icon),
+      notes: text(next.notes),
+      pinLat: pin ? String(pin.lat) : '',
+      pinLng: pin ? String(pin.lng) : '',
+    };
+  }
+
+  function unchanged(card) {
+    var now = formSnapshot(card, openState.place);
+    var was = openState.baseline;
+    return now.name === was.name
+      && now.type === was.type
+      && listsEqual(now.types, was.types)
+      && now.contactMethod === was.contactMethod
+      && now.contactDetail === was.contactDetail
+      && now.address === was.address
+      && now.nickname === was.nickname
+      && now.icon === was.icon
+      && now.notes === was.notes
+      && now.pinLat === was.pinLat
+      && now.pinLng === was.pinLng;
+  }
+
   function render(place) {
     ensureStyle();
     var sheet = document.getElementById('placeEditor');
@@ -226,7 +269,7 @@
       sheet.hidden = true;
       document.body.appendChild(sheet);
       sheet.addEventListener('click', function (event) {
-        if (event.target === sheet) close();
+        if (event.target === sheet) saveAndClose();
       });
     }
     var href = navigateHref(place);
@@ -234,7 +277,7 @@
     sheet.innerHTML = ''
       + '<div class="pe-card" role="dialog" aria-labelledby="peTitle">'
       + '<div class="pe-head"><h2 id="peTitle">' + esc(place.name || 'Place') + '</h2>'
-      + '<button type="button" class="pe-btn" data-pe-close>Close</button></div>'
+      + '<button type="button" class="pe-btn primary" data-pe-save>Save and close</button></div>'
       + '<label class="pe-field">Name<input data-pe-name value="' + esc(place.name || '') + '"></label>'
       + '<div class="pe-field">Categories<div class="pe-checks">' + checksHtml(place) + '</div></div>'
       + '<div class="pe-grid">'
@@ -254,35 +297,43 @@
       + '<label class="pe-field">Notes<textarea data-pe-notes rows="3">' + esc(place.notes || '') + '</textarea></label>'
       + historyHtml(place, openState && openState.history)
       + '<div class="pe-actions">'
-      + '<button type="button" class="pe-btn primary" data-pe-save>Save</button>'
+      + '<button type="button" class="pe-btn primary" data-pe-save>Save and close</button>'
       + '</div>'
       + '<p class="pe-status" data-pe-status></p>'
       + '</div>';
-    sheet.querySelector('[data-pe-close]').addEventListener('click', close);
+    sheet.querySelectorAll('[data-pe-save]').forEach(function (btn) {
+      btn.addEventListener('click', function () { saveAndClose(); });
+    });
     sheet.querySelector('[data-pe-clear]').addEventListener('click', function () {
       if (root.PlacePin) PlacePin.clearPin(place);
       showPinStatus(place);
     });
-    sheet.querySelector('[data-pe-save]').addEventListener('click', function () { save(sheet); });
     showPinStatus(place);
     var canvas = sheet.querySelector('[data-pe-map]');
     if (canvas && root.PlacePin) initMap(canvas, place);
   }
 
-  async function save(card) {
+  async function saveAndClose() {
+    var state = openState;
+    var sheet = document.getElementById('placeEditor');
+    var card = sheet && sheet.querySelector('.pe-card');
+    if (!state || !card || state.saving) return;
     var status = card.querySelector('[data-pe-status]');
-    if (!openState || openState.readOnly || !openState.sb) {
-      if (status) status.textContent = 'Sample — nothing is saved';
+    if (state.readOnly || !state.sb || unchanged(card)) {
+      close();
       return;
     }
-    var place = openState.place;
+    var place = state.place;
     var id = text(place.client_id || place.id);
-    if (!id) return;
+    if (!id) {
+      if (status) status.textContent = 'Could not save';
+      return;
+    }
     var next = readForm(card, place);
     var patch = {
       name: text(next.name) || 'Untitled place',
       place_type: next.type,
-      place_types: next.types,
+      place_types: next.types.slice(),
       contact_method: next.contactMethod || null,
       contact_detail: text(next.contactDetail) || null,
       address: text(next.address) || null,
@@ -291,25 +342,45 @@
       notes: text(next.notes) || null,
       updated_at: new Date().toISOString(),
     };
-    if (root.PlacePin) Object.assign(patch, PlacePin.pinPatch(openState.baselinePin || {}, place));
+    if (root.PlacePin) Object.assign(patch, PlacePin.pinPatch(state.baselinePin || {}, place));
+    state.saving = true;
     if (status) status.textContent = 'Saving…';
-    var query = openState.sb.from('planner_places').update(patch).eq('client_id', id);
-    if (place.updated_at) query = query.eq('updated_at', place.updated_at);
-    var updated = await query.select('client_id, updated_at');
-    if (updated.error) {
+    try {
+      var query = state.sb.from('planner_places').update(patch).eq('client_id', id);
+      if (place.updated_at) query = query.eq('updated_at', place.updated_at);
+      var updated = await query.select('client_id, updated_at, place_type, place_types');
+      if (updated.error) {
+        state.saving = false;
+        if (status) status.textContent = 'Could not save';
+        return;
+      }
+      if (!updated.data || !updated.data.length) {
+        state.saving = false;
+        if (status) status.textContent = 'This place changed elsewhere. It is still open.';
+        return;
+      }
+      var savedTypes = Array.isArray(updated.data[0].place_types) && updated.data[0].place_types.length
+        ? updated.data[0].place_types.slice()
+        : patch.place_types.slice();
+      var savedPrimary = updated.data[0].place_type || patch.place_type;
+      place.updated_at = updated.data[0].updated_at;
+      place.name = patch.name;
+      place.place_type = savedPrimary;
+      place.type = savedPrimary;
+      place.place_types = savedTypes;
+      place.types = savedTypes.slice();
+      place.nickname = patch.nickname;
+      place.notes = patch.notes;
+      place.icon = patch.icon;
+      place.address = patch.address;
+      place.contact_method = patch.contact_method;
+      place.contact_detail = patch.contact_detail;
+      if (state.onSaved) state.onSaved(place);
+      close();
+    } catch (err) {
+      state.saving = false;
       if (status) status.textContent = 'Could not save';
-      return;
     }
-    if (!updated.data || !updated.data.length) {
-      if (status) status.textContent = 'This place changed elsewhere. Close it and open it again.';
-      return;
-    }
-    place.updated_at = updated.data[0].updated_at;
-    place.name = patch.name;
-    place.place_type = patch.place_type;
-    place.place_types = patch.place_types.slice();
-    if (status) status.textContent = 'Saved';
-    if (openState.onSaved) openState.onSaved(place);
   }
 
   function fromRow(row) {
@@ -339,8 +410,17 @@
       readOnly: !!opts.readOnly,
       onSaved: opts.onSaved || null,
       history: opts.history || null,
+      saving: false,
     };
     render(place);
+    var card = document.querySelector('#placeEditor .pe-card');
+    if (card) openState.baseline = formSnapshot(card, place);
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && openState) saveAndClose();
+    });
   }
 
   root.PlaceEditor = { open: open, close: close };
