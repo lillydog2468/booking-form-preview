@@ -11,34 +11,25 @@ body {
 .b2-top h1 { margin: 2px 0 0; font-size: 28px; font-weight: 700; letter-spacing: -.03em; }
 .b2-dates { margin: 2px 0 0; color: #5c574e; font-size: 14px; }
 .b2-note { margin: 8px 0 0; max-width: 46rem; color: #6e695f; font-size: 13px; }
-.b2-bar { display: flex; align-items: center; gap: 8px; padding: 0 20px 10px; }
-.b2-btn {
-  border: 1px solid #e2ddd4; background: #fff; color: #3a362f;
-  border-radius: 999px; padding: 3px 9px; min-height: 26px;
-  font: 600 12px/1.2 'DM Sans', system-ui, sans-serif; text-decoration: none; cursor: pointer;
+.b2-status { font-size: 12px; color: #6e695f; }
+.b2-summary {
+  margin: 0 12px 8px; background: #fff; border: 1px solid #e6e1d8;
+  border-radius: 12px; padding: 10px 12px 8px;
 }
-.b2-status { margin-left: auto; font-size: 12px; color: #6e695f; }
-.b2-main { display: flex; align-items: flex-start; gap: 12px; padding: 0 12px 28px; }
-.b2-side {
-  flex: 0 0 240px; width: 240px; position: sticky; top: 8px;
-  max-height: calc(100vh - 120px); overflow: auto; -webkit-overflow-scrolling: touch;
-  touch-action: pan-y; background: #fff; border: 1px solid #e6e1d8; border-radius: 12px; padding: 12px;
-}
-.b2-side h2 { margin: 0 0 8px; font-size: 14px; }
-.b2-nav, .b2-guests { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; padding: 0; list-style: none; }
-.b2-nav a, .b2-guests a {
-  color: #1c1b19; text-decoration: none; font-size: 13px; font-weight: 600;
-  padding: 4px 6px; border-radius: 8px;
-}
-.b2-nav a:hover, .b2-guests a:hover { background: #f4f3f0; }
-.b2-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-.b2-card { background: #fff; border: 1px solid #e6e1d8; border-radius: 12px; padding: 14px 16px; }
-.b2-card h2 { margin: 0 0 10px; font-size: 16px; }
-.b2-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; }
-.b2-span { grid-column: 1 / -1; }
+.b2-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .b2-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #7a756c; }
-.b2-value { font-size: 16px; font-weight: 650; }
-.b2-money .b2-value { font-variant-numeric: tabular-nums; }
+.b2-value { font-size: 14px; font-weight: 650; }
+.b2-hotels { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
+.b2-hotel-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.b2-hotel-inline .b2-strip { margin: 0; }
+.b2-moneyline { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: #3a362f; }
+.b2-moneyline strong { font-variant-numeric: tabular-nums; }
+.b2-guestline { margin: 4px 0 0; font-size: 13px; }
+.b2-more { margin-top: 6px; }
+.b2-more summary { cursor: pointer; font-size: 13px; font-weight: 650; color: #5c574e; }
+.b2-more-body { padding-top: 8px; }
+.b2-more-body h2 { margin: 10px 0 6px; font-size: 14px; }
+.b2-plan .p2-tray { height: calc(100vh - 268px); min-height: 320px; }
 .b2-strip {
   display: inline-block; margin: 0 0 6px; padding: 3px 8px; border-radius: 999px;
   font-size: 12px; font-weight: 700; border: 1px solid transparent;
@@ -57,7 +48,5 @@ body {
 }
 @media (max-width: 760px) {
   .b2-top h1 { font-size: 22px; }
-  .b2-main { flex-direction: column; }
-  .b2-side { position: static; width: 100%; max-height: none; flex: none; }
-  .b2-guests { flex-direction: row; flex-wrap: wrap; }
+  .b2-plan .p2-tray { height: auto; min-height: 0; }
 }

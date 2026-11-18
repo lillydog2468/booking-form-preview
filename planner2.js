@@ -20,6 +20,8 @@
     selected: null,
     sb: null,
     saving: false,
+    embedded: false,
+    started: false,
   };
 
   function $(id) { return document.getElementById(id); }
@@ -62,15 +64,23 @@
     phoneNow();
     var days = plan.days || [];
     if (state.day >= days.length) state.day = Math.max(0, days.length - 1);
-    $('p2Title').textContent = plan.groupName || Planner2.GROUP_NAME;
-    var dates = [plan.arrivalDate, plan.departureDate].filter(Boolean).join(' – ');
-    $('p2Dates').textContent = dates;
-    var note = 'This page opens only Jennifer Lindsay’s group, booking 310. The old planner is unchanged.';
-    if (state.sample) note = 'Sample week for layout. Nothing is saved. ' + note;
-    else if (state.refused) note = 'Other bookings are not opened here. ' + note;
-    $('p2Note').textContent = note;
-    $('p2Places').classList.toggle('on', state.tray);
-    $('p2Tray').hidden = state.phone && !state.tray;
+    if (!state.embedded) {
+      var title = $('p2Title');
+      if (title) title.textContent = plan.groupName || Planner2.GROUP_NAME;
+      var datesEl = $('p2Dates');
+      if (datesEl) datesEl.textContent = [plan.arrivalDate, plan.departureDate].filter(Boolean).join(' – ');
+      var noteEl = $('p2Note');
+      if (noteEl) {
+        var note = 'This page opens only Jennifer Lindsay’s group, booking 310. The old planner is unchanged.';
+        if (state.sample) note = 'Sample week for layout. Nothing is saved. ' + note;
+        else if (state.refused) note = 'Other bookings are not opened here. ' + note;
+        noteEl.textContent = note;
+      }
+    }
+    var placesBtn = $('p2Places');
+    if (placesBtn) placesBtn.classList.toggle('on', state.tray);
+    var tray = $('p2Tray');
+    if (tray) tray.hidden = state.phone && !state.tray;
     var model = WeekOverview.build(plan, {
       today: '',
       focusDay: state.phone ? state.day : null,
@@ -99,6 +109,7 @@
 
   function renderDayChips(days) {
     var box = $('p2Days');
+    if (!box) return;
     box.innerHTML = days.map(function (day, index) {
       var label = day && day.date ? day.date.slice(5) : ('Day ' + (index + 1));
       return '<button type="button" class="p2-day' + (index === state.day ? ' on' : '') + '" data-day="' + index + '">' + esc(label) + '</button>';
@@ -528,49 +539,78 @@
     render();
   }
 
-  $('p2Places').addEventListener('click', function () {
-    state.tray = !state.tray;
-    render();
-  });
-  $('p2Search').addEventListener('input', function (event) {
-    state.query = event.target.value;
-    renderTray();
-  });
-  $('p2SheetClose').addEventListener('click', closeEditor);
-  $('p2Sheet').addEventListener('click', function (event) {
-    if (event.target.id === 'p2Sheet') closeEditor();
-  });
-  window.addEventListener('resize', function () {
-    var was = state.phone;
-    if (phoneNow() !== was) render();
-  });
-  if (window.matchMedia) {
-    window.matchMedia('(max-width: ' + Planner2.PHONE_MAX + 'px)').addEventListener('change', function () {
-      render();
+  var chromeBound = false;
+  function bindChrome() {
+    if (chromeBound) return;
+    chromeBound = true;
+    var placesBtn = $('p2Places');
+    if (placesBtn) {
+      placesBtn.addEventListener('click', function () {
+        state.tray = !state.tray;
+        render();
+      });
+    }
+    var search = $('p2Search');
+    if (search) {
+      search.addEventListener('input', function (event) {
+        state.query = event.target.value;
+        renderTray();
+      });
+    }
+    var close = $('p2SheetClose');
+    if (close) close.addEventListener('click', closeEditor);
+    var sheet = $('p2Sheet');
+    if (sheet) {
+      sheet.addEventListener('click', function (event) {
+        if (event.target.id === 'p2Sheet') closeEditor();
+      });
+    }
+    window.addEventListener('resize', function () {
+      var was = state.phone;
+      if (phoneNow() !== was) render();
+    });
+    if (window.matchMedia) {
+      window.matchMedia('(max-width: ' + Planner2.PHONE_MAX + 'px)').addEventListener('change', function () {
+        render();
+      });
+    }
+  }
+
+  function mount(options) {
+    options = options || {};
+    if (state.started) return;
+    state.started = true;
+    state.embedded = !!document.getElementById('b2Summary');
+    if (options.sb) state.sb = options.sb;
+    bindChrome();
+    var params = new URLSearchParams(location.search);
+    state.refused = params.get('booking') && !Planner2.isAllowedBooking(params.get('booking'));
+    if (options.sample || /(?:\?|&)preview=mock(?:&|$)/.test(location.search)) {
+      bootSample();
+      return;
+    }
+    if (!state.sb) {
+      const SUPABASE_URL = BOOKING_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
+      state.sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      AuthGate.require(state.sb, { title: 'Jennifer Lindsay planner' }).then(function (session) {
+        if (!session) {
+          setStatus('Sign in to open booking 310');
+          return;
+        }
+        loadLive().catch(function (err) {
+          console.warn(err);
+          setStatus('Could not load booking 310');
+        });
+      });
+      return;
+    }
+    loadLive().catch(function (err) {
+      console.warn(err);
+      setStatus('Could not load booking 310');
     });
   }
 
-  var bookingLink = $('p2Booking');
-  if (bookingLink && /(?:\?|&)preview=mock(?:&|$)/.test(location.search)) {
-    bookingLink.setAttribute('href', 'booking2.html?preview=mock');
-  }
-  var params = new URLSearchParams(location.search);
-  state.refused = params.get('booking') && !Planner2.isAllowedBooking(params.get('booking'));
-  if (/(?:\?|&)preview=mock(?:&|$)/.test(location.search)) {
-    bootSample();
-  } else {
-    const SUPABASE_URL = BOOKING_SUPABASE_URL;
-    const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
-    state.sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    AuthGate.require(state.sb, { title: 'Jennifer Lindsay planner' }).then(function (session) {
-      if (!session) {
-        setStatus('Sign in to open booking 310');
-        return;
-      }
-      loadLive().catch(function (err) {
-        console.warn(err);
-        setStatus('Could not load booking 310');
-      });
-    });
-  }
+  window.Planner2Page = { mount: mount };
+  if (document.getElementById('p2Scroll') && !document.getElementById('b2Summary')) mount();
 }());

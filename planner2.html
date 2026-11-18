@@ -2,49 +2,14 @@
 <html lang="en-GB">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Jennifer Lindsay — test planner</title>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="place-categories.js"></script>
-  <script src="week-overview.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jennifer Lindsay — week plan</title>
   <script src="booking-config.js"></script>
-  <script src="auth-gate.js"></script>
-  <script src="planner2-model.js"></script>
-  <link rel="stylesheet" href="planner2.css">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script>
+    location.replace('booking2.html' + (location.search || ''));
+  </script>
 </head>
 <body>
-  <header class="p2-top">
-    <p class="p2-kicker">Test planner</p>
-    <h1 id="p2Title">Jennifer Lindsay</h1>
-    <p class="p2-dates" id="p2Dates"></p>
-    <p class="p2-note" id="p2Note">This page opens only Jennifer Lindsay’s group, booking 310. The old planner is unchanged.</p>
-  </header>
-  <div class="p2-bar">
-    <button type="button" class="p2-btn" id="p2Places">Places</button>
-    <a class="p2-btn" id="p2Booking" href="booking2.html">Booking</a>
-    <div class="p2-days" id="p2Days" role="tablist" aria-label="Days"></div>
-    <span class="p2-status" id="p2Status"></span>
-  </div>
-  <main class="p2-main">
-    <aside class="p2-tray" id="p2Tray" aria-label="Places">
-      <h2 class="p2-tray-title">Places</h2>
-      <input type="search" id="p2Search" class="p2-search" placeholder="Search places" autocomplete="off">
-      <div class="p2-types" id="p2Types"></div>
-      <div class="p2-groups" id="p2Chips"></div>
-    </aside>
-    <div class="p2-scroll" id="p2Scroll"></div>
-  </main>
-  <div class="p2-sheet" id="p2Sheet" hidden>
-    <div class="p2-sheet-card" role="dialog" aria-labelledby="p2SheetTitle">
-      <div class="p2-sheet-head">
-        <h2 id="p2SheetTitle">Stop</h2>
-        <button type="button" class="p2-btn" id="p2SheetClose">Close</button>
-      </div>
-      <div id="p2SheetBody"></div>
-    </div>
-  </div>
-  <script src="planner2.js" defer></script>
+  <p>The week plan is on the <a href="booking2.html">booking page</a>.</p>
 </body>
 </html>

@@ -58,11 +58,15 @@ test('the real booking is never written, and the old pages stay put', () => {
   assert.match(app, /\.select\(/);
   assert.match(app, /eq\('id', 310\)/);
   assert.match(app, /preview=mock/);
-  assert.match(html, /planner2\.html/);
+  assert.match(html, /planner2\.js/);
+  assert.match(html, /id="b2Summary"/);
+  assert.match(html, /id="p2Tray"/);
+  assert.equal(html.includes('href="planner2.html"'), false);
   assert.match(html, /booking 310/);
   assert.match(css, /@media \(max-width: 760px\)/);
-  assert.match(css, /\.b2-side/);
-  assert.match(plannerHtml, /booking2\.html/);
+  assert.match(css, /\.b2-summary/);
+  assert.match(app, /Planner2Page\.mount/);
+  assert.match(plannerHtml, /location\.replace\('booking2\.html'/);
   assert.equal(form.includes('booking2'), false);
   assert.equal(oldPlanner.includes('booking2'), false);
 });

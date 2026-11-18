@@ -35,9 +35,9 @@ test('the old planner is off unless the config switch is true', () => {
   assert.match(formHtml, /href="tour-planner\.html"/);
   assert.match(form, />Start planning</);
   assert.match(form, />Day planner</);
-  assert.match(planner2, /planner2\.js/);
+  assert.match(planner2, /booking2\.html/);
   assert.equal(planner2.includes('planning-hide.js'), false);
-  assert.match(booking2, /planner2\.html/);
+  assert.match(booking2, /planner2\.js/);
 });
 
 test('a true switch replaces the old planner and keeps planner2', () => {

@@ -6,7 +6,7 @@
   'use strict';
 
   var ONLY = Booking2.BOOKING_ID;
-  var state = { view: null, sample: false, refused: false };
+  var state = { view: null, sample: false, refused: false, sb: null, plannerStarted: false };
 
   function $(id) { return document.getElementById(id); }
 
@@ -31,33 +31,19 @@
     $('b2Title').textContent = view.groupName || Booking2.GROUP_NAME;
     var nights = view.nights == null ? '' : (view.nights + (view.nights === 1 ? ' night' : ' nights'));
     $('b2Dates').textContent = [view.arrival, view.departure].filter(Boolean).join(' – ') + (nights ? ' · ' + nights : '');
-    var note = 'This page opens only Jennifer Lindsay’s group, booking 310. The real booking is read-only.';
+    var note = 'This page opens only Jennifer Lindsay’s group, booking 310. Booking details are read-only. The week plan is on this page.';
     if (state.sample) note = 'Sample booking. Edits stay on this screen and are not saved. ' + note;
     else if (state.refused) note = 'Other bookings are not opened here. ' + note;
     $('b2Note').textContent = note;
-    var plan = state.sample ? 'planner2.html?preview=mock' : 'planner2.html';
-    $('b2Plan').setAttribute('href', plan);
-    $('b2Side').innerHTML = sideHtml(view);
-    $('b2Body').innerHTML = bodyHtml(view);
+    $('b2Summary').innerHTML = summaryHtml(view);
     if (state.sample) bindSampleEdits();
   }
 
-  function sideHtml(view) {
-    var guests = (view.guests || []).map(function (guest) {
-      return '<li><a href="#guest-' + esc(guest.id) + '">' + esc(guest.name) + '</a></li>';
-    }).join('') || '<li class="b2-meta">No guests yet</li>';
-    return '<h2>Guests</h2><ul class="b2-guests">' + guests + '</ul>'
-      + '<h2>Sections</h2><ul class="b2-nav">'
-      + '<li><a href="#group">Group</a></li>'
-      + '<li><a href="#hotels">Hotels</a></li>'
-      + '<li><a href="#guests">Guests</a></li>'
-      + '<li><a href="#money">Money</a></li>'
-      + '<li><a href="#flights">Flights</a></li>'
-      + '<li><a href="#notes">Notes</a></li>'
-      + '</ul>';
+  function fact(label, value) {
+    return '<div><span class="b2-label">' + esc(label) + '</span><div class="b2-value">' + dash(value) + '</div></div>';
   }
 
-  function bodyHtml(view) {
+  function summaryHtml(view) {
     var rooms = view.rooms || {};
     var roomCount = function (value) {
       var text = String(value == null ? '' : value).trim();
@@ -102,28 +88,38 @@
     }).join('') || '<p class="b2-meta">No shared flight recorded.</p>';
     var money = view.money || {};
     var notes = state.sample
-      ? '<label class="b2-field">Notes<textarea id="b2Notes" rows="4">' + esc(view.notes || '') + '</textarea></label>'
+      ? '<label class="b2-field">Notes<textarea id="b2Notes" rows="3">' + esc(view.notes || '') + '</textarea></label>'
       : '<p class="b2-notes">' + (view.notes ? esc(view.notes) : '—') + '</p>';
+    var hotelLine = (view.hotels || []).map(function (hotel) {
+      var tone = hotel.tone || {};
+      var strip = hotel.strip
+        ? '<span class="b2-strip" style="background:' + tone.bg + ';border-color:' + tone.border + ';color:' + tone.ink + '">' + esc(hotel.strip) + '</span>'
+        : '';
+      return '<span class="b2-hotel-inline"><strong>' + esc(hotel.name) + '</strong>' + strip + '</span>';
+    }).join('') || '<span class="b2-meta">No hotel recorded.</span>';
+    var guestNames = (view.guests || []).map(function (guest) { return guest.name; }).filter(Boolean).join(', ');
     return ''
-      + '<section class="b2-card" id="group"><h2>Group</h2><div class="b2-grid">'
-      + cell('Group', view.groupName) + cell('Organiser', view.organiser) + cell('Status', view.status)
-      + cell('Headcount', view.headcount) + cell('Arrival', view.arrival) + cell('Departure', view.departure)
-      + cell('Nights', view.nights == null ? '' : String(view.nights))
-      + '<div class="b2-span"><span class="b2-label">Rooms</span><div class="b2-value">' + dash(roomBits) + '</div></div>'
-      + '</div></section>'
-      + '<section class="b2-card" id="hotels"><h2>Hotels</h2>' + hotels + '</section>'
-      + '<section class="b2-card" id="guests"><h2>Guests</h2>' + guests + '</section>'
-      + '<section class="b2-card" id="flights"><h2>Flights</h2>' + flights + '</section>'
-      + '<section class="b2-card b2-money" id="money"><h2>Money</h2><div class="b2-grid">'
-      + cell('Price per person', money.price) + cell('Tour total', money.total)
-      + cell('Deposits paid', money.deposit) + cell('Deposit date', money.depositDate)
-      + cell('Final payment', money.finalPayment) + cell('Left to pay', money.left)
-      + '</div></section>'
-      + '<section class="b2-card" id="notes"><h2>Notes</h2>' + notes + '</section>';
-  }
-
-  function cell(label, value) {
-    return '<div><span class="b2-label">' + esc(label) + '</span><div class="b2-value">' + dash(value) + '</div></div>';
+      + '<div class="b2-facts">'
+      + fact('Organiser', view.organiser)
+      + fact('Status', view.status)
+      + fact('People', view.headcount)
+      + fact('Nights', view.nights == null ? '' : String(view.nights))
+      + fact('Rooms', roomBits)
+      + '</div>'
+      + '<div class="b2-hotels">' + hotelLine + '</div>'
+      + '<p class="b2-moneyline">'
+      + '<span>Price <strong>' + dash(money.price) + '</strong></span>'
+      + '<span>Total <strong>' + dash(money.total) + '</strong></span>'
+      + '<span>Paid <strong>' + dash(money.deposit) + '</strong></span>'
+      + '<span>Left <strong>' + dash(money.left) + '</strong></span>'
+      + '</p>'
+      + '<p class="b2-guestline"><span class="b2-label">Guests</span> ' + esc(guestNames || '—') + '</p>'
+      + '<details class="b2-more"><summary>Flights, deposits and notes</summary>'
+      + '<div class="b2-more-body"><h2>Hotels</h2>' + hotels
+      + '<h2>Guests</h2>' + guests
+      + '<h2>Flights</h2>' + flights
+      + '<h2>Notes</h2>' + notes
+      + '</div></details>';
   }
 
   function bindSampleEdits() {
@@ -146,14 +142,19 @@
 
   function show(view) {
     state.view = view;
-    setStatus(view.readOnly ? 'Read only' : 'Sample — nothing is saved');
+    setStatus('');
     render();
+    if (!state.plannerStarted && window.Planner2Page) {
+      state.plannerStarted = true;
+      Planner2Page.mount({ sample: state.sample, sb: state.sb });
+    }
   }
 
   async function loadLive() {
     const SUPABASE_URL = BOOKING_SUPABASE_URL;
     const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
     var sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    state.sb = sb;
     var session = await AuthGate.require(sb, { title: 'Jennifer Lindsay booking' });
     if (!session) {
       setStatus('Sign in to read booking 310');

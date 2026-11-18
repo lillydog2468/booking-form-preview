@@ -8,6 +8,7 @@ require('./planner2-model.js');
 
 const P = globalThis.Planner2;
 const html = fs.readFileSync(path.join(__dirname, 'planner2.html'), 'utf8');
+const bookingHtml = fs.readFileSync(path.join(__dirname, 'booking2.html'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, 'planner2.css'), 'utf8');
 const app = fs.readFileSync(path.join(__dirname, 'planner2.js'), 'utf8');
 const oldHtml = fs.readFileSync(path.join(__dirname, 'tour-planner.html'), 'utf8');
@@ -46,8 +47,11 @@ test('iPad and Mac show the week, a phone shows one day', () => {
   assert.equal(html.includes('btnLookView'), false);
   assert.equal(html.includes('tour-planner.js'), false);
   assert.equal(html.includes('booking-form.js'), false);
-  assert.match(html, /planner2\.js/);
-  assert.match(html, /week-overview\.js/);
+  assert.match(html, /location\.replace\('booking2\.html'/);
+  assert.match(bookingHtml, /planner2\.js/);
+  assert.match(bookingHtml, /week-overview\.js/);
+  assert.match(bookingHtml, /id="p2Scroll"/);
+  assert.match(bookingHtml, /id="p2Tray"/);
 });
 
 test('dragging keeps other times and follows the day pattern', () => {
