@@ -61,12 +61,66 @@ test('the top pill counts every stay, and the line above the list totals the cur
   assert.equal(html.includes(" + ' hotel stay'"), false);
 });
 
-test('the hotels year filter opens on 2027, and a year in the URL still wins', () => {
-  assert.match(html, /let yearFilter = '2027'/);
-  assert.equal(html.includes('let yearFilter = String(new Date().getUTCFullYear())'), false);
-  assert.match(html, /if \(requestedYear === 'all' \|\| \/\^\\d\{4\}\$\/\.test\(requestedYear \|\| ''\)\) yearFilter = requestedYear/);
-  const fill = extractFunction('fillYearOptions');
-  assert.match(fill, /years\.add\('2027'\)/);
+test('the hotels year filter opens on Upcoming, and a year in the URL still wins', () => {
+  assert.match(html, /let yearFilter = 'upcoming'/);
+  assert.match(html, /requestedYear === 'all' \|\| requestedYear === 'upcoming'/);
+  assert.match(html, /<option value="upcoming">Upcoming<\/option>/);
+  assert.match(html, /<option value="all">All years<\/option>/);
+  assert.match(extractFunction('paintYearFilter'), /yearChoices\(\)/);
+  assert.match(extractFunction('yearChoices'), /getUTCFullYear\(\)/);
+  assert.match(html, /Loading…/);
+
+  const context = { Date, BookingFormat: globalThis.BookingFormat };
+  vm.createContext(context);
+  vm.runInContext(extractFunction('isoDay') + '\n' + extractFunction('stayIsUpcoming'), context);
+  assert.equal(context.stayIsUpcoming({ departureDate: '2026-11-18', arrivalDate: '2026-11-10' }, '2026-11-18'), true);
+  assert.equal(context.stayIsUpcoming({ departureDate: '2026-11-17', arrivalDate: '2026-11-20' }, '2026-11-18'), false);
+  assert.equal(context.stayIsUpcoming({ arrivalDate: '2026-11-18' }, '2026-11-18'), true);
+  assert.equal(context.stayIsUpcoming({ arrivalDate: '2026-11-17' }, '2026-11-18'), false);
+  assert.equal(context.stayIsUpcoming({}, '2026-11-18'), false);
+});
+
+test('a stay shows the shared deposits badge beside Booked, and a plan with no booking does not', () => {
+  const render = extractFunction('render');
+  const booked = render.indexOf('data-field="booked"');
+  const badge = render.indexOf('stayDepositBadge(s)');
+  assert.ok(booked > 0 && badge > booked);
+  const fn = extractFunction('stayDepositBadge');
+  assert.match(fn, /BookingExtras\.depositCover/);
+  assert.match(fn, /stay\.deviceOnly/);
+  assert.match(fn, /booking\.no_deposit_expected/);
+  assert.match(fn, /depositMade: booking\.depositmade/);
+  const extras = fs.readFileSync(path.join(__dirname, 'booking-extras.js'), 'utf8');
+  const boot = { window: {}, console };
+  boot.globalThis = boot;
+  vm.createContext(boot);
+  vm.runInContext(extras, boot);
+  const context = {
+    BookingExtras: boot.window.BookingExtras,
+    window: { BookingExtras: boot.window.BookingExtras },
+    esc: (s) => String(s ?? ''),
+    loadedBookings: [{
+    id: 316,
+    no_people: 4,
+    depositmade: 100,
+    no_deposit_expected: false,
+    _members: [{ deposit: 100 }, { deposit: null }, { deposit: null }, { deposit: null }],
+  }, {
+    id: 400,
+    no_people: 4,
+    depositmade: null,
+    no_deposit_expected: true,
+    _members: [{ deposit: null }],
+  }],
+  };
+  vm.createContext(context);
+  vm.runInContext(fn, context);
+  assert.match(context.stayDepositBadge({ bookingId: 316 }), /deposit-amber/);
+  assert.match(context.stayDepositBadge({ bookingId: 316 }), /Deposits 1\/4/);
+  assert.match(context.stayDepositBadge({ bookingId: 400 }), /No deposit expected/);
+  assert.match(context.stayDepositBadge({ bookingId: 400 }), /deposit-neutral/);
+  assert.equal(context.stayDepositBadge({ deviceOnly: true, bookingId: '' }), '');
+  assert.equal(context.stayDepositBadge({ bookingId: '' }), '');
 });
 
 test('view totals use known nights, skip cancelled nights, and add room-nights when rooms are shown', () => {

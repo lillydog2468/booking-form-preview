@@ -14,9 +14,9 @@
     let directoryHotels = [];
     let directoryPlaces = [];
     let directoryCatalogue = [];
-    let yearFilter = '2027';
+    let yearFilter = 'upcoming';
     const requestedYear = new URLSearchParams(location.search).get('year');
-    if (requestedYear === 'all' || /^\d{4}$/.test(requestedYear || '')) yearFilter = requestedYear;
+    if (requestedYear === 'all' || requestedYear === 'upcoming' || /^\d{4}$/.test(requestedYear || '')) yearFilter = requestedYear;
     let search = '';
     let fullOnly = false;
     let hotelNightsExpanded = false;
@@ -42,6 +42,20 @@
     function yearFromIso(iso) {
       const d = parseISODateUTC(iso);
       return d ? String(d.getUTCFullYear()) : '';
+    }
+    function isoDay(value) {
+      const s = String(value || '').slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+    }
+    function todayIsoUTC() {
+      return new Date().toISOString().slice(0, 10);
+    }
+    // A stay is upcoming when its departure, or its arrival when there is no
+    // departure, is today or later.
+    function stayIsUpcoming(stay, todayIso) {
+      const end = isoDay(stay && stay.departureDate) || isoDay(stay && stay.arrivalDate);
+      if (!end) return false;
+      return end >= String(todayIso || '');
     }
     function normName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
     function isPragueName(name) { return /prague|praha/i.test(String(name || '')); }
@@ -394,64 +408,89 @@
       });
     }
 
-    async function fetchHotelSources() {
-      let bookings = [];
-      let live = false;
-      try {
-        let bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, no_people, other_hotel_nights, keith_own_room, tour_full, hotels(name)';
-        let bookingQuery = await sb.from('bookings')
-          .select(bookingCols)
-          .order('tour_arrival_date', { ascending: false })
-          .limit(1000);
-        if (bookingQuery.error && /tour_full/i.test(bookingQuery.error.message || '')) {
-          bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, no_people, other_hotel_nights, keith_own_room, hotels(name)';
-          bookingQuery = await sb.from('bookings')
-            .select(bookingCols)
-            .order('tour_arrival_date', { ascending: false })
-            .limit(1000);
-        }
-        if (bookingQuery.error && /no_people|other_hotel_nights|keith_own_room/i.test(bookingQuery.error.message || '')) {
-          bookingQuery = await sb.from('bookings')
-            .select('id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, keith_own_room, hotels(name)')
-            .order('tour_arrival_date', { ascending: false })
-            .limit(1000);
-        }
-        if (bookingQuery.error && /keith_own_room/i.test(bookingQuery.error.message || '')) {
-          bookingQuery = await sb.from('bookings')
-            .select('id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)')
-            .order('tour_arrival_date', { ascending: false })
-            .limit(1000);
-        }
-        if (bookingQuery.error && /status/i.test(bookingQuery.error.message || '')) {
-          bookingQuery = await sb.from('bookings')
-            .select('id, group_name, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)')
-            .order('tour_arrival_date', { ascending: false })
-            .limit(1000);
-        }
-        const { data, error } = bookingQuery;
-        if (error) throw error;
-        bookings = data || [];
-        live = true;
-      } catch (err) {
-        console.warn(err);
-        live = false;
-      }
+    const PLAN_HOTEL_SELECT = 'booking_id,client_key,hotels:payload->hotels,pragueHotel:payload->pragueHotel,tourHotelName:payload->tourHotelName,arrivalDate:payload->arrivalDate,departureDate:payload->departureDate,groupName:payload->groupName,bookingDetails:payload->bookingDetails,source:payload->source,bookingKey:payload->bookingKey,guests:payload->guests,organiserName:payload->organiserName';
 
-      const ids = bookings.map(b => b.id);
+    function planFromRow(row) {
+      if (!row || typeof row !== 'object') return {};
+      if (row.payload && typeof row.payload === 'object') return row.payload;
+      return {
+        hotels: row.hotels,
+        pragueHotel: row.pragueHotel,
+        tourHotelName: row.tourHotelName,
+        arrivalDate: row.arrivalDate,
+        departureDate: row.departureDate,
+        groupName: row.groupName,
+        bookingDetails: row.bookingDetails,
+        source: row.source,
+        bookingKey: row.bookingKey,
+        guests: row.guests,
+        organiserName: row.organiserName,
+      };
+    }
+
+    async function fetchHotelSources() {
       const quiet = (promise) => Promise.resolve(promise).then(res => res || { data: [], error: true }).catch(err => {
         console.warn(err);
         return { data: [], error: err };
       });
+      async function fetchBookings() {
+        let bookings = [];
+        let live = false;
+        try {
+          let bookingCols = 'id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, no_people, other_hotel_nights, keith_own_room, tour_full, depositmade, no_deposit_expected, hotels(name)';
+          const run = (cols) => sb.from('bookings').select(cols).order('tour_arrival_date', { ascending: false }).limit(1000);
+          let bookingQuery = await run(bookingCols);
+          if (bookingQuery.error && /no_deposit_expected/i.test(bookingQuery.error.message || '')) {
+            bookingCols = bookingCols.replace(', no_deposit_expected', '');
+            bookingQuery = await run(bookingCols);
+          }
+          if (bookingQuery.error && /tour_full/i.test(bookingQuery.error.message || '')) {
+            bookingCols = bookingCols.replace(', tour_full', '');
+            bookingQuery = await run(bookingCols);
+          }
+          if (bookingQuery.error && /no_people|other_hotel_nights|keith_own_room/i.test(bookingQuery.error.message || '')) {
+            bookingQuery = await run('id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, keith_own_room, depositmade, hotels(name)');
+          }
+          if (bookingQuery.error && /keith_own_room/i.test(bookingQuery.error.message || '')) {
+            bookingQuery = await run('id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, depositmade, hotels(name)');
+          }
+          if (bookingQuery.error && /depositmade/i.test(bookingQuery.error.message || '')) {
+            bookingQuery = await run('id, group_name, status, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)');
+          }
+          if (bookingQuery.error && /status/i.test(bookingQuery.error.message || '')) {
+            bookingQuery = await run('id, group_name, tour_arrival_date, departure_date, hotel_id, extra_notes, hotels(name)');
+          }
+          const { data, error } = bookingQuery;
+          if (error) throw error;
+          bookings = data || [];
+          live = true;
+        } catch (err) {
+          console.warn(err);
+          live = false;
+        }
+        return { bookings, live };
+      }
+
+      // Bookings, guests, the hotel list, places, and the hotel slice of each
+      // plan start together. Extra hotel rows wait until the booking ids exist.
+      const bookingsPromise = fetchBookings();
+      const membersPromise = quiet(sb.from('members').select('id, booking_id, first_name, last_name, deposit').limit(2000));
+      const hotelsPromise = quiet(sb.from('hotels').select('id, name').order('name').limit(300));
+      const placesPromise = quiet(sb.from('planner_places').select('client_id, name, place_type, place_types, address, notes, contact_method, contact_detail').limit(500));
+      const plansPromise = quiet(sb.from('planner_plans').select(PLAN_HOTEL_SELECT).limit(1000));
+      const booked = await bookingsPromise;
+      const bookings = booked.bookings || [];
+      const ids = bookings.map(b => b.id);
       const [memberRes, stayRes, hotelRes, placeRes, planRes] = await Promise.all([
-        quiet(sb.from('members').select('id, booking_id, first_name, last_name').limit(2000)),
+        membersPromise,
         ids.length
           ? quiet(sb.from('booking_hotels').select('booking_id, hotel_id, custom_hotel_name, nights, hotels(name)').in('booking_id', ids))
           : Promise.resolve({ data: [], error: null }),
-        quiet(sb.from('hotels').select('id, name').order('name').limit(300)),
-        quiet(sb.from('planner_places').select('client_id, name, place_type, place_types, address, notes, contact_method, contact_detail').limit(500)),
-        quiet(sb.from('planner_plans').select('booking_id, client_key, payload').limit(1000)),
+        hotelsPromise,
+        placesPromise,
+        plansPromise,
       ]);
-      return { bookings, live, memberRes, stayRes, hotelRes, placeRes, planRes };
+      return { bookings, live: booked.live, memberRes, stayRes, hotelRes, placeRes, planRes };
     }
 
     let hotelsPrefetch = null;
@@ -535,7 +574,7 @@
       const cloudPlans = new Map();
       if (!planRes.error) {
         (planRes.data || []).forEach(row => {
-          const payload = row.payload || {};
+          const payload = planFromRow(row);
           if (window.isLegacyDemoPlan && window.isLegacyDemoPlan(row.client_key, payload)) return;
           if (row.booking_id != null) cloudPlans.set(String(row.booking_id), payload);
           if (row.client_key) cloudPlans.set(String(row.client_key), payload);
@@ -665,15 +704,30 @@
       renderHotelsUsed();
     }
 
-    function fillYearOptions() {
-      const years = new Set(stays.map(s => yearFromIso(s.arrivalDate)).filter(Boolean));
-      years.add('2027');
-      if (!years.has(yearFilter) && yearFilter !== 'all') years.add(yearFilter);
+    function yearChoices() {
+      const years = new Set();
+      const now = new Date().getUTCFullYear();
+      for (let i = 0; i < 4; i++) years.add(String(now + i));
+      (stays || []).forEach(s => {
+        const y = yearFromIso(s.arrivalDate);
+        if (y) years.add(y);
+      });
+      if (/^\d{4}$/.test(String(yearFilter || ''))) years.add(String(yearFilter));
+      return Array.from(years).filter(y => /^\d{4}$/.test(y)).sort().reverse();
+    }
+
+    function paintYearFilter() {
       const sel = document.getElementById('yearFilter');
-      const current = yearFilter;
-      sel.innerHTML = '<option value="all">All years</option>' +
-        Array.from(years).sort().reverse().map(y => '<option value="' + esc(y) + '">' + esc(y) + '</option>').join('');
-      sel.value = current;
+      if (!sel) return;
+      const current = yearFilter || 'upcoming';
+      sel.innerHTML = '<option value="upcoming">Upcoming</option><option value="all">All years</option>' +
+        yearChoices().map(y => '<option value="' + esc(y) + '">' + esc(y) + '</option>').join('');
+      const has = Array.from(sel.options).some(o => o.value === current);
+      sel.value = has ? current : 'upcoming';
+    }
+
+    function fillYearOptions() {
+      paintYearFilter();
     }
 
     function compareHotelStaysNewest(a, b) {
@@ -689,7 +743,9 @@
     function visibleStays() {
       const q = search.trim().toLowerCase();
       return stays.filter(s => {
-        if (yearFilter !== 'all' && yearFromIso(s.arrivalDate) !== yearFilter) return false;
+        if (yearFilter === 'upcoming') {
+          if (!stayIsUpcoming(s, todayIsoUTC())) return false;
+        } else if (yearFilter !== 'all' && yearFromIso(s.arrivalDate) !== yearFilter) return false;
         if (fullOnly && !s.tourFull) return false;
         if (!q) return true;
         return (s.groupName + ' ' + s.hotelName).toLowerCase().includes(q);
@@ -911,11 +967,31 @@
     function paintStayStats(rows) {
       const el = document.getElementById('stayStats');
       if (!el) return;
-      const yearLabel = yearFilter === 'all' ? 'All years' : String(yearFilter || 'All years');
+      const yearLabel = yearFilter === 'upcoming'
+        ? 'Upcoming'
+        : (yearFilter === 'all' ? 'All years' : String(yearFilter || 'All years'));
       const summary = stayViewSummary(rows, yearLabel);
       el.hidden = false;
       el.textContent = summary.text;
       el.title = summary.title;
+    }
+
+    function stayDepositBadge(stay) {
+      if (!stay || stay.deviceOnly) return '';
+      if (stay.bookingId == null || String(stay.bookingId).trim() === '') return '';
+      if (!window.BookingExtras || !BookingExtras.depositCover) return '';
+      const booking = (loadedBookings || []).find(b => String(b.id) === String(stay.bookingId));
+      if (!booking) return '';
+      const members = Array.isArray(booking._members) ? booking._members : [];
+      const cover = BookingExtras.depositCover({
+        noDepositExpected: booking.no_deposit_expected,
+        headcount: booking.no_people,
+        guests: members,
+        hasPerGuest: members.length > 0,
+        depositMade: booking.depositmade,
+      });
+      const title = cover.note ? ' title="' + esc(cover.note) + '"' : '';
+      return '<span class="deposit-badge deposit-' + esc(cover.tone) + '"' + title + '>' + esc(cover.label) + '</span>';
     }
 
     function render() {
@@ -961,10 +1037,13 @@
             </div>
           </div>
           <div class="stay-fields">
-            <label class="tick${s.booked ? ' on' : ''}">
-              <input type="checkbox" data-field="booked" ${s.booked ? 'checked' : ''}>
-              Booked
-            </label>
+            <div class="stay-booked-row">
+              <label class="tick${s.booked ? ' on' : ''}">
+                <input type="checkbox" data-field="booked" ${s.booked ? 'checked' : ''}>
+                Booked
+              </label>
+              ${stayDepositBadge(s)}
+            </div>
             <div class="field">
               <label>Payment</label>
               <select data-field="paid">
@@ -1248,6 +1327,7 @@
       if (analytics) analytics.href = hasAnalytics ? 'analytics.html' : (LIVE_BOOKINGS_ORIGIN + '/analytics.html');
     }
 
+    paintYearFilter();
     fixExternalNavLinks();
     beginHotelsPrefetch();
     AuthGate.require(sb, { title: 'Hotels' }).then(async session => {
