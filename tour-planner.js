@@ -10736,8 +10736,19 @@ function renderDayTabs() {
     const dayIndex = (state.plan.days || []).findIndex(d => d && (d.blocks || []).some(b => b && String(b.id) === String(stop.id)));
     const guests = overviewGuestLine(stop);
     const handover = stop.type === 'handover' ? renderRoughHandoverDetails(stop) : '';
+    const place = stop.placeId
+      ? ((state.catalogue || []).find(item => String(item.id) === String(stop.placeId)) || {
+        name: stop.title || '',
+        address: resolveStopAddress(stop) || stop.address || '',
+        notes: stop.notes || '',
+        pin_lat: stop.pinLat,
+        pin_lng: stop.pinLng,
+      })
+      : null;
+    const pop = place && window.PlacePopup ? PlacePopup.popupHtml(place) : '';
     body.innerHTML = `
       <div class="ov-edit">
+        ${pop}
         <label class="field-label" for="ovEditTime">Time</label>
         <input type="time" id="ovEditTime" data-stop-time="${escapeHtml(stop.id)}" data-time-src="overview" value="${escapeHtml(stop.time || '')}">
         <label class="field-label" for="ovEditTitle">Name</label>
@@ -10755,6 +10766,31 @@ function renderDayTabs() {
       </div>`;
     sheet.classList.add('open');
     sheet.setAttribute('aria-hidden', 'false');
+    const contactForm = body.querySelector('[data-contact-form]');
+    if (contactForm && place) {
+      body.querySelector('[data-add-contact]')?.addEventListener('click', () => {
+        const add = body.querySelector('[data-add-contact]');
+        if (add) add.hidden = true;
+        contactForm.hidden = false;
+      });
+      contactForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!window.PlacePopup || !state.sb) return;
+        const patch = PlacePopup.contactPatch(
+          contactForm.querySelector('[data-contact-name]').value,
+          contactForm.querySelector('[data-contact-phone]').value
+        );
+        const id = String(place.client_id || place.id || stop.placeId || '');
+        const updated = await state.sb.from('planner_places').update(patch).eq('client_id', id);
+        if (updated.error) {
+          toast(updated.error.message || 'Could not save the contact');
+          return;
+        }
+        place.contact_name = patch.contact_name;
+        place.contact_phone = patch.contact_phone;
+        openOverviewEditor(stop.id);
+      });
+    }
     const time = body.querySelector('[data-stop-time]');
     if (time) {
       time.addEventListener('change', () => {
@@ -10852,6 +10888,18 @@ function renderDayTabs() {
   }
 
   function bindOverview() {
+    if (!window.__planSelectBound) {
+      window.__planSelectBound = true;
+      window.addEventListener('scroll', () => {
+        document.body.classList.toggle('is-scrolled', window.scrollY > 24);
+      }, { passive: true });
+      document.addEventListener('mousedown', (event) => {
+        if (event.target.closest && event.target.closest('input, textarea, [contenteditable]')) return;
+        if (!event.target.closest || !event.target.closest('.ov-tray, .ov-scroll, .ov-grid, .ov-stop')) return;
+        const sel = window.getSelection && window.getSelection();
+        if (sel && sel.removeAllRanges) sel.removeAllRanges();
+      });
+    }
     const root = document.getElementById('weekOverview');
     if (!root || !window.WeekOverview) return;
     document.getElementById('ovNotes')?.addEventListener('input', (event) => {

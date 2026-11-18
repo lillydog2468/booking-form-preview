@@ -554,13 +554,63 @@
     $('p2Sheet').hidden = false;
   }
 
+  function placeForStop(stop) {
+    if (!stop || !stop.placeId) return null;
+    return (state.places || []).find(function (place) {
+      return String(place.id) === String(stop.placeId);
+    }) || {
+      name: stop.title || '',
+      address: stop.address || '',
+      notes: stop.notes || '',
+      pin_lat: stop.pinLat,
+      pin_lng: stop.pinLng,
+    };
+  }
+
+  function bindPlacePopup(root) {
+    if (!root) return;
+    var add = root.querySelector('[data-add-contact]');
+    var form = root.querySelector('[data-contact-form]');
+    if (add && form) {
+      add.addEventListener('click', function () {
+        add.hidden = true;
+        form.hidden = false;
+      });
+    }
+    if (!form) return;
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var place = form._place;
+      if (!place || !window.PlacePopup || !state.sb) return;
+      var patch = PlacePopup.contactPatch(
+        form.querySelector('[data-contact-name]').value,
+        form.querySelector('[data-contact-phone]').value
+      );
+      var id = String(place.client_id || place.id || '');
+      state.sb.from('planner_places').update(patch).eq('client_id', id).then(function (res) {
+        if (res && res.error) {
+          setStatus(res.error.message || 'Could not save the contact');
+          return;
+        }
+        place.contact_name = patch.contact_name;
+        place.contact_phone = patch.contact_phone;
+        if (state.editingStop) openEditor(state.editingStop);
+      });
+    });
+    form._place = root._place;
+  }
+
   function openEditor(stopId) {
     var found = Planner2.findStop(state.plan, stopId);
     if (!found) return;
     var stop = found.stop;
+    state.editingStop = stopId;
     var rows = Planner2.pickupRows({ blocks: [stop] });
+    var place = stop.placeId ? placeForStop(stop) : null;
+    var pop = place && window.PlacePopup ? PlacePopup.popupHtml(place) : '';
     $('p2SheetTitle').textContent = rows.length > 1 ? 'Prague pick-up' : (stop.title || 'Stop');
     $('p2SheetBody').innerHTML = (rows.length > 1 ? pickupNavHtml(rows) : '')
+      + pop
       + '<label class="p2-field">Time<input type="time" id="p2EditTime" value="' + esc(stop.time || '') + '"></label>'
       + '<label class="p2-field">Name<input type="text" id="p2EditTitle" value="' + esc(stop.title || '') + '"></label>'
       + '<label class="p2-field">Notes<input type="text" id="p2EditNotes" value="' + esc(stop.notes || '') + '"></label>'
@@ -568,6 +618,11 @@
       + '<div class="p2-sheet-actions"><button type="button" class="p2-btn" id="p2EditSave">Save</button>'
       + '<button type="button" class="p2-btn danger" id="p2EditRemove">Remove</button></div>';
     $('p2Sheet').hidden = false;
+    var popRoot = $('p2SheetBody').querySelector('.place-pop');
+    if (popRoot) {
+      popRoot._place = place;
+      bindPlacePopup(popRoot);
+    }
     $('p2EditSave').addEventListener('click', function () {
       Planner2.editStop(state.plan, stopId, {
         time: $('p2EditTime').value,
@@ -781,6 +836,15 @@
     document.addEventListener('selectstart', function (event) {
       if (event.target.closest && event.target.closest('.p2-card, .ov-stop, .p2-scroll, .ov-grid')) event.preventDefault();
     });
+    document.addEventListener('mousedown', function (event) {
+      if (event.target.closest && event.target.closest('input, textarea, [contenteditable]')) return;
+      if (!event.target.closest || !event.target.closest('.p2-tray, .p2-scroll, .ov-grid, .ov-stop, .p2-card')) return;
+      var sel = window.getSelection && window.getSelection();
+      if (sel && sel.removeAllRanges) sel.removeAllRanges();
+    });
+    window.addEventListener('scroll', function () {
+      document.body.classList.toggle('is-scrolled', window.scrollY > 24);
+    }, { passive: true });
     window.addEventListener('resize', function () {
       var was = state.phone;
       if (phoneNow() !== was) render();

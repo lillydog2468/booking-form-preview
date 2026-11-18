@@ -2858,6 +2858,27 @@
     .ov-edit-guests { margin: 0; font-size: 12px; color: var(--text-secondary); }
     .ov-empty { margin: 12px; color: var(--text-secondary); }
     .ov-selected { margin: 4px 0; font-size: 11px; }
+    @media (min-width: 761px) {
+      .group-heading-bar { position: sticky; top: 0; z-index: 6; background: var(--bg, #f4f3f0); }
+      body.is-scrolled .group-dates,
+      body.is-scrolled .plan-save-status { display: none; }
+      body.is-scrolled .group-heading { font-size: 16px; margin: 0; }
+      .ov-body { min-height: 150vh; }
+      .ov-tray {
+        position: fixed; top: 64px; left: 8px; bottom: 8px; width: 280px;
+        max-height: none; z-index: 4; overflow: auto;
+      }
+      .ov-scroll {
+        position: fixed; top: 64px; right: 8px; bottom: 8px; left: 296px;
+        overflow: auto; z-index: 4; background: var(--surface);
+      }
+      body.is-scrolled .ov-tray,
+      body.is-scrolled .ov-scroll { top: 40px; }
+      .ov, .ov-tray, .ov-scroll, .ov-grid, .ov-stop, .ov-head, button, h1, h2, h3 {
+        -webkit-user-select: none; user-select: none;
+      }
+      input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+    }
     @media (max-width: 760px) {
       .ov-body { flex-direction: column; align-items: stretch; }
       .ov-tray { flex: 1 1 auto; width: 100%; max-width: 100%; max-height: 240px; }

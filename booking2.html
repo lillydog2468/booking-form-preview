@@ -25,7 +25,7 @@
   <header class="b2-top">
     <p class="b2-back"><a class="b2-back-link" href="booking-form.html">Back to bookings</a></p>
     <p class="b2-kicker">Test booking</p>
-    <h1 id="b2Title">Jennifer Lindsay</h1>
+    <h1><span id="b2Title">Jennifer Lindsay</span> <span class="b2-inline-status" id="b2Status"></span><span class="b2-inline-status" id="p2Status"></span></h1>
     <p class="b2-dates" id="b2Dates"></p>
     <p class="b2-note" id="b2Note">This page opens only Jennifer Lindsay’s group, booking 310. Booking details are read-only. The week plan is on this page.</p>
   </header>
@@ -33,8 +33,6 @@
   <div class="p2-bar">
     <button type="button" class="p2-btn" id="p2Places">Places</button>
     <div class="p2-days" id="p2Days" role="tablist" aria-label="Days"></div>
-    <span class="b2-status" id="b2Status"></span>
-    <span class="p2-status" id="p2Status"></span>
   </div>
   <main class="p2-main b2-plan">
     <aside class="p2-tray" id="p2Tray" aria-label="Places">
@@ -55,6 +53,7 @@
     </div>
   </div>
   <script src="prague-exit.js"></script>
+  <script src="place-popup.js"></script>
   <script src="plan-sync.js"></script>
   <script src="planner2.js" defer></script>
   <script src="booking2.js" defer></script>

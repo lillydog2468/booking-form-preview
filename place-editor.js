@@ -139,6 +139,8 @@
       types: cats.types,
       contactMethod: card.querySelector('[data-pe-contact]').value,
       contactDetail: card.querySelector('[data-pe-detail]').value,
+      contactName: card.querySelector('[data-pe-contact-name]').value,
+      contactPhone: card.querySelector('[data-pe-contact-phone]').value,
       address: card.querySelector('[data-pe-address]').value,
       nickname: card.querySelector('[data-pe-nickname]').value,
       icon: card.querySelector('[data-pe-icon]').value,
@@ -234,6 +236,8 @@
       types: next.types.slice(),
       contactMethod: text(next.contactMethod),
       contactDetail: text(next.contactDetail),
+      contactName: text(next.contactName),
+      contactPhone: text(next.contactPhone),
       address: text(next.address),
       nickname: text(next.nickname),
       icon: text(next.icon),
@@ -251,6 +255,8 @@
       && listsEqual(now.types, was.types)
       && now.contactMethod === was.contactMethod
       && now.contactDetail === was.contactDetail
+      && now.contactName === was.contactName
+      && now.contactPhone === was.contactPhone
       && now.address === was.address
       && now.nickname === was.nickname
       && now.icon === was.icon
@@ -283,6 +289,8 @@
       + '<div class="pe-grid">'
       + '<label class="pe-field">How we contact them<select data-pe-contact>' + contactOptions(place.contact_method || place.contactMethod || '') + '</select></label>'
       + '<label class="pe-field">Contact detail<input data-pe-detail value="' + esc(place.contact_detail || place.contactDetail || '') + '"></label>'
+      + '<label class="pe-field">Contact name<input data-pe-contact-name value="' + esc(place.contact_name || place.contactName || '') + '"></label>'
+      + '<label class="pe-field">Contact phone<input data-pe-contact-phone value="' + esc(place.contact_phone || place.contactPhone || '') + '"></label>'
       + '<label class="pe-field">Address or map link<input data-pe-address value="' + esc(place.address || '') + '"></label>'
       + '</div>'
       + '<div class="pe-field">Map<div class="pe-map" data-pe-map></div><p class="pe-status" data-pe-pin></p></div>'
@@ -336,6 +344,8 @@
       place_types: next.types.slice(),
       contact_method: next.contactMethod || null,
       contact_detail: text(next.contactDetail) || null,
+      contact_name: text(next.contactName) || null,
+      contact_phone: text(next.contactPhone) || null,
       address: text(next.address) || null,
       nickname: text(next.nickname) || null,
       icon: text(next.icon) || null,
@@ -375,6 +385,8 @@
       place.address = patch.address;
       place.contact_method = patch.contact_method;
       place.contact_detail = patch.contact_detail;
+      place.contact_name = patch.contact_name;
+      place.contact_phone = patch.contact_phone;
       if (state.onSaved) state.onSaved(place);
       close();
     } catch (err) {
