@@ -38,6 +38,9 @@
     plan: null,
     selectedDay: 0,
     weekZoomDay: null,
+    overviewDay: null,
+    overviewTrayOpen: false,
+    overviewEditing: '',
     placeFilter: 'all',
     placeSearch: '',
     selectedPlaceId: null,
@@ -4347,16 +4350,30 @@
   }
 
   function effectiveView() {
-    if (state.viewPref === 'phone' || state.viewPref === 'detailed' || state.viewPref === 'week') return state.viewPref;
+    if (state.viewPref === 'phone' || state.viewPref === 'detailed' || state.viewPref === 'week' || state.viewPref === 'overview') return state.viewPref;
     return window.innerWidth <= 820 ? 'phone' : 'detailed';
   }
   function syncViewChrome(view) {
     document.body.classList.toggle('view-phone', view === 'phone');
     document.body.classList.toggle('view-detailed', view === 'detailed');
     document.body.classList.toggle('view-week', view === 'week');
+    document.body.classList.toggle('view-overview', view === 'overview');
     document.getElementById('btnPhoneView')?.classList.toggle('active', view === 'phone');
     document.getElementById('btnDetailedView')?.classList.toggle('active', view === 'detailed');
     document.getElementById('btnLookView')?.classList.toggle('active', view === 'week');
+    document.getElementById('btnOverview')?.classList.toggle('active', view === 'overview');
+  }
+  function writeOverviewUrl(on) {
+    try {
+      const url = new URL(location.href);
+      if (on) {
+        url.searchParams.set('view', 'overview');
+        if (url.searchParams.get('tab') === 'rough') url.searchParams.delete('tab');
+      } else if (url.searchParams.get('view') === 'overview') {
+        url.searchParams.delete('view');
+      }
+      history.replaceState({}, '', url);
+    } catch (_) { /* ignore */ }
   }
   function setPhoneWeekUrl(on) {
     try {
@@ -4406,10 +4423,15 @@
     setPhoneWeekUrl(false);
     const leavingWeek = effectiveView() === 'week' && v !== 'week';
     if (v === 'week') state.weekZoomDay = null;
+    if (v === 'overview' && state.mainTab !== 'planner') {
+      state.mainTab = 'planner';
+      try { localStorage.setItem('planner_main_tab', 'planner'); } catch (_) { /* ignore */ }
+    }
     state.viewPref = v;
-    localStorage.setItem('planner_view', v);
+    try { localStorage.setItem('planner_view', v); } catch (_) { /* ignore */ }
+    writeOverviewUrl(v === 'overview');
     syncViewChrome(effectiveView());
-    render((v === 'week' || leavingWeek) ? { resetScroll: true } : undefined);
+    render((v === 'week' || v === 'overview' || leavingWeek) ? { resetScroll: true } : undefined);
   }
 
   function guestNamesFromMembers(members, extras) {
@@ -10441,6 +10463,484 @@ function renderDayTabs() {
     return copy.blocks;
   }
 
+  function overviewGuestLine(stop) {
+    if (!stop) return '';
+    const guests = (state.plan && state.plan.guests) || [];
+    const names = [];
+    (stop.guestIds || []).forEach(id => {
+      const guest = guests.find(item => item && String(item.id) === String(id));
+      const name = guest && String(guest.name || '').trim();
+      if (name && names.indexOf(name) === -1) names.push(name);
+    });
+    if (names.length > 2) return names.slice(0, 2).join(', ') + ' +' + (names.length - 2);
+    return names.join(', ');
+  }
+
+  function overviewHotelStay(date) {
+    if (!state.plan) return null;
+    const stays = bookingHotelStays(bookingRecordForPlan(state.plan), state.plan);
+    const ends = dayHotelEnds(date, state.plan.arrivalDate, state.plan.departureDate, stays);
+    return {
+      night: (ends.dropoff && ends.dropoff.name) || '',
+      from: (ends.pickup && ends.pickup.name) || '',
+    };
+  }
+
+  /** Move a stop to a day and clock time. Other stops keep the times they already have. */
+  function placeOverviewStop(stopId, dayIndex, hhmm) {
+    if (!state.plan || stopId == null || !window.WeekOverview) return false;
+    const days = state.plan.days || [];
+    const dest = days[dayIndex];
+    if (!dest || typeof dest !== 'object') return false;
+    let from = -1;
+    let stop = null;
+    days.forEach((day, index) => {
+      if (from >= 0 || !day || !Array.isArray(day.blocks)) return;
+      const at = day.blocks.findIndex(item => item && String(item.id) === String(stopId));
+      if (at >= 0) {
+        from = index;
+        stop = day.blocks[at];
+      }
+    });
+    if (from < 0 || !stop) return false;
+    if (from !== dayIndex) {
+      const blocks = days[from].blocks;
+      const at = blocks.findIndex(item => item && String(item.id) === String(stopId));
+      if (at >= 0) blocks.splice(at, 1);
+      if (!Array.isArray(dest.blocks)) dest.blocks = [];
+      dest.blocks.push(stop);
+      sortDayBlocks(days[from]);
+    }
+    commitStopTime(stopId, hhmm, { render: true });
+    return true;
+  }
+
+  function addOverviewHandover(kind, dayIndex, hhmm) {
+    if (!state.plan || !window.HandoverStops) return;
+    const day = state.plan.days ? state.plan.days[dayIndex] : null;
+    if (!day || typeof day !== 'object') return;
+    const stop = newHandoverStop(kind);
+    stop.time = normaliseStopTime(hhmm, '');
+    stop.timeApprox = false;
+    stop.period = periodForTime(stop.time);
+    if (!Array.isArray(day.blocks)) day.blocks = [];
+    day.blocks.push(stop);
+    sortDayBlocks(day);
+    state.roughSelectedHandover = null;
+    state.roughSelectedPlaceId = null;
+    state.selectedDay = dayIndex;
+    scheduleAutoSave();
+    render();
+  }
+
+  function renderOverviewTray() {
+    const { list, usedList, used } = filteredRoughTrayPlaces();
+    const active = state.roughTrayFilter || 'all';
+    const chips = PLACE_TYPES.map(t => {
+      const label = t.id === 'all' ? 'All' : (t.singular || t.label);
+      return `<button type="button" class="ov-chip${active === t.id ? ' on' : ''}" data-ov-filter="${escapeHtml(t.id)}">${escapeHtml(label)}</button>`;
+    }).join('') + `<button type="button" class="ov-chip${active === 'handover' ? ' on' : ''}" data-ov-filter="handover">Pick-up</button>`;
+    const places = list.map(p => renderRoughPlaceChip(p, used, {})).join('');
+    const handovers = roughHandoverTrayKinds().map(renderRoughHandoverChip).join('');
+    const usedBlock = state.roughShowUsed
+      ? `<div class="ov-tray-used"><p>Already planned once</p>${usedList.length ? usedList.map(p => renderRoughPlaceChip(p, used, { returnVisit: true })).join('') : '<p>Nothing used yet.</p>'}</div>`
+      : '';
+    const selected = state.roughSelectedHandover
+      ? (state.roughSelectedHandover === 'dropoff' ? 'Drop-off' : 'Pick-up')
+      : (state.roughSelectedPlaceId ? placeChipLabel(placeById(state.roughSelectedPlaceId)) : '');
+    return `<details class="ov-tray" id="ovTray"${state.overviewTrayOpen ? ' open' : ''}>
+      <summary>Places</summary>
+      <input type="search" id="ovTraySearch" class="ov-tray-search" value="${escapeHtml(state.roughTraySearch || '')}" placeholder="Search places" autocomplete="off">
+      <div class="ov-tray-chips">${chips}</div>
+      <label class="ov-show-used"><input type="checkbox" id="ovShowUsed"${state.roughShowUsed ? ' checked' : ''}> Show used (return visit)</label>
+      ${selected ? `<p class="ov-selected">Selected: <strong>${escapeHtml(selected)}</strong>. Tap a time on a day.</p>` : ''}
+      <div class="ov-tray-list">${handovers}${places || '<p class="ov-empty">No places in this filter.</p>'}</div>
+      ${usedBlock}
+    </details>`;
+  }
+
+  function renderOverviewPanel() {
+    if (!state.plan || !window.WeekOverview) {
+      return '<div class="ov"><p class="ov-empty">Overview is not available.</p></div>';
+    }
+    const days = state.plan.days || [];
+    if (state.overviewDay != null && !days[state.overviewDay]) state.overviewDay = null;
+    const pace = roughWeekPaceSummary();
+    const model = WeekOverview.build(state.plan, {
+      today: todayISO(),
+      focusDay: state.overviewDay,
+      label(stop) { return roughStopLabel(stop); },
+      cue(stop) { return cueForStop(stop) || { id: 'other', emoji: '📍', label: 'Place' }; },
+      guests: overviewGuestLine,
+      hotel: overviewHotelStay,
+    });
+    const jumps = days.map((day, i) => {
+      if (!day || typeof day !== 'object') return '';
+      const on = state.overviewDay === i ? ' on' : '';
+      const short = day.date ? (weekdayName(day.date).slice(0, 3) + ' ' + String(formatDateDMY(day.date) || '').slice(0, 5)) : ('Day ' + (i + 1));
+      return `<button type="button" class="ov-jump${on}" data-ov-jump="${i}">${escapeHtml(short)}</button>`;
+    }).join('');
+    const modeLabel = state.overviewDay == null ? 'One day' : 'All days';
+    return `<div class="ov" id="weekOverview">
+      <div class="ov-bar">
+        <p class="ov-pace rough-week-pace pace-${escapeHtml(pace.key)}">${escapeHtml(pace.text)}</p>
+        <p class="ov-hint">Drag a stop to another day or time. Times snap to 15 minutes. Click a stop to edit it.</p>
+        <div class="ov-tools">
+          <button type="button" class="ov-btn" id="ovDayMode">${modeLabel}</button>
+          <button type="button" class="ov-btn" id="btnSuggestRoughWeek">Suggest week</button>
+          <button type="button" class="ov-btn" id="btnAddPragueEnds" title="First day pick-up at 08:00. Last day drop-off at 18:00.">Prague ends</button>
+          <span class="ov-jumps" role="group" aria-label="Jump to a day"><button type="button" class="ov-jump${state.overviewDay == null ? ' on' : ''}" data-ov-jump="all">Week</button>${jumps}</span>
+        </div>
+      </div>
+      <div class="ov-body">
+        ${renderOverviewTray()}
+        <div class="ov-scroll" id="ovScroll">${WeekOverview.render(model)}</div>
+      </div>
+      <details class="ov-notes">
+        <summary>Week notes</summary>
+        <textarea id="ovNotes" rows="3" placeholder="Saved with this tour.">${escapeHtml(state.plan.roughNotes || '')}</textarea>
+      </details>
+    </div>`;
+  }
+
+  function openOverviewEditor(stopId) {
+    const stop = findStop(stopId);
+    if (!stop) return;
+    state.overviewEditing = String(stopId);
+    const sheet = document.getElementById('sheet');
+    const body = document.getElementById('sheetBody');
+    const titleEl = document.getElementById('sheetTitle');
+    const closeBtn = document.getElementById('sheetClose');
+    if (!sheet || !body) return;
+    if (titleEl) titleEl.textContent = roughStopLabel(stop) || 'Stop';
+    if (closeBtn) closeBtn.textContent = 'Close';
+    if (stop.type === 'handover') setHandoverOpen(stop.id, true);
+    const dayIndex = (state.plan.days || []).findIndex(d => d && (d.blocks || []).some(b => b && String(b.id) === String(stop.id)));
+    const guests = overviewGuestLine(stop);
+    const handover = stop.type === 'handover' ? renderRoughHandoverDetails(stop) : '';
+    body.innerHTML = `
+      <div class="ov-edit">
+        <label class="field-label" for="ovEditTime">Time</label>
+        <input type="time" id="ovEditTime" data-stop-time="${escapeHtml(stop.id)}" data-time-src="overview" value="${escapeHtml(stop.time || '')}">
+        <label class="field-label" for="ovEditTitle">Name</label>
+        <input type="text" id="ovEditTitle" data-stop-title="${escapeHtml(stop.id)}" value="${escapeHtml(stop.title || '')}">
+        <label class="field-label" for="ovEditNotes">Notes</label>
+        <input type="text" id="ovEditNotes" data-stop-notes="${escapeHtml(stop.id)}" value="${escapeHtml(stop.notes || '')}" placeholder="Notes">
+        <label class="field-label" for="ovEditAddress">Address</label>
+        <input type="text" id="ovEditAddress" data-stop-address="${escapeHtml(stop.id)}" value="${escapeHtml(resolveStopAddress(stop) || '')}" placeholder="Address or Apple Maps link">
+        ${guests ? `<p class="ov-edit-guests">Who: ${escapeHtml(guests)}</p>` : ''}
+        ${handover}
+        <div class="ov-edit-actions">
+          <button type="button" class="ov-btn" id="ovEditDay">Open this day in Detailed</button>
+          <button type="button" class="ov-btn ov-btn-danger" data-ov-remove="${escapeHtml(stop.id)}">Remove</button>
+        </div>
+      </div>`;
+    sheet.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    const time = body.querySelector('[data-stop-time]');
+    if (time) {
+      time.addEventListener('change', () => {
+        if (!time.isConnected) return;
+        commitStopTime(time.getAttribute('data-stop-time'), time.value, { render: true });
+      });
+    }
+    body.querySelector('[data-stop-title]')?.addEventListener('input', (event) => {
+      const row = findStop(stop.id);
+      if (row) { row.title = event.target.value; scheduleAutoSave(); }
+    });
+    body.querySelector('[data-stop-notes]')?.addEventListener('input', (event) => {
+      const row = findStop(stop.id);
+      if (row) { row.notes = event.target.value; scheduleAutoSave(); }
+    });
+    const address = body.querySelector('[data-stop-address]');
+    if (address) {
+      address.addEventListener('change', () => {
+        const row = findStop(stop.id);
+        if (!row || !address.isConnected) return;
+        row.address = address.value;
+        if (String(row.address || '').trim()) syncStopAddressToPlace(row);
+        scheduleAutoSave();
+        render();
+      });
+    }
+    body.querySelector('[data-handover-kind]')?.addEventListener('change', (event) => {
+      commitHandoverKind(stop.id, event.target.value);
+    });
+    body.querySelector('[data-handover-place]')?.addEventListener('change', (event) => {
+      commitHandoverPlace(stop.id, event.target.value);
+    });
+    body.querySelectorAll('[data-handover-guest]').forEach(inp => {
+      inp.addEventListener('change', () => commitHandoverGuests(stop.id));
+    });
+    body.querySelector('[data-handover-note]')?.addEventListener('input', (event) => {
+      const row = findStop(stop.id);
+      if (!row) return;
+      row.placeNote = event.target.value;
+      refreshHandoverTitle(row);
+      scheduleAutoSave();
+    });
+    document.getElementById('ovEditDay')?.addEventListener('click', () => {
+      if (dayIndex >= 0) state.selectedDay = dayIndex;
+      closeSheet();
+      setViewPref('detailed');
+    });
+    body.querySelector('[data-ov-remove]')?.addEventListener('click', () => {
+      closeSheet();
+      removeStop(stop.id);
+    });
+  }
+
+  function overviewColumnAt(x, y) {
+    const under = document.elementFromPoint(x, y);
+    if (!under || !under.closest) return null;
+    const direct = under.closest('[data-ov-col]');
+    if (direct) return direct;
+    const day = under.closest('[data-ov-day]');
+    return day ? day.querySelector('[data-ov-col]') : null;
+  }
+
+  function overviewMinutesAt(col, clientY) {
+    const grid = document.querySelector('.ov-grid');
+    if (!grid || !col || !window.WeekOverview) return null;
+    const rect = col.getBoundingClientRect();
+    return WeekOverview.minutesFromOffset(
+      clientY - rect.top,
+      Number(grid.getAttribute('data-ov-start')),
+      Number(grid.getAttribute('data-ov-px')),
+      Number(grid.getAttribute('data-ov-end'))
+    );
+  }
+
+  function bindOverview() {
+    const root = document.getElementById('weekOverview');
+    if (!root || !window.WeekOverview) return;
+    document.getElementById('ovNotes')?.addEventListener('input', (event) => {
+      if (!state.plan) return;
+      state.plan.roughNotes = event.target.value;
+      scheduleAutoSave();
+    });
+    document.getElementById('ovTray')?.addEventListener('toggle', (event) => {
+      state.overviewTrayOpen = !!event.target.open;
+    });
+    document.getElementById('ovTraySearch')?.addEventListener('input', (event) => {
+      state.roughTraySearch = event.target.value;
+      render();
+    });
+    document.getElementById('ovShowUsed')?.addEventListener('change', (event) => {
+      state.roughShowUsed = !!event.target.checked;
+      render();
+    });
+    root.querySelectorAll('[data-ov-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.roughTrayFilter = btn.getAttribute('data-ov-filter');
+        render();
+      });
+    });
+    document.getElementById('ovDayMode')?.addEventListener('click', () => {
+      if (state.overviewDay == null) {
+        const days = (state.plan && state.plan.days) || [];
+        let index = state.selectedDay || 0;
+        if (!days[index]) index = days.findIndex(day => day && typeof day === 'object');
+        state.overviewDay = index < 0 ? 0 : index;
+      } else {
+        state.overviewDay = null;
+      }
+      render({ resetScroll: true });
+    });
+    document.getElementById('btnSuggestRoughWeek')?.addEventListener('click', suggestRoughWeek);
+    document.getElementById('btnAddPragueEnds')?.addEventListener('click', addPraguePickupsAndDropoffs);
+    root.querySelectorAll('[data-ov-jump]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const raw = btn.getAttribute('data-ov-jump');
+        if (raw === 'all') {
+          state.overviewDay = null;
+          render({ resetScroll: true });
+          return;
+        }
+        const index = Number(raw);
+        state.selectedDay = index;
+        if (state.overviewDay != null) {
+          state.overviewDay = index;
+          render({ resetScroll: true });
+          return;
+        }
+        const column = root.querySelector('[data-ov-day="' + index + '"]');
+        if (column && column.scrollIntoView) column.scrollIntoView({ inline: 'start', block: 'nearest', behavior: 'smooth' });
+      });
+    });
+    root.querySelectorAll('[data-rough-place]').forEach(chip => {
+      const placeId = chip.getAttribute('data-rough-place');
+      chip.addEventListener('click', () => {
+        state.roughSelectedHandover = null;
+        state.roughSelectedPlaceId = state.roughSelectedPlaceId === placeId ? null : placeId;
+        render();
+      });
+      chip.addEventListener('dragstart', (event) => {
+        event.dataTransfer.setData('text/plain', placeId);
+        event.dataTransfer.setData('application/x-rough-place', placeId);
+        event.dataTransfer.effectAllowed = 'copy';
+      });
+    });
+    root.querySelectorAll('[data-rough-handover]').forEach(chip => {
+      const kind = chip.getAttribute('data-rough-handover');
+      chip.addEventListener('click', () => {
+        state.roughSelectedPlaceId = null;
+        state.roughSelectedHandover = state.roughSelectedHandover === kind ? null : kind;
+        render();
+      });
+      chip.addEventListener('dragstart', (event) => {
+        event.dataTransfer.setData('text/plain', 'handover:' + kind);
+        event.dataTransfer.setData('application/x-rough-handover', kind);
+        event.dataTransfer.effectAllowed = 'copy';
+      });
+    });
+    root.querySelectorAll('[data-ov-col]').forEach(col => {
+      const dayIndex = Number(col.getAttribute('data-ov-col'));
+      col.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        col.classList.add('is-drop');
+      });
+      col.addEventListener('dragleave', () => col.classList.remove('is-drop'));
+      col.addEventListener('drop', (event) => {
+        event.preventDefault();
+        col.classList.remove('is-drop');
+        const mins = overviewMinutesAt(col, event.clientY);
+        if (mins == null) return;
+        const hhmm = WeekOverview.formatMinutes(mins);
+        const handover = event.dataTransfer.getData('application/x-rough-handover');
+        const plain = event.dataTransfer.getData('text/plain');
+        const kind = handover || (String(plain).indexOf('handover:') === 0 ? String(plain).slice(9) : '');
+        if (kind === 'pickup' || kind === 'dropoff') {
+          addOverviewHandover(kind, dayIndex, hhmm);
+          return;
+        }
+        const placeId = event.dataTransfer.getData('application/x-rough-place') || plain;
+        const place = placeById(placeId);
+        if (place) addPlaceToDay(place, dayIndex, hhmm);
+      });
+      col.addEventListener('click', (event) => {
+        if (event.target.closest('[data-ov-stop], button, a, input')) return;
+        if (!state.roughSelectedPlaceId && !state.roughSelectedHandover) return;
+        const mins = overviewMinutesAt(col, event.clientY);
+        if (mins == null) return;
+        const hhmm = WeekOverview.formatMinutes(mins);
+        if (state.roughSelectedHandover) {
+          addOverviewHandover(state.roughSelectedHandover, dayIndex, hhmm);
+          return;
+        }
+        const place = placeById(state.roughSelectedPlaceId);
+        if (place) addPlaceToDay(place, dayIndex, hhmm);
+      });
+    });
+    root.querySelectorAll('[data-ov-remove]').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        removeStop(btn.getAttribute('data-ov-remove'));
+      });
+    });
+    root.querySelectorAll('[data-ov-stop]').forEach(card => {
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openOverviewEditor(card.getAttribute('data-ov-stop'));
+      });
+      card.addEventListener('pointerdown', (event) => {
+        if (event.button != null && event.button !== 0) return;
+        if (event.target.closest('.ov-x')) return;
+        const stopId = card.getAttribute('data-ov-stop');
+        const origin = { x: event.clientX, y: event.clientY, moved: false };
+        let ghost = null;
+        let snap = null;
+        const clearMarks = () => {
+          card.classList.remove('dragging');
+          root.querySelectorAll('[data-ov-col]').forEach(el => el.classList.remove('is-drop'));
+          if (ghost) ghost.remove();
+          if (snap) snap.remove();
+          ghost = null;
+          snap = null;
+        };
+        const move = (e) => {
+          if (!origin.moved && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < 8) return;
+          origin.moved = true;
+          e.preventDefault();
+          card.classList.add('dragging');
+          if (!ghost) {
+            ghost = card.cloneNode(true);
+            ghost.classList.add('ov-ghost');
+            ghost.style.width = Math.max(120, card.offsetWidth) + 'px';
+            document.body.appendChild(ghost);
+          }
+          ghost.style.left = (e.clientX + 10) + 'px';
+          ghost.style.top = (e.clientY + 10) + 'px';
+          root.querySelectorAll('[data-ov-col]').forEach(el => el.classList.remove('is-drop'));
+          if (snap) { snap.remove(); snap = null; }
+          const col = overviewColumnAt(e.clientX, e.clientY);
+          if (!col) return;
+          col.classList.add('is-drop');
+          const mins = overviewMinutesAt(col, e.clientY);
+          if (mins == null) return;
+          const grid = root.querySelector('.ov-grid');
+          const px = Number(grid && grid.getAttribute('data-ov-px'));
+          const start = Number(grid && grid.getAttribute('data-ov-start'));
+          snap = document.createElement('div');
+          snap.className = 'ov-snap';
+          snap.style.top = ((mins - start) * px) + 'px';
+          snap.textContent = WeekOverview.formatMinutes(mins);
+          col.appendChild(snap);
+        };
+        const up = (e) => {
+          card.removeEventListener('pointermove', move);
+          card.removeEventListener('pointerup', up);
+          card.removeEventListener('pointercancel', up);
+          const moved = origin.moved;
+          const col = moved ? overviewColumnAt(e.clientX, e.clientY) : null;
+          const mins = col ? overviewMinutesAt(col, e.clientY) : null;
+          clearMarks();
+          if (!moved) {
+            openOverviewEditor(stopId);
+            return;
+          }
+          if (!col || mins == null) return;
+          placeOverviewStop(stopId, Number(col.getAttribute('data-ov-col')), WeekOverview.formatMinutes(mins));
+        };
+        card.addEventListener('pointermove', move);
+        card.addEventListener('pointerup', up);
+        card.addEventListener('pointercancel', up);
+        try { card.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+      });
+    });
+    if (state.overviewDay != null) {
+      const scroller = document.getElementById('ovScroll');
+      let startX = 0;
+      let startY = 0;
+      let tracking = false;
+      scroller?.addEventListener('touchstart', (event) => {
+        if (event.target.closest('[data-ov-stop], button, a, input, .ov-tray')) {
+          tracking = false;
+          return;
+        }
+        tracking = true;
+        startX = event.touches[0].clientX;
+        startY = event.touches[0].clientY;
+      }, { passive: true });
+      scroller?.addEventListener('touchend', (event) => {
+        if (!tracking) return;
+        const dx = event.changedTouches[0].clientX - startX;
+        const dy = event.changedTouches[0].clientY - startY;
+        if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return;
+        const dir = dx < 0 ? 1 : -1;
+        const days = (state.plan && state.plan.days) || [];
+        let next = Number(state.overviewDay) + dir;
+        while (next >= 0 && next < days.length && !(days[next] && typeof days[next] === 'object')) next += dir;
+        if (next < 0 || next >= days.length) return;
+        state.overviewDay = next;
+        state.selectedDay = next;
+        render({ resetScroll: true });
+      }, { passive: true });
+    }
+  }
+
   function renderWeekLook() {
     const plan = state.plan;
     const days = (plan && Array.isArray(plan.days)) ? plan.days : [];
@@ -10697,6 +11197,11 @@ function renderDayTabs() {
 
   function renderWithoutPlan() {
     updateGroupHeading();
+    if (effectiveView() === 'overview') {
+      const app = document.getElementById('app');
+      if (app) app.innerHTML = `<div class="ov" id="weekOverview"><p class="ov-empty">${escapeHtml(emptyTourMessage())}</p></div>`;
+      return;
+    }
     if (effectiveView() === 'week') {
       const app = document.getElementById('app');
       if (app) {
@@ -10780,6 +11285,23 @@ function renderDayTabs() {
     }
     ensureHotelsUsedStays();
     updateGroupHeading();
+    if (view === 'overview' && state.mainTab === 'planner') {
+      const app = document.getElementById('app');
+      const ovScroll = document.getElementById('ovScroll');
+      const ovLeft = ovScroll ? ovScroll.scrollLeft : 0;
+      const ovTop = ovScroll ? ovScroll.scrollTop : 0;
+      const tray = document.getElementById('ovTray');
+      if (tray) state.overviewTrayOpen = !!tray.open;
+      if (app) app.innerHTML = renderOverviewPanel();
+      bindOverview();
+      if (!resetScroll) restoreUiState(uiSnap);
+      const nextScroll = document.getElementById('ovScroll');
+      if (nextScroll && !resetScroll) {
+        nextScroll.scrollLeft = ovLeft;
+        nextScroll.scrollTop = ovTop;
+      }
+      return;
+    }
     if (view === 'week' && state.mainTab !== 'visits') {
       const app = document.getElementById('app');
       if (app) app.innerHTML = renderWeekLook();
@@ -13006,7 +13528,7 @@ function renderDayTabs() {
     const requested = params.get('booking');
     const viewParam = params.get('view');
     if (viewParam === 'phone') state.phoneWeek = true;
-    else if (viewParam === 'detailed' || viewParam === 'week') state.viewPref = viewParam;
+    else if (viewParam === 'detailed' || viewParam === 'week' || viewParam === 'overview') state.viewPref = viewParam;
     const tabParam = (params.get('tab') || '').toLowerCase();
     if (tabParam === 'people' || tabParam === 'places' || tabParam === 'issues' || tabParam === 'rough' || tabParam === 'planner' || tabParam === 'hotels' || tabParam === 'visits') {
       state.mainTab = tabParam;
@@ -13153,6 +13675,7 @@ function renderDayTabs() {
   document.getElementById('btnForceCloudSave').addEventListener('click', () => forceSaveToCloud());
   document.getElementById('btnExportPlan').addEventListener('click', () => exportPlanJson());
   document.getElementById('btnLookView').addEventListener('click', () => setViewPref('week'));
+  document.getElementById('btnOverview').addEventListener('click', () => setViewPref('overview'));
   document.getElementById('btnPhoneView').addEventListener('click', () => openPhoneWeek());
   document.getElementById('groupHeading')?.addEventListener('click', () => {
     if (state.phoneWeek) leavePhoneWeek();
@@ -13444,8 +13967,112 @@ function renderDayTabs() {
     normalizePlan(state.plan);
     window.__mapsFixture = { state: state, render: render };
   }
+  function installPreviewMock() {
+    const previousLegacy = window.isLegacyDemoPlan;
+    window.isLegacyDemoPlan = function (key, plan) {
+      if (String(key) === 'preview-mock') return true;
+      return typeof previousLegacy === 'function' ? previousLegacy(key, plan) : false;
+    };
+    state.catalogue = [
+      { id: 'kf02', name: 'Matubo', nickname: 'Mat', type: 'factory', types: ['factory'], address: 'Jablonec nad Nisou' },
+      { id: 'kf03', name: 'GB Beads', nickname: 'GB', type: 'factory', types: ['factory'], address: 'Jablonec nad Nisou' },
+      { id: 'ks01', name: 'Antik shop beads', nickname: 'Antik', type: 'shop', types: ['shop'], address: 'Jablonec nad Nisou' },
+      { id: 'km01', name: 'Museum of glass', nickname: 'Museum', type: 'museum', types: ['museum'], address: 'Jablonec nad Nisou' },
+      { id: 'kr05', name: 'Park hotel dining', nickname: 'Lunch', type: 'restaurant', types: ['restaurant'], address: 'Smržovka' },
+      { id: 'kr06', name: 'Snack at supermarket', nickname: 'Snack', type: 'snack', types: ['snack'], address: 'Jablonec nad Nisou' },
+      { id: 'ht01', name: 'Park Hotel', nickname: 'Park', type: 'hotel', types: ['hotel'], address: 'Smržovka' },
+      { id: 'kr01', name: 'Černá Studnice', nickname: 'Tower', type: 'viewpoint', types: ['viewpoint'], address: 'Smržovka' },
+    ].map(place => ensurePlace(place));
+    state.people = [];
+    state.bookings = [{
+      id: 'preview-mock',
+      group_name: 'Beading week demo',
+      tour_arrival_date: '2027-05-10',
+      departure_date: '2027-05-14',
+      hotel_name: 'Hotel Axa',
+      other_hotel_nights: '1',
+      _hotel_stays: [{ custom_hotel_name: 'Park Hotel', nights: '3' }],
+      _members: [],
+    }];
+    state.liveBookings = false;
+    state.planViewOnly = true;
+    state.phoneWeek = false;
+    state.mainTab = 'planner';
+    state.selectedDay = 0;
+    state.overviewDay = null;
+    state.bookingKey = 'preview-mock';
+    const view = new URLSearchParams(location.search).get('view');
+    state.viewPref = (view === 'week' || view === 'detailed' || view === 'phone') ? view : 'overview';
+    if (view === 'phone') state.phoneWeek = true;
+    state.plan = {
+      bookingKey: 'preview-mock',
+      groupName: 'Beading week demo',
+      organiserName: 'Ada Organiser',
+      arrivalDate: '2027-05-10',
+      departureDate: '2027-05-14',
+      tourHotelName: 'Park Hotel',
+      pragueHotel: { name: 'Hotel Axa', address: 'Na Poříčí 9, Prague', pickupTime: '08:00' },
+      roughNotes: 'Sample week for the overview. Nothing here is saved.',
+      guests: [
+        { id: 'g1', name: 'Jennifer Lindsay' },
+        { id: 'g2', name: 'Gail DeLuca' },
+        { id: 'g3', name: 'Kay Enk' },
+        { id: 'g4', name: 'Maggie Cox' },
+      ],
+      days: [
+        {
+          date: '2027-05-10',
+          blocks: [
+            { id: 'pick', type: 'handover', handoverKind: 'pickup', placeKind: 'hotel', autoStop: 'prague-pickup', time: '08:00', hotelName: 'Hotel Axa', title: 'Pick-up · Hotel Axa', guestIds: ['g1', 'g2', 'g3'] },
+            { id: 'pass', type: 'factory', time: '11:00', title: 'Matubo', placeId: 'kf02', address: 'Jablonec nad Nisou' },
+            { id: 'lunch1', type: 'restaurant', time: '13:00', title: 'Park hotel dining', placeId: 'kr05' },
+            { id: 'antik1', type: 'shop', time: '15:15', title: 'Antik shop beads', placeId: 'ks01' },
+            { id: 'checkin', type: 'hotel', time: '17:30', title: 'Check in — Park Hotel', placeId: 'ht01' },
+          ],
+        },
+        {
+          date: '2027-05-11',
+          blocks: [
+            { id: 'gb', type: 'factory', time: '09:15', title: 'GB Beads', placeId: 'kf03' },
+            { id: 'glass', type: 'factory', time: '09:45', title: 'Matubo glass', placeId: 'kf02', notes: 'Return visit' },
+            { id: 'museum', type: 'museum', time: '11:30', title: 'Museum of glass', placeId: 'km01' },
+            { id: 'lunch2', type: 'restaurant', time: '13:15', title: 'Lunch', placeId: 'kr05' },
+            { id: 'tower', type: 'viewpoint', time: '16:00', title: 'Černá Studnice', placeId: 'kr01' },
+          ],
+        },
+        {
+          date: '2027-05-12',
+          blocks: [
+            { id: 'untimed', type: 'experience', title: 'Town walk', notes: 'Time not set yet' },
+            { id: 'snack', type: 'snack', time: '12:00', title: 'Snack at supermarket', placeId: 'kr06' },
+            { id: 'school', type: 'school', time: '14:30', title: 'Bead school' },
+          ],
+        },
+        {
+          date: '2027-05-13',
+          blocks: [
+            { id: 'quiet', type: 'shop', time: '10:30', title: 'Antik shop beads', placeId: 'ks01' },
+            { id: 'late', type: 'experience', time: '15:00', title: 'Free afternoon in town' },
+          ],
+        },
+        {
+          date: '2027-05-14',
+          blocks: [
+            { id: 'last', type: 'factory', time: '09:30', title: 'GB Beads', placeId: 'kf03' },
+            { id: 'drop', type: 'handover', handoverKind: 'dropoff', placeKind: 'hotel', time: '18:00', hotelName: 'Hotel Axa', title: 'Drop-off · Hotel Axa', guestIds: ['g1', 'g2', 'g3', 'g4'] },
+          ],
+        },
+      ],
+    };
+    state.plans = { 'preview-mock': state.plan };
+    normalizePlan(state.plan);
+    try { fillYearFilter(); fillGroupSelect(); } catch (_) { /* heading still comes from the plan */ }
+  }
   state.cloudAllowed = false;
-  if (/(?:\?|&)mapsFixture=1(?:&|$)/.test(location.search)) {
+  if (/(?:\?|&)preview=mock(?:&|$)/.test(location.search)) {
+    installPreviewMock();
+    render();
+  } else if (/(?:\?|&)mapsFixture=1(?:&|$)/.test(location.search)) {
     installMapsFixture();
     render();
   } else if (/(?:\?|&)visitsFixture=1(?:&|$)/.test(location.search)) {

@@ -214,10 +214,10 @@
     .topbar .sub { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
     .view-nav { display: flex; gap: 4px; background: var(--bg); border-radius: 8px; padding: 3px; }
     .view-nav a, .view-nav button {
-      padding: 6px 12px; border: none; border-radius: 6px;
-      font-family: inherit; font-size: 12px; font-weight: 600;
+      padding: 3px 8px; border: none; border-radius: 6px;
+      font-family: inherit; font-size: 11px; font-weight: 650;
       cursor: pointer; background: transparent; color: var(--text-secondary);
-      text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
     }
     .view-nav a.active, .view-nav button.active {
       background: var(--surface); color: var(--text); box-shadow: var(--shadow);
@@ -2737,3 +2737,112 @@
   .sp-empty{font-size:18px;color:#666}
   .sp-sub{font-size:16px;color:#555;margin:0 0 12px}
   .people-simple-plans{margin:10px 0}.people-simple-plans .btn{margin:4px 6px 4px 0}
+
+    /* Whole-week overview: one clock, days side by side. */
+    body.view-overview .wrap { max-width: none; padding: 8px 10px 18px; }
+    body.view-overview .main-tabs { margin: 0 0 8px; padding: 2px; gap: 4px; }
+    body.view-overview .main-tab { min-height: 32px; padding: 4px 8px; font-size: 13px; flex-basis: 88px; }
+    .ov { display: flex; flex-direction: column; gap: 8px; }
+    .ov-bar { display: flex; flex-direction: column; gap: 4px; }
+    .ov-pace { margin: 0; font-size: 13px; font-weight: 700; }
+    .ov-hint { margin: 0; font-size: 12px; color: var(--text-secondary); }
+    .ov-tools { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .ov-btn, .ov-chip, .ov-jump {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      border-radius: 999px; padding: 2px 8px; min-height: 24px;
+      font: 600 11px/1.2 inherit; cursor: pointer;
+    }
+    .ov-chip.on, .ov-jump.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+    .ov-btn-danger { color: var(--danger); }
+    .ov-jumps { display: flex; flex-wrap: wrap; gap: 4px; }
+    .ov-body { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+    .ov-tray {
+      flex: 0 0 210px; max-height: 72vh; overflow: auto;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px;
+    }
+    .ov-tray summary { cursor: pointer; font-size: 12px; font-weight: 800; }
+    .ov-tray-search { width: 100%; margin: 6px 0; padding: 4px 6px; font: inherit; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); }
+    .ov-tray-chips, .ov-tray-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .ov-tray-used { margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
+    .ov-tray .rough-place-chip, .ov-tray .rough-handover-chip {
+      padding: 2px 6px; min-height: 24px; font-size: 11px; border-radius: 999px;
+    }
+    .ov-show-used { display: flex; gap: 6px; align-items: center; font-size: 11px; margin: 6px 0; color: var(--text-secondary); }
+    .ov-scroll {
+      flex: 1; min-width: 0; overflow: auto; border: 1px solid var(--border);
+      border-radius: 10px; background: var(--surface); scroll-snap-type: x proximity;
+    }
+    .ov-grid { display: flex; min-width: max-content; min-height: 100%; }
+    .ov-hours {
+      position: sticky; left: 0; z-index: 4; flex: 0 0 52px; width: 52px;
+      background: var(--surface); border-right: 1px solid var(--border);
+    }
+    .ov-hours-spacer { height: 108px; }
+    .ov-hours-body { position: relative; height: var(--ov-height); }
+    .ov-hour {
+      position: absolute; left: 0; right: 2px; transform: translateY(-50%);
+      font-size: 10px; font-weight: 700; color: var(--text-secondary);
+      font-variant-numeric: tabular-nums; text-align: right;
+    }
+    .ov-hour:first-child { transform: none; top: 2px; }
+    .ov-days { display: flex; flex: 1; }
+    .ov-day {
+      flex: 1 0 156px; min-width: 156px; border-right: 1px solid var(--border);
+      scroll-snap-align: start; display: flex; flex-direction: column;
+    }
+    .ov-day.is-today { background: var(--accent-glow); }
+    .ov-head { height: 108px; padding: 6px 8px 4px; border-bottom: 1px solid var(--border); overflow: hidden; }
+    .ov-dow { margin: 0; font-size: 12px; font-weight: 800; }
+    .ov-date, .ov-from, .ov-night { margin: 0; font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ov-night { min-height: 14px; font-weight: 700; color: var(--hotel, #b45309); }
+    .ov-night-empty { visibility: hidden; }
+    .ov-col { position: relative; background-image: linear-gradient(to bottom, transparent 0, transparent calc(100% - 1px), var(--border) calc(100% - 1px)); }
+    .ov-col.is-drop { background: var(--accent-soft); }
+    .ov-col.is-missing { height: var(--ov-height); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 12px; }
+    .ov-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); pointer-events: none; }
+    .ov-line-half { border-top-style: dashed; opacity: .55; }
+    .ov-snap {
+      position: absolute; left: 0; right: 0; z-index: 5; pointer-events: none;
+      border-top: 2px solid var(--accent); color: var(--accent);
+      font-size: 10px; font-weight: 800; padding-left: 4px;
+    }
+    .ov-stop {
+      position: absolute; z-index: 2; overflow: hidden; border-radius: 6px;
+      padding: 2px 16px 2px 6px; cursor: grab; touch-action: none;
+      border: 1px solid transparent; font-size: 11px; line-height: 1.2;
+    }
+    .ov-stop:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .ov-stop.dragging { opacity: .35; }
+    .ov-time { display: block; font-weight: 800; font-variant-numeric: tabular-nums; font-size: 10px; }
+    .ov-name { display: block; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ov-guests { display: block; font-size: 10px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ov-emoji { margin-right: 3px; }
+    .ov-approx { margin-right: 2px; }
+    .ov-x {
+      position: absolute; top: 1px; right: 2px; width: 16px; height: 16px;
+      border-radius: 99px; text-align: center; line-height: 14px; font-size: 13px;
+      color: var(--text-secondary); cursor: pointer;
+    }
+    .ov-x:hover { color: var(--danger); }
+    .ov-untimed { display: flex; gap: 4px; min-height: 26px; margin-top: 3px; }
+    .ov-untimed-stop { position: relative; height: 26px; flex: 1 1 auto; min-width: 0; }
+    .ov-ghost {
+      position: fixed; z-index: 80; pointer-events: none; opacity: .92;
+      box-shadow: var(--shadow-lg); width: 140px;
+    }
+    .ov-notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; }
+    .ov-notes summary { cursor: pointer; font-size: 12px; font-weight: 800; }
+    .ov-notes textarea { width: 100%; margin-top: 6px; font: inherit; font-size: 13px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--input-bg); color: var(--text); }
+    .ov-edit { display: flex; flex-direction: column; gap: 6px; }
+    .ov-edit input, .ov-edit select { font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text); }
+    .ov-edit-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .ov-edit-guests { margin: 0; font-size: 12px; color: var(--text-secondary); }
+    .ov-empty { margin: 12px; color: var(--text-secondary); }
+    .ov-selected { margin: 4px 0; font-size: 11px; }
+    @media (max-width: 760px) {
+      .ov-body { flex-direction: column; }
+      .ov-tray { flex: 1 1 auto; width: 100%; max-height: 240px; }
+      .ov-day { flex-basis: calc(100vw - 78px); min-width: calc(100vw - 78px); }
+      .ov-scroll { scroll-snap-type: x mandatory; }
+      .ov-head, .ov-hours-spacer { height: 108px; }
+    }

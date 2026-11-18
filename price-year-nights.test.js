@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, 'booking-form.html'), 'utf8');
+const html = require('./test-page').pageSource(path.join(__dirname, 'booking-form.html'), 'utf8');
 
 function extractFunction(name) {
   const start = html.indexOf('function ' + name + '(');
@@ -196,6 +196,106 @@ test('with no arrival date, the year filter chooses the list and today is not us
   vm.runInContext('applySuggestedPrice("tab")', ctx);
   assert.equal(ctx.nodes.get('ttab_price_per_person').value, '');
   assert.match(ctx.nodes.get('ttab_price_hint').textContent, /current calendar year is not used/);
+});
+
+test('11 to 16 Apr 2027 is five nights and the list price is written into the box', () => {
+  const ctx = loadForm();
+  ctx.seed({
+    years: {
+      '2027': { dayTrip: '100', beading: { '4': '690', '5': '750' } },
+    },
+  });
+  ctx.nodes.get('ttab_tour_arrival_date').value = '11/04/2027';
+  ctx.nodes.get('ttab_departure_date').value = '16/04/2027';
+  ctx.nodes.get('ttab_tour_place').value = 'beading';
+  vm.runInContext('applySuggestedPrice("tab")', ctx);
+  const price = ctx.nodes.get('ttab_price_per_person');
+  const hint = ctx.nodes.get('ttab_price_hint');
+  assert.equal(price.value, '750');
+  assert.equal(price.dataset.priceSource, 'table');
+  assert.match(hint.textContent, /£750 from the 2027 beading list is in the price box/);
+  assert.match(hint.textContent, /5 nights/);
+  vm.runInContext('updatePriceHint("tab")', ctx);
+  assert.match(hint.textContent, /£750 from the 2027 beading list is in the price box/);
+});
+
+test('a five-night tour stays blank when that length has no list price', () => {
+  const ctx = loadForm();
+  ctx.seed({
+    years: {
+      '2027': { dayTrip: '100', beading: { '4': '690', '6': '820' } },
+    },
+  });
+  ctx.nodes.get('ttab_tour_arrival_date').value = '11/04/2027';
+  ctx.nodes.get('ttab_departure_date').value = '16/04/2027';
+  vm.runInContext('applySuggestedPrice("tab")', ctx);
+  const price = ctx.nodes.get('ttab_price_per_person');
+  const hint = ctx.nodes.get('ttab_price_hint');
+  ctx.nodes.set('ttab_beading_tour_price', { value: '5250.00', dataset: { tourPriceSource: 'computed' } });
+  price.dataset.priceSource = 'table';
+  price.value = '750';
+  vm.runInContext('applySuggestedPrice("tab")', ctx);
+  const tour = ctx.nodes.get('ttab_beading_tour_price');
+  assert.equal(price.value, '');
+  assert.equal(price.dataset.priceSource || '', '');
+  assert.equal(tour.value, '');
+  assert.equal(tour.dataset.tourPriceSource, '');
+  tour.value = '800';
+  tour.dataset.tourPriceSource = 'typed';
+  price.value = '750';
+  price.dataset.priceSource = 'table';
+  vm.runInContext('applySuggestedPrice("tab")', ctx);
+  assert.equal(price.value, '');
+  assert.equal(tour.value, '800');
+  assert.equal(tour.dataset.tourPriceSource, 'typed');
+  assert.match(hint.textContent, /The price book has no entry for 2027, 5 nights/);
+  assert.match(hint.textContent, /price box is left empty/);
+  assert.equal(hint.classList.contains('price-year-warn'), true);
+  assert.doesNotMatch(hint.textContent, /690|820/);
+});
+
+test('a pound sign on a list price still fills the box, and a typed price is kept', () => {
+  const ctx = loadForm();
+  ctx.seed({
+    years: {
+      '2027': { dayTrip: '', beading: { '5': '£750' } },
+    },
+  });
+  ctx.nodes.get('ttab_tour_arrival_date').value = '11/04/2027';
+  ctx.nodes.get('ttab_departure_date').value = '16/04/2027';
+  vm.runInContext('applySuggestedPrice("tab")', ctx);
+  const price = ctx.nodes.get('ttab_price_per_person');
+  assert.equal(price.value, '750');
+  assert.equal(price.dataset.priceSource, 'table');
+
+  price.value = '999';
+  price.dataset.priceSource = 'typed';
+  vm.runInContext('applySuggestedPrice("tab")', ctx);
+  assert.equal(price.value, '999');
+  assert.equal(price.dataset.priceSource, 'typed');
+  assert.match(ctx.nodes.get('ttab_price_hint').textContent, /left as it is/);
+});
+
+test('a blank price marked typed is filled, headcount asks for the list, and save fills before it writes', () => {
+  const ctx = loadForm();
+  ctx.seed({
+    years: { '2027': { dayTrip: '', beading: { '5': '750' } } },
+  });
+  ctx.nodes.get('ttab_tour_arrival_date').value = '11/04/2027';
+  ctx.nodes.get('ttab_departure_date').value = '16/04/2027';
+  const price = ctx.nodes.get('ttab_price_per_person');
+  price.value = '';
+  price.dataset.priceSource = 'typed';
+  vm.runInContext('applySuggestedPrice("tab")', ctx);
+  assert.equal(price.value, '750');
+  assert.equal(price.dataset.priceSource, 'table');
+
+  assert.match(html, /endsWith\('_tour_place'\) \|\|\s*changedId\.endsWith\('_no_people'\) \|\|/);
+  assert.match(html, /if \(changedId\.endsWith\('_no_people'\)\) suggestBlankHotelNights\(tabId\)/);
+  assert.match(extractFunction('getTabFormData'), /applySuggestedPrice\(tabId\)/);
+  const standardStart = html.indexOf('function buildFormHTML(');
+  const layoutStart = html.indexOf('function buildLayoutFormHTML(');
+  assert.match(html.slice(standardStart, layoutStart), /id="t\$\{t\}_cv_profit_forecast"/);
 });
 
 test('the price book note names the year in use and leaves the other year idle', () => {

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, 'booking-form.html'), 'utf8');
+const html = require('./test-page').pageSource(path.join(__dirname, 'booking-form.html'), 'utf8');
 
 function extractFunction(name) {
   const start = html.indexOf('function ' + name + '(');

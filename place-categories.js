@@ -177,7 +177,7 @@
   }
 
   function paletteCss() {
-    var cardBits = '.rough-stop,.day-glance-item,.stop,.phone-week-stop,.look-stop';
+    var cardBits = '.rough-stop,.day-glance-item,.stop,.phone-week-stop,.look-stop,.ov-stop';
     var light = [];
     var dark = [];
     Object.keys(STOP_PALETTE).forEach(function (id) {

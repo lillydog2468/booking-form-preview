@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 
+require('./booking-format.js');
 require('./hotel-directory.js');
 
 const HD = globalThis.HotelDirectory;
@@ -325,7 +326,7 @@ test('directory markup keeps empty fields empty and the hotels page still has bo
   assert.match(html, /Not used on a booking yet/);
   assert.match(html, />Save</);
 
-  const page = fs.readFileSync('hotels.html', 'utf8');
+  const page = require('./test-page').pageSource('hotels.html', 'utf8');
   assert.match(page, /data-field="booked"/);
   assert.match(page, /Booked/);
   assert.match(page, /id="hotelDirectory"/);

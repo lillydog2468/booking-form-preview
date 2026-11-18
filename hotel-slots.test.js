@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, 'booking-form.html'), 'utf8');
+const html = require('./test-page').pageSource(path.join(__dirname, 'booking-form.html'), 'utf8');
 
 function extractFunction(name) {
   const start = html.indexOf('function ' + name + '(');
@@ -40,10 +40,9 @@ test('tour fare sits as price per person, then headcount, then beading tour pric
   assert.match(fareCss, /min-height:\s*28px/);
   const name = fare.indexOf('id="t${t}_group_name"');
   assert.ok(name > 0 && name < person, 'group name sits on the fare row before the price');
-  const layout = between('function buildLayoutFormHTML(', 'function clampYear(');
-  const standard = between('function buildFormHTML(', 'function buildLayoutFormHTML(');
-  assert.ok(layout.indexOf('${tourFareHTML(t)}') < layout.indexOf('id="t${t}_org_first"'));
-  assert.ok(standard.indexOf('${tourFareHTML(t)}') < standard.indexOf('id="t${t}_org_first"'));
+  const form = between('function buildFormHTML(', 'function buildLayoutFormHTML(');
+  assert.ok(form.indexOf('${tourFareHTML(t)}') < form.indexOf('id="t${t}_org_first"'));
+  assert.match(between('function buildLayoutFormHTML(', 'function clampYear('), /return buildFormHTML\(tabId\)/);
   const hotel = between('function hotelEditorHTML(', 'function yearToursCalendarHTML(');
   assert.equal(hotel.includes('price_per_person'), false);
   assert.equal(hotel.includes('beading_tour_price'), false);

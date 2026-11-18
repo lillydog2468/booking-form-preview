@@ -95,17 +95,18 @@ test('every page that reads the shared tables signs in before it loads', () => {
     'admin.html',
     'places-stats.html',
     'tax-summary.html',
+    'interest-2027.html',
   ];
   for (const name of pages) {
-    const html = fs.readFileSync(path.join(root, name), 'utf8');
+    const html = require('./test-page').pageSource(path.join(root, name));
     assert.match(html, /src="auth-gate\.js"/, name);
     assert.match(html, /AuthGate\.createClient\(/, name);
     assert.match(html, /AuthGate\.require\(/, name);
   }
-  const booking = fs.readFileSync(path.join(root, 'booking-form.html'), 'utf8');
+  const booking = require('./test-page').pageSource(path.join(root, 'booking-form.html'), 'utf8');
   assert.doesNotMatch(booking, /function checkExistingSession/);
   assert.match(booking, /if \(!cloudReady\)/);
-  const planner = fs.readFileSync(path.join(root, 'tour-planner.html'), 'utf8');
+  const planner = require('./test-page').pageSource(path.join(root, 'tour-planner.html'), 'utf8');
   assert.match(planner, /if \(!session\) AuthGate\.useLocalData\(sb\)/);
   assert.equal(planner.includes('\n  init();\n'), false);
 });

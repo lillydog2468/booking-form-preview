@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, 'booking-form.html'), 'utf8');
+const html = require('./test-page').pageSource(path.join(__dirname, 'booking-form.html'), 'utf8');
 
 function extractFunction(name) {
   const start = html.indexOf('function ' + name + '(');
@@ -195,4 +195,108 @@ test('an empty source price is not copied, so the destination price stays as it 
   assert.equal(next.dayTrip, '77.40');
   assert.equal(next.beading['4'], '103');
   assert.equal(next.beading['9'], '50.50');
+});
+
+test('Park Hotel price defaults to £41 and is stored on the price book', () => {
+  const ctx = loadPriceRise();
+  const shown = () => vm.runInContext('shownParkHotelPrice(readPriceBook())', ctx);
+  assert.equal(vm.runInContext('localStorage.getItem(PRICE_BOOK_KEY)', ctx), null);
+  assert.equal(shown(), '41');
+
+  ctx.seed({ parkHotelPrice: '55' });
+  assert.equal(vm.runInContext('readPriceBook().parkHotelPrice', ctx), '55');
+  assert.deepEqual(Object.keys(vm.runInContext('readPriceBook().years', ctx)), []);
+  assert.equal(shown(), '55');
+
+  ctx.seed({ years: { '2027': { dayTrip: '10', beading: { '4': '80' } } } });
+  assert.equal(vm.runInContext('readPriceBook().parkHotelPrice', ctx), '');
+  assert.equal(vm.runInContext('readPriceBook().years["2027"].dayTrip', ctx), '10');
+  assert.equal(shown(), '41');
+
+  vm.runInContext('saveParkHotelPrice({ value: "£55" })', ctx);
+  assert.equal(ctx.readBook().parkHotelPrice, '55');
+  assert.equal(ctx.readBook().years['2027'].dayTrip, '10');
+  assert.equal(ctx.readBook().years['2027'].beading['4'], '80');
+  assert.equal(shown(), '55');
+
+  vm.runInContext(`savePriceBookField({
+    value: "90",
+    getAttribute(name) {
+      if (name === "data-year") return "2027";
+      if (name === "data-price-action") return "day-trip";
+      return "";
+    }
+  })`, ctx);
+  assert.equal(ctx.readBook().parkHotelPrice, '55');
+  assert.equal(ctx.readBook().years['2027'].dayTrip, '90');
+  assert.equal(ctx.readBook().years['2027'].beading['4'], '80');
+
+  vm.runInContext('saveParkHotelPrice({ value: "abc" })', ctx);
+  assert.equal(ctx.readBook().parkHotelPrice, '55');
+
+  vm.runInContext('saveParkHotelPrice({ value: "" })', ctx);
+  assert.equal(Object.prototype.hasOwnProperty.call(ctx.readBook(), 'parkHotelPrice'), false);
+  assert.equal(shown(), '41');
+  assert.equal(ctx.readBook().years['2027'].dayTrip, '90');
+});
+
+test('leaving the Park Hotel price blank shows the default again', () => {
+  const ctx = loadPriceRise();
+  ctx.seed({ years: { '2026': { dayTrip: '40', beading: {} } }, parkHotelPrice: '55' });
+  ctx.input = {
+    value: '£55',
+    closest(sel) { return String(sel).includes('park-hotel') ? this : null; },
+  };
+  vm.runInContext('onParkHotelPriceBlur({ target: input })', ctx);
+  assert.equal(ctx.input.value, '55');
+
+  ctx.input.value = 'nope';
+  vm.runInContext('onParkHotelPriceBlur({ target: input })', ctx);
+  assert.equal(ctx.input.value, '55');
+  assert.equal(ctx.readBook().parkHotelPrice, '55');
+
+  vm.runInContext('saveParkHotelPrice({ value: "" })', ctx);
+  ctx.input.value = '';
+  vm.runInContext('onParkHotelPriceBlur({ target: input })', ctx);
+  assert.equal(ctx.input.value, '41');
+  assert.equal(Object.prototype.hasOwnProperty.call(ctx.readBook(), 'parkHotelPrice'), false);
+  assert.equal(ctx.readBook().years['2026'].dayTrip, '40');
+});
+
+test('a percentage rise does not change the Park Hotel price', () => {
+  const ctx = loadPriceRise();
+  ctx.seed({
+    years: {
+      '2026': { dayTrip: '100', beading: { '4': '200' } },
+      '2027': { dayTrip: '', beading: {} },
+    },
+    parkHotelPrice: '55',
+  });
+  ctx.inputs.priceRiseFrom.value = '2026';
+  ctx.inputs.priceRiseTo.value = '2027';
+  ctx.inputs.priceRisePct.value = '3';
+  vm.runInContext('applyPriceRise()', ctx);
+  const book = ctx.readBook();
+  assert.equal(book.parkHotelPrice, '55');
+  assert.equal(book.years['2026'].dayTrip, '100');
+  assert.equal(book.years['2027'].dayTrip, '103');
+  assert.equal(book.years['2027'].beading['4'], '206');
+});
+
+test('the tour price list shows Park Hotel price beside the other price inputs', () => {
+  const rowStart = html.indexOf('id="parkHotelPriceRow"');
+  const years = html.indexOf('id="priceBookYears"');
+  assert.ok(rowStart > 0 && rowStart < years);
+  const row = html.slice(rowStart, years);
+  assert.match(row, /Park Hotel price/);
+  assert.match(row, /£ per person per night/);
+  assert.doesNotMatch(row, /Kč/);
+  assert.match(row, /id="parkHotelPrice"/);
+  assert.match(row, /data-price-action="park-hotel"/);
+  assert.match(row, /value="41"/);
+  assert.match(extractFunction('shownParkHotelPrice'), /PARK_HOTEL_PRICE_DEFAULT/);
+  assert.equal(extractFunction('cleanParkHotelPrice').includes('cleanStoredPrice'), true);
+  assert.doesNotMatch(extractFunction('applySuggestedPrice'), /parkHotel/);
+  assert.doesNotMatch(extractFunction('getExpensesTotalCost'), /parkHotel/);
+  assert.doesNotMatch(extractFunction('risenPrice'), /parkHotel|Kč/);
 });

@@ -96,12 +96,126 @@
       visibility: hidden;
       pointer-events: none;
     }
+    /* Facts for the open booking, directly under the year-coloured Layout header.
+       Starts as one short blue line. The arrow opens hotel, place, year and rooms. */
     .booking-link {
-      display: flex; flex-wrap: wrap; gap: 8px 14px;
-      margin: 0 0 12px; font-size: 13px; color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      flex-wrap: nowrap;
+      gap: 6px;
+      margin: 0 0 6px;
+      padding: 2px 8px;
+      min-height: 26px;
+      border-radius: 10px;
+      border: 1px solid #bfdbfe;
+      background: #dbeafe;
+      color: #1e3a8a;
+      font-size: 12px;
+      line-height: 1.2;
+      overflow: hidden;
     }
-    .booking-link a { font-weight: 700; color: var(--accent); text-decoration: none; }
-    .booking-link strong { color: var(--text); }
+    .booking-link:empty { display: none; }
+    .booking-link:not(.is-collapsed) {
+      flex-wrap: wrap;
+      overflow: visible;
+    }
+    .booking-link-fold {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .booking-link-fold:hover { background: rgba(0,0,0,.06); }
+    a.booking-link-planner {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #1d4ed8;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    a.booking-link-planner:hover { background: #1e40af; }
+    .booking-link-k {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      color: #1e40af;
+      margin-right: 2px;
+    }
+    .booking-link-group,
+    .booking-link-org,
+    .booking-link-dates,
+    .booking-link-guests {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .booking-link-group,
+    .booking-link-org { flex: 0 1 180px; }
+    .booking-link-dates { flex: 0 0 auto; max-width: 240px; }
+    a.booking-link-guests {
+      flex: 1 1 120px;
+      color: #1e3a8a;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    a.booking-link-guests:hover { text-decoration: underline; }
+    .booking-link-extra {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-width: 0;
+    }
+    .booking-link.is-collapsed .booking-link-extra { display: none; }
+    a.booking-link-pill {
+      display: inline-flex;
+      align-items: center;
+      max-width: 240px;
+      min-height: 22px;
+      padding: 0 7px;
+      border-radius: 999px;
+      border: 1px solid #93c5fd;
+      background: #fff;
+      color: #1e3a8a;
+      font-size: 11px;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    a.booking-link-pill:hover { border-color: #1d4ed8; }
+    [data-theme="dark"] .booking-link {
+      background: rgba(59,130,246,.20);
+      border-color: rgba(59,130,246,.35);
+      color: #dbeafe;
+    }
+    [data-theme="dark"] .booking-link-k { color: #bfdbfe; }
+    [data-theme="dark"] a.booking-link-guests { color: #dbeafe; }
+    [data-theme="dark"] a.booking-link-planner { background: #2563eb; color: #fff; }
+    [data-theme="dark"] a.booking-link-pill {
+      background: rgba(15,23,42,.35);
+      border-color: rgba(147,197,253,.45);
+      color: #dbeafe;
+    }
     .pair-stats {
       border: 1px solid var(--border); border-radius: 12px;
       padding: 12px 14px; margin: 0 0 14px; background: var(--surface);

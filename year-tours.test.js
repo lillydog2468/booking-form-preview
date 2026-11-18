@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, 'booking-form.html'), 'utf8');
+const html = require('./test-page').pageSource(path.join(__dirname, 'booking-form.html'), 'utf8');
+const formatSrc = fs.readFileSync(path.join(__dirname, 'booking-format.js'), 'utf8');
 
 function extractFunction(name) {
   const start = html.indexOf('function ' + name + '(');
@@ -25,11 +26,13 @@ function extractFunction(name) {
 function loadPlan() {
   const ctx = {};
   vm.createContext(ctx);
+  vm.runInContext(formatSrc, ctx);
   vm.runInContext([
     extractFunction('parseISODateUTC'),
     extractFunction('toISODateUTC'),
     extractFunction('extractBookingRangeUTC'),
     extractFunction('bookingIsCancelled'),
+    extractFunction('bookingIsTourFull'),
     extractFunction('yearTourIsDayTrip'),
     extractFunction('buildYearTourPlan'),
   ].join('\n'), ctx);
@@ -78,15 +81,16 @@ test('arrival and flight dates start closed, and the fare row stays in order', (
   assert.ok(name > 0 && price > name && head > price && total > head);
   assert.equal(fare.includes('readonly'), false);
 
+  const layoutNav = html.indexOf('id="navLayout"');
   const table = html.indexOf('id="navTable"');
   const year = html.indexOf('id="navYearTours"');
   const analytics = html.indexOf('id="navAnalytics"');
-  assert.ok(table > 0 && year > table && analytics > year);
+  assert.ok(layoutNav > 0 && table > layoutNav && year > table && analytics > year);
+  assert.equal(html.includes('id="navForm"'), false);
   assert.match(html, /Year tours/);
   assert.match(html, /Show the year/);
   assert.match(html, /Close the year/);
   assert.match(extractFunction('showView'), /view === 'year'/);
-  assert.match(html, /id="navForm"/);
 
   const grid = extractFunction('yearTourMonthGridHTML');
   assert.match(grid, /class="yc-grid"/);

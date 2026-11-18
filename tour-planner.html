@@ -17,6 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="place-categories.js"></script>
   <script src="phone-week.js"></script>
+  <script src="week-overview.js"></script>
   <script src="global-search.js"></script>
   <script src="booking-config.js"></script>
   <script src="booking-format.js"></script>
@@ -66,6 +67,7 @@
     <select id="groupSelect" class="group-select" aria-label="Tour group"></select>
     <div class="view-nav" role="group" aria-label="How this plan is shown">
       <button type="button" id="btnLookView">Week</button>
+      <button type="button" id="btnOverview" title="Whole week on one timescale">Overview</button>
       <button type="button" id="btnPhoneView">Phone</button>
       <button type="button" id="btnSimplePlan" title="Big, read-only list of each day's places and times">Simple plan</button>
       <button type="button" id="btnDetailedView">Detailed</button>
@@ -74,7 +76,7 @@
     <details class="page-help">
       <summary>Help</summary>
       <div class="page-help-body">
-        <p>The top bar is the tour and the sections. Week, Phone, Simple plan and Detailed change how the open section looks. Drag a stop by the handle to reorder it in the day, or onto another day. Navigate opens directions and leaves the stop editable.</p>
+        <p>The top bar is the tour and the sections. Week, Overview, Phone, Simple plan and Detailed change how the open section looks. Overview lays the whole week on one clock: drag a stop to another day or time, or click it to edit. On the other views, drag a stop by the handle to reorder it in the day, or onto another day. Navigate opens directions and leaves the stop editable.</p>
       </div>
     </details>
   </div>

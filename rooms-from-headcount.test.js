@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, 'booking-form.html'), 'utf8');
+const html = require('./test-page').pageSource(path.join(__dirname, 'booking-form.html'), 'utf8');
 
 function extractFunction(name) {
   const start = html.indexOf('function ' + name + '(');
@@ -43,6 +43,7 @@ function load() {
     extractFunction('markRoomsTyped'),
     extractFunction('suggestRoomsFromHeadcount'),
     extractFunction('savedKeithRoomOff'),
+    extractFunction('keithColumnIsOff'),
     extractFunction('noteLoadedRooms'),
   ].join('\n'), context, { filename: 'rooms-from-headcount.js' });
   context.fresh = () => {
@@ -149,6 +150,30 @@ test('a saved room plan or Keith’s room turned off is not replaced on load', (
   assert.equal(ctx.nodes.get('t1_rooms_singles').dataset.roomsSource, 'typed');
 });
 
+test('blank rooms with an old keithRoom false still fill from the headcount', () => {
+  const ctx = load();
+  ctx.fresh();
+  ctx.nodes.get('t1_no_people').value = '2';
+  ctx.nodes.get('t1_rooms_keith').checked = false;
+  vm.runInContext('noteLoadedRooms("1", { rooms: { singles: "", twins: "", doubles: "", keithRoom: false } }, null)', ctx);
+  assert.equal(ctx.nodes.get('t1_rooms_singles').value, '2');
+  assert.equal(ctx.nodes.get('t1_rooms_twins').value, '');
+  assert.equal(ctx.nodes.get('t1_rooms_doubles').value, '');
+  assert.equal(ctx.nodes.get('t1_rooms_keith').checked, true);
+  assert.equal(ctx.nodes.get('t1_rooms_singles').dataset.roomsSource, 'headcount');
+});
+
+test('the single, twin and double boxes are in the hotel section', () => {
+  const choices = html.slice(html.indexOf('function hotelRoomChoicesHTML('), html.indexOf('function hotelEditorHTML('));
+  const editor = html.slice(html.indexOf('function hotelEditorHTML('), html.indexOf('function yearToursCalendarHTML('));
+  const folds = html.slice(html.indexOf('function bookingCaptureFolds('), html.indexOf('function hotelRoomChoicesHTML('));
+  assert.match(editor, /hotelRoomChoicesHTML/);
+  assert.match(choices, /id="t\$\{t\}_rooms_singles"/);
+  assert.match(choices, /id="t\$\{t\}_rooms_twins"/);
+  assert.match(choices, /id="t\$\{t\}_rooms_doubles"/);
+  assert.doesNotMatch(folds, /rooms_singles/);
+});
+
 test('a saved headcount with empty rooms fills singles and Keith’s room', () => {
   const ctx = load();
   ctx.fresh();
@@ -157,4 +182,30 @@ test('a saved headcount with empty rooms fills singles and Keith’s room', () =
   assert.equal(ctx.nodes.get('t1_rooms_singles').value, '5');
   assert.equal(ctx.nodes.get('t1_rooms_keith').checked, true);
   assert.equal(ctx.nodes.get('t1_rooms_singles').dataset.roomsSource, 'headcount');
+});
+
+test('a double pair fills one double and leaves the other guest as a single', () => {
+  const ctx = load();
+  ctx.fresh();
+  ctx.guestSharePlan = () => ({ singles: 1, doubles: 1, twins: 0, pairs: 1 });
+  ctx.nodes.get('t1_no_people').value = '3';
+  vm.runInContext('suggestRoomsFromHeadcount("1")', ctx);
+  assert.equal(ctx.nodes.get('t1_rooms_singles').value, '1');
+  assert.equal(ctx.nodes.get('t1_rooms_doubles').value, '1');
+  assert.equal(ctx.nodes.get('t1_rooms_twins').value, '');
+  assert.equal(ctx.nodes.get('t1_rooms_keith').checked, true);
+  assert.equal(ctx.nodes.get('t1_rooms_singles').dataset.roomsSource, 'headcount');
+});
+
+test('rooms typed by hand stay put when a pair is added', () => {
+  const ctx = load();
+  ctx.fresh();
+  ctx.nodes.get('t1_rooms_singles').value = '4';
+  ctx.nodes.get('t1_rooms_singles').dataset.roomsSource = 'typed';
+  ctx.guestSharePlan = () => ({ singles: 0, doubles: 0, twins: 1, pairs: 1 });
+  vm.runInContext('suggestRoomsFromHeadcount("1")', ctx);
+  assert.equal(ctx.nodes.get('t1_rooms_singles').value, '4');
+  assert.equal(ctx.nodes.get('t1_rooms_twins').value, '');
+  assert.equal(ctx.nodes.get('t1_rooms_doubles').value, '');
+  assert.equal(ctx.nodes.get('t1_rooms_singles').dataset.roomsSource, 'typed');
 });

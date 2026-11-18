@@ -1621,7 +1621,7 @@
         </button>
       </div>
     </div>
-    <div class="booking-link" id="t${t}_bookingLink" aria-label="This booking"></div>
+    <div class="booking-link${bookingLinkCollapsed() ? ' is-collapsed' : ''}" id="t${t}_bookingLink" aria-label="This booking"></div>
     <div class="pair-stats" id="t${t}_pairStats" hidden></div>
     <form id="t${t}_form" class="layout-form" onsubmit="return false;">
       <input type="hidden" id="t${t}_id">
@@ -8423,6 +8423,30 @@
     return 'tour-planner.html' + (q ? '?' + q : '');
   }
 
+  function bookingLinkCollapsed() {
+    try { return localStorage.getItem('booking_link_open') !== '1'; }
+    catch (err) { return true; }
+  }
+
+  function applyBookingLinkFold() {
+    const collapsed = bookingLinkCollapsed();
+    document.querySelectorAll('.booking-link').forEach(box => {
+      box.classList.toggle('is-collapsed', collapsed);
+      const btn = box.querySelector('.booking-link-fold');
+      if (!btn) return;
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      btn.setAttribute('aria-label', collapsed ? 'Show hotel, place, year and rooms' : 'Hide hotel, place, year and rooms');
+      const caret = btn.querySelector('.booking-link-caret');
+      if (caret) caret.textContent = collapsed ? '▸' : '▾';
+    });
+  }
+
+  function toggleBookingLink() {
+    try { localStorage.setItem('booking_link_open', bookingLinkCollapsed() ? '1' : '0'); }
+    catch (err) { /* keep the on-screen fold */ }
+    applyBookingLinkFold();
+  }
+
   function refreshBookingLink(tabId) {
     const box = document.getElementById('t' + tabId + '_bookingLink');
     if (!box || !window.BookingExtras || !BookingExtras.bookingLink) return;
@@ -8442,21 +8466,34 @@
       keith_own_room: extras.rooms ? extras.rooms.keithRoom : null,
     };
     const link = BookingExtras.bookingLink(booking, null);
-    const bit = (label, value, href) => {
-      const shown = value || '—';
-      const body = href
-        ? `<a href="${escapeAttr(href)}">${escapeHtml(shown)}</a>`
-        : escapeHtml(shown);
-      return `<span><strong>${escapeHtml(label)}</strong> ${body}</span>`;
-    };
+    const collapsed = bookingLinkCollapsed();
+    const organiser = [fieldVal(tabId, 'org_first'), fieldVal(tabId, 'org_last')].filter(Boolean).join(' ');
+    const group = fieldVal(tabId, 'group_name');
+    const dates = [fieldVal(tabId, 'tour_arrival_date'), fieldVal(tabId, 'departure_date')].filter(Boolean).join(' – ');
+    const people = link.people.join(', ');
     const roomsText = link.dayTrip ? 'No hotel room to book' : (link.organiserBooksHotels ? 'Organiser arranges hotels' : (link.roomsLabel || '—'));
-    box.innerHTML = [
-      bit('Who', link.people.join(', '), plannerLinkHref(tabId, 'people')),
-      bit('Hotel', link.hotel, plannerLinkHref(tabId, 'hotels', link.year)),
-      bit('Place', link.places.join(', '), plannerLinkHref(tabId, 'places')),
-      bit('Year', link.year, plannerLinkHref(tabId, 'hotels', link.year)),
-      bit('Rooms', roomsText, 'hotels.html' + (link.year ? '?year=' + encodeURIComponent(link.year) : '')),
-    ].join('');
+    const fact = (cls, label, value) => {
+      const shown = value || '—';
+      return `<span class="${cls}" title="${escapeAttr(label + ': ' + shown)}"><span class="booking-link-k">${escapeHtml(label)}</span> ${escapeHtml(shown)}</span>`;
+    };
+    const pill = (label, value, href) => {
+      const shown = value || '—';
+      return `<a class="booking-link-pill" href="${escapeAttr(href)}" title="${escapeAttr(label + ': ' + shown)}"><span class="booking-link-k">${escapeHtml(label)}</span> ${escapeHtml(shown)}</a>`;
+    };
+    box.classList.toggle('is-collapsed', collapsed);
+    box.innerHTML =
+      `<button type="button" class="booking-link-fold" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${collapsed ? 'Show hotel, place, year and rooms' : 'Hide hotel, place, year and rooms'}" onclick="toggleBookingLink()"><span class="booking-link-caret" aria-hidden="true">${collapsed ? '▸' : '▾'}</span></button>` +
+      `<a class="booking-link-planner" href="${escapeAttr(plannerLinkHref(tabId))}" title="Open a tour planner for this booking">Day planner</a>` +
+      fact('booking-link-group', 'Group', group) +
+      fact('booking-link-org', 'Organiser', organiser) +
+      fact('booking-link-dates', 'Dates', dates) +
+      `<a class="booking-link-guests" href="${escapeAttr(plannerLinkHref(tabId, 'people'))}" title="${escapeAttr(people || 'Guest names')}"><span class="booking-link-k">Guests</span> ${escapeHtml(people || '—')}</a>` +
+      `<span class="booking-link-extra">` +
+        pill('Hotel', link.hotel, plannerLinkHref(tabId, 'hotels', link.year)) +
+        pill('Place', link.places.join(', '), plannerLinkHref(tabId, 'places')) +
+        pill('Year', link.year, plannerLinkHref(tabId, 'hotels', link.year)) +
+        pill('Rooms', roomsText, 'hotels.html' + (link.year ? '?year=' + encodeURIComponent(link.year) : '')) +
+      `</span>`;
     renderPairStats(tabId);
   }
 
@@ -8539,6 +8576,7 @@
     applySuggestedPrice(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
     applyBookingCancelledChrome(tabId);
+    refreshBookingLink(tabId);
     markTabDirty(tabId, false);
     highlightSidebarRecords();
   }

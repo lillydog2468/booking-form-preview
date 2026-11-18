@@ -125,3 +125,128 @@ test('summaries use the hotel, airport, or note and the ticked people', () => {
     guestIds: ['nope'],
   }, guests), 'Drop-off · Hotel not set');
 });
+
+const obecni = 'U Obecního dvora 7, Prague 1 – Staré Město, 110 00';
+const booking310 = [
+  { id: 'jennifer', name: 'Jennifer', prague_stays: [{ hotel: obecni }] },
+  { id: 'gail', name: 'Gail', prague_stays: [{ hotel: obecni }] },
+  { id: 'kay', name: 'Kay', prague_stays: [], arrival_flight: 'KL1353' },
+  { id: 'ned', name: 'Ned', prague_stays: [] },
+];
+const tourDates = { arrival: '2027-05-10', departure: '2027-05-14' };
+
+test('booking 310 picks Jennifer and Gail up from one hotel and leaves Kay out', () => {
+  const pickup = H.hotelHandoverStops(booking310, Object.assign({ kind: 'pickup' }, tourDates));
+  const dropoff = H.hotelHandoverStops(booking310, Object.assign({ kind: 'dropoff' }, tourDates));
+  assert.equal(pickup.length, 1);
+  assert.equal(dropoff.length, 1);
+  assert.equal(pickup[0].hotelName, obecni);
+  assert.equal(pickup[0].address, obecni);
+  assert.deepEqual(pickup[0].guestIds, ['jennifer', 'gail']);
+  assert.deepEqual(dropoff[0].guestNames, ['Jennifer', 'Gail']);
+  assert.equal(pickup[0].guestIds.includes('kay'), false);
+  assert.equal(H.googleMapsSearchUrl(obecni), 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(obecni));
+  assert.equal(H.appleMapsSearchUrl(obecni).indexOf('https://maps.apple.com/?q='), 0);
+});
+
+test('pick-up uses the night before arrival and drop-off uses the departure night', () => {
+  const guest = [{
+    id: 'ada',
+    name: 'Ada',
+    prague_stays: [
+      { hotel: 'Early hotel', check_in: '2027-05-01', check_out: '2027-05-08' },
+      { hotel: 'Arrival hotel', check_in: '2027-05-09', check_out: '2027-05-12' },
+      { hotel: 'Last hotel', check_in: '2027-05-14', check_out: '2027-05-16' },
+    ],
+  }];
+  const pickup = H.hotelHandoverStops(guest, Object.assign({ kind: 'pickup' }, tourDates));
+  const dropoff = H.hotelHandoverStops(guest, Object.assign({ kind: 'dropoff' }, tourDates));
+  assert.equal(H.shiftIso('2027-05-10', -1), '2027-05-09');
+  assert.equal(pickup[0].hotelName, 'Arrival hotel');
+  assert.equal(dropoff[0].hotelName, 'Last hotel');
+});
+
+test('one shared Prague hotel is a single stop for the whole group', () => {
+  const shared = [{ hotel: 'Hotel Axa', check_in: '2027-05-09', check_out: '2027-05-15' }];
+  const people = [
+    { id: 'a', name: 'Ann', prague_stays: [] },
+    { id: 'b', name: 'Bea', prague_stays: [] },
+    { id: 'c', name: 'Cara', prague_stays: shared },
+  ];
+  const stops = H.hotelHandoverStops(people, Object.assign({ kind: 'pickup', samePrague: true, sharedStays: shared }, tourDates));
+  assert.equal(stops.length, 1);
+  assert.deepEqual(stops[0].guestIds, ['a', 'b', 'c']);
+  assert.equal(stops[0].hotelName, 'Hotel Axa');
+});
+
+test('adding hotel stops leaves an edited stop and an airport stop alone', () => {
+  const proposals = H.hotelHandoverStops(booking310, Object.assign({ kind: 'pickup' }, tourDates));
+  const airport = { type: 'handover', handoverKind: 'pickup', placeKind: 'airport', hotelName: '', guestIds: ['kay'], time: '10:30', title: 'Pick-up · Airport' };
+  const edited = { type: 'handover', handoverKind: 'pickup', placeKind: 'hotel', hotelName: obecni, guestIds: ['jennifer'], time: '07:40', notes: 'Keith edited this' };
+  const added = H.hotelStopsToAdd([airport], proposals);
+  assert.equal(added.length, 1);
+  assert.equal(added[0].hotelName, obecni);
+  const again = H.hotelStopsToAdd([airport, edited], proposals);
+  assert.equal(again.length, 0);
+  assert.equal(edited.time, '07:40');
+  assert.equal(edited.notes, 'Keith edited this');
+  assert.deepEqual(edited.guestIds, ['jennifer']);
+  assert.equal(airport.time, '10:30');
+});
+
+test('phone navigation uses Apple directions and a moved stop keeps its time and people', () => {
+  const urls = H.appleDirectionsUrl(obecni);
+  assert.equal(urls.scheme, 'maps://?daddr=' + encodeURIComponent(obecni) + '&dirflg=d');
+  assert.equal(urls.https, 'https://maps.apple.com/?daddr=' + encodeURIComponent(obecni) + '&dirflg=d');
+  const moved = H.relocateStop([
+    { date: '2027-05-10', blocks: [{ id: 'hotel', time: '08:15', guestIds: ['jennifer', 'gail'], title: 'Pick-up' }] },
+    { date: '2027-05-11', blocks: [{ id: 'shop', time: '11:00', guestIds: [] }] },
+  ], 'hotel', 1, 'shop');
+  assert.equal(moved[0].blocks.length, 0);
+  assert.equal(moved[1].blocks[0].id, 'hotel');
+  assert.equal(moved[1].blocks[0].time, '08:15');
+  assert.deepEqual(moved[1].blocks[0].guestIds, ['jennifer', 'gail']);
+  assert.equal(moved[1].blocks[1].id, 'shop');
+});
+
+test('navigate uses exact coordinates from a pin, a typed pair, or the pasted link itself', () => {
+  const point = 'maps://?daddr=50.70123,15.20123&dirflg=d';
+  const https = 'https://maps.apple.com/?daddr=50.70123,15.20123&dirflg=d';
+  const applePin = 'https://maps.apple.com/?ll=50.70123,15.20123&q=Glass%20factory';
+  const fromLl = H.appleDirectionsUrl(applePin);
+  assert.equal(fromLl.scheme, point);
+  assert.equal(fromLl.https, https);
+  assert.equal(H.appleDirectionsUrl('https://maps.apple.com/place?coordinate=50.70123,15.20123').https, https);
+  assert.equal(H.appleDirectionsUrl('https://maps.apple.com/?sll=50.70123,15.20123').scheme, point);
+  assert.equal(H.appleDirectionsUrl('https://maps.apple.com/?q=50.70123,15.20123').https, https);
+  assert.equal(H.appleDirectionsUrl('https://maps.apple.com/?center=50.70123%2C15.20123').https, https);
+
+  const shortLink = 'https://maps.apple/p/abcd1234';
+  const opened = H.resolveMapTarget(shortLink);
+  assert.equal(opened.mode, 'open');
+  assert.equal(opened.https, shortLink);
+  assert.equal(opened.apple, shortLink);
+  assert.equal(opened.google, shortLink);
+  assert.equal(opened.label, 'Pinned location');
+
+  const googlePin = 'https://www.google.com/maps/place/Factory/@50.70123,15.20123,17z';
+  assert.equal(H.appleDirectionsUrl(googlePin).https, https);
+  assert.equal(H.googleMapsSearchUrl(googlePin), 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent('50.70123,15.20123'));
+  const googleQuery = 'https://www.google.com/maps?q=50.70123,15.20123';
+  assert.equal(H.appleDirectionsUrl(googleQuery).scheme, point);
+  const googleShare = 'https://maps.app.goo.gl/abcDEF';
+  assert.equal(H.resolveMapTarget(googleShare).https, googleShare);
+  assert.equal(H.appleMapsSearchUrl(googleShare), googleShare);
+
+  assert.equal(H.appleDirectionsUrl('50.7 , 15.2').https, 'https://maps.apple.com/?daddr=50.7,15.2&dirflg=d');
+  assert.equal(H.appleDirectionsUrl('50.70123,15.20123').scheme, point);
+  assert.equal(H.appleDirectionsUrl('50.7 N, 15.2 E').https, 'https://maps.apple.com/?daddr=50.7,15.2&dirflg=d');
+  assert.equal(H.appleDirectionsUrl('50.7 S, 15.2 W').https, 'https://maps.apple.com/?daddr=-50.7,-15.2&dirflg=d');
+
+  assert.equal(H.appleDirectionsUrl(obecni).https, 'https://maps.apple.com/?daddr=' + encodeURIComponent(obecni) + '&dirflg=d');
+  assert.equal(H.googleMapsSearchUrl(obecni), 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(obecni));
+  assert.equal(H.mapFieldLabel(applePin), 'Pinned location');
+  assert.equal(H.mapFieldLabel(shortLink), 'Pinned location');
+  assert.equal(H.mapFieldLabel(obecni), obecni);
+  assert.equal(H.mapFieldLabel('50.7 , 15.2'), '50.7 , 15.2');
+});

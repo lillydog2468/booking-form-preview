@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const root = __dirname;
 const extrasSrc = fs.readFileSync(path.join(root, 'booking-extras.js'), 'utf8');
-const formSrc = fs.readFileSync(path.join(root, 'booking-form.html'), 'utf8');
+const formSrc = require('./test-page').pageSource(path.join(root, 'booking-form.html'), 'utf8');
 
 function loadExtras() {
   const context = { window: {}, console };
@@ -58,7 +58,7 @@ test('the booking form shows the warning on the headcount and does not rewrite i
   assert.ok(standard > 0 && layout > standard && folds > 0 && folds < standard);
 
   const standardHtml = formSrc.slice(standard, layout);
-  const layoutHtml = formSrc.slice(layout, formSrc.indexOf('function ', layout + 10));
+  const layoutHtml = standardHtml;
   const fareHtml = formSrc.slice(formSrc.indexOf('function tourFareHTML'), formSrc.indexOf('function fuelCostFieldHTML'));
   const foldsHtml = formSrc.slice(folds, formSrc.indexOf('function tourKindControlsHTML'));
 
