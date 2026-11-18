@@ -217,12 +217,12 @@
     var last = days[days.length - 1] || { blocks: [] };
     var airport = '';
     var hotels = [];
-    function addHotel(label, point) {
+    function addHotel(label, point, time) {
       var text = String(point || label || '').trim();
       if (!text) return;
-      if (hotels.some(function (row) { return row.point === text || row.label === text; })) return;
+      if (hotels.some(function (row) { return row.point === text; })) return;
       hotels.push({
-        time: '',
+        time: String(time || '').trim(),
         label: String(label || text).trim(),
         point: text,
       });
@@ -238,11 +238,13 @@
       var listed = Array.isArray(stop.praguePickups) ? stop.praguePickups : [];
       if (listed.length) {
         listed.forEach(function (row) {
-          addHotel(row && row.hotel, (row && (row.address || row.hotel)) || '');
+          var who = String((row && row.guests) || '').trim();
+          var hotel = String((row && row.hotel) || '').trim();
+          addHotel([hotel, who].filter(Boolean).join(' · '), (row && (row.address || row.hotel)) || '', (row && row.time) || stop.time);
         });
         return;
       }
-      addHotel(stop.hotelName, stop.address || stop.hotelName);
+      addHotel(stop.hotelName, stop.address || stop.hotelName, stop.time);
     });
     if (!hotels.length && !airport) {
       days.forEach(function (day) {

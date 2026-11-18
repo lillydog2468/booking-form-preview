@@ -258,18 +258,12 @@
     return groups;
   }
 
-  function guestLeavesThatDay(person, dayIso) {
-    var date = text(person && person.departure_date).slice(0, 10);
-    return !!date && date === dayIso;
-  }
-
   function addEnds(plan, people) {
     var days = plan && plan.days || [];
     if (!days.length) return { pickups: 0, dropoffs: 0 };
     var first = days[0];
     var last = days[days.length - 1];
     var arrival = text(plan.arrivalDate || (first && first.date)).slice(0, 10);
-    var departure = text(plan.departureDate || (last && last.date)).slice(0, 10);
     if (!Array.isArray(first.blocks)) first.blocks = [];
     if (!Array.isArray(last.blocks)) last.blocks = [];
     first.blocks = first.blocks.filter(function (stop) {
@@ -282,25 +276,7 @@
       return stop.autoStop !== 'prague-dropoff' && stop.autoStop !== 'airport-dropoff';
     });
     var pickups = groupsFor(people, 'pickup', arrival);
-    var dropoffs = [];
-    var airportGuests = [];
-    (people || []).forEach(function (person) {
-      if (guestLeavesThatDay(person, departure)) {
-        var who = personName(person);
-        if (who) airportGuests.push(who);
-        return;
-      }
-      var hotel = hotelAfter(person, departure);
-      if (!hotel) return;
-      var key = keyOf(hotel);
-      var group = dropoffs.find(function (row) { return row.key === key; });
-      if (!group) {
-        group = { key: key, hotel: hotel, guests: [] };
-        dropoffs.push(group);
-      }
-      var name = personName(person);
-      if (name && group.guests.indexOf(name) < 0) group.guests.push(name);
-    });
+    var dropoffs = mirrorDropoffs(pickups);
     if (pickups.length) {
       var rows = pickups.map(function (group, index) {
         return {
@@ -327,7 +303,8 @@
       });
       sortDay(first);
     }
-    dropoffs.forEach(function (group) {
+    dropoffs.forEach(function (group, index) {
+      var when = dropoffs.length > 1 ? addMinutes('18:00', index * 5) : '18:00';
       var who = group.guests.join(' and ');
       last.blocks.push({
         id: nextId(),
@@ -335,27 +312,29 @@
         handoverKind: 'dropoff',
         placeKind: 'hotel',
         autoStop: 'prague-dropoff',
-        time: '18:00',
+        time: when,
         hotelName: group.hotel,
         address: group.hotel,
-        title: 'Drop-off · 18:00 ' + group.hotel + (who ? (' – ' + who) : ''),
+        title: 'Drop-off · ' + when + ' ' + group.hotel + (who ? (' – ' + who) : ''),
+        praguePickups: [{
+          hotel: group.hotel,
+          time: when,
+          address: group.hotel,
+          guests: who,
+        }],
       });
     });
-    if (airportGuests.length) {
-      last.blocks.push({
-        id: nextId(),
-        type: 'handover',
-        handoverKind: 'dropoff',
-        placeKind: 'airport',
-        autoStop: 'airport-dropoff',
-        time: '18:00',
-        hotelName: '',
-        address: AIRPORT,
-        title: 'Drop-off · ' + AIRPORT + (airportGuests.length ? (' – ' + airportGuests.join(' and ')) : ''),
-      });
-    }
-    if (dropoffs.length || airportGuests.length) sortDay(last);
-    return { pickups: pickups.length, dropoffs: dropoffs.length + (airportGuests.length ? 1 : 0) };
+    if (dropoffs.length) sortDay(last);
+    return { pickups: pickups.length, dropoffs: dropoffs.length };
+  }
+
+  function mirrorDropoffs(pickups) {
+    var groups = (pickups || []).slice();
+    if (groups.length < 2 || !root.PragueExit) return groups;
+    var ordered = root.PragueExit.order(groups.map(function (group) { return group.hotel; }), { towardExit: false });
+    var byHotel = {};
+    groups.forEach(function (group) { byHotel[group.hotel] = group; });
+    return (ordered.points || []).map(function (hotel) { return byHotel[hotel]; }).filter(Boolean);
   }
 
   root.RoughWeek = {

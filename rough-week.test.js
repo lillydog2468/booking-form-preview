@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+require('./prague-exit.js');
 require('./rough-week.js');
 require('./planner2-model.js');
 
@@ -36,18 +37,32 @@ test('suggest fills quiet days and Prague ends keep other stops', () => {
   assert.ok(skipped.skipped >= 1);
   assert.equal(plan.days[1].blocks.length, before);
   const people = [
-    { id: 'g1', name: 'Jennifer Lindsay', prague_stays: [{ hotel: 'U Obecního dvora 7', check_in: '', check_out: '' }] },
-    { id: 'g2', name: 'Kay Enk', departure_date: plan.departureDate, prague_stays: [{ hotel: 'Hotel Atlantic', check_in: '2027-05-09', check_out: '2027-05-10' }] },
+    { id: 'g1', name: 'Jennifer Lindsay', prague_stays: [{ hotel: 'U Obecního dvora 7, Prague 1', check_in: '', check_out: '' }] },
+    { id: 'g2', name: 'Gail DeLuca', prague_stays: [{ hotel: 'U Obecního dvora 7, Prague 1', check_in: '', check_out: '' }] },
+    { id: 'g3', name: 'Kay Enk', prague_stays: [{ hotel: 'Hotel Atlantic, Na Poříčí 9, Prague 1', check_in: '2027-05-09', check_out: '2027-05-10' }] },
+    { id: 'g4', name: 'Maggie Cox', prague_stays: [{ hotel: 'Hotel Atlantic, Na Poříčí 9, Prague 1', check_in: '2027-05-09', check_out: '2027-05-10' }] },
   ];
   assert.equal(R.hasEnds(plan), true);
   const added = R.addEnds(plan, people);
-  assert.ok(added.pickups >= 1);
-  assert.ok(added.dropoffs >= 1);
+  assert.equal(added.pickups, 2);
+  assert.equal(added.dropoffs, 2);
   const pickup = plan.days[0].blocks.find(function (stop) { return stop.autoStop === 'prague-pickup'; });
   assert.equal(pickup.time, '08:00');
   assert.equal(pickup.praguePickups[0].time, '08:00');
+  assert.match(pickup.praguePickups[0].hotel, /Obecního/);
+  assert.equal(pickup.praguePickups[1].time, '08:05');
+  assert.match(pickup.praguePickups[1].hotel, /Atlantic/);
   const last = plan.days[plan.days.length - 1];
-  const drop = last.blocks.find(function (stop) { return stop.autoStop === 'prague-dropoff' || stop.autoStop === 'airport-dropoff'; });
-  assert.equal(drop.time, '18:00');
-  assert.ok(last.blocks.some(function (stop) { return stop.placeId === 'kf01' || stop.autoStop; }));
+  const drops = last.blocks.filter(function (stop) { return stop.autoStop === 'prague-dropoff'; });
+  assert.equal(drops.length, 2);
+  assert.equal(drops[0].time, '18:00');
+  assert.match(drops[0].hotelName, /Atlantic/);
+  assert.match(drops[0].title, /Kay Enk and Maggie Cox/);
+  assert.equal(drops[1].time, '18:05');
+  assert.match(drops[1].hotelName, /Obecního/);
+  assert.match(drops[1].title, /Jennifer Lindsay and Gail DeLuca/);
+  const links = globalThis.Planner2.dropoffRows(plan);
+  assert.equal(links.hotels.length, 2);
+  assert.match(links.hotels[0].label, /Kay Enk/);
+  assert.match(links.hotels[1].label, /Jennifer Lindsay/);
 });
