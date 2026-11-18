@@ -18,6 +18,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="booking-config.js"></script>
   <script src="auth-gate.js"></script>
+  <script src="admin-users.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -389,16 +390,6 @@
     <a href="tax-summary.html" class="btn btn-outline btn-sm">Tax summary</a>
     <a href="interest-2027.html" class="btn btn-outline btn-sm">2027 interest</a>
     <h1>Admin Panel</h1>
-    <div class="admin-nav">
-      <button class="admin-nav-btn active" onclick="showSection('users')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Users
-      </button>
-      <button class="admin-nav-btn" onclick="showSection('hotels')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9h1"/><path d="M9 13h1"/><path d="M9 17h1"/></svg>
-        Hotels
-      </button>
-    </div>
   </div>
   <div class="topbar-actions">
 	    <div class="user-menu" id="userMenu">
@@ -447,10 +438,6 @@
       <div class="stat-card">
         <div class="stat-label">Active</div>
         <div class="stat-value" id="statActive" style="color:var(--success);">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Hotels</div>
-        <div class="stat-value" id="statHotels" style="color:var(--warning);">0</div>
       </div>
     </div>
 
@@ -510,58 +497,6 @@
     </div>
   </div>
 
-  <!-- ══════ HOTELS SECTION ══════ -->
-  <div class="admin-section" id="sectionHotels">
-    <div class="page-header">
-      <div>
-        <h2>Hotel Management</h2>
-        <details class="page-help"><summary>Help</summary><div class="page-help-body"><p>Manage the list of hotels available in booking forms and expenses.</p></div></details>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h3>Add New Hotel</h3>
-      </div>
-      <div class="card-body">
-        <form class="add-form" id="addHotelForm" onsubmit="return false;">
-          <div class="field" style="flex:2;">
-            <label>Hotel Name</label>
-            <input type="text" id="newHotelName" placeholder="e.g. Hotel Praha" required>
-          </div>
-          <button class="btn btn-primary" onclick="addHotel()" style="align-self:flex-end;height:40px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Hotel
-          </button>
-        </form>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h3>Hotels</h3>
-        <button class="btn btn-outline btn-sm" onclick="renderHotels()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3.26-6.93"/><path d="M3 2v5h5"/></svg>
-          Refresh
-        </button>
-      </div>
-      <div class="card-body" style="padding:0;">
-        <div class="user-table-wrap"><table class="user-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Hotel Name</th>
-              <th>Created</th>
-              <th style="text-align:right;">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="hotelsTableBody">
-            <tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-secondary);">Loading hotels...</td></tr>
-          </tbody>
-        </table></div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Delete Confirmation Modal -->
@@ -571,7 +506,7 @@
     <p id="deleteModalMsg">Are you sure?</p>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="confirmDelete()">Remove</button>
+      <button class="btn btn-danger" id="confirmActionBtn" onclick="confirmAction()">Confirm</button>
     </div>
   </div>
 </div>
@@ -590,14 +525,8 @@
   // ═══════════════════════════════════════════════════════════════
 
   let users = [];
-  let nextUserId = 1;
-
-  // Hotels — persisted to localStorage so the booking form can access them
-  let hotels = [];
-  let nextHotelId = 2;
-
-  let deleteTarget = null;
-  let deleteType = null;
+  let selfId = '';
+  let pendingAction = null;
 
   function el(id) { return document.getElementById(id); }
 
@@ -677,142 +606,10 @@
     return `${dd}/${mm}/${yyyy}`;
   }
 
-  // ── Section navigation ──
-
-  let activeSection = 'users';
-
-  function showSection(section) {
-    activeSection = section;
-    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.admin-nav-btn').forEach(b => b.classList.remove('active'));
-    el('section' + section.charAt(0).toUpperCase() + section.slice(1)).classList.add('active');
-    event.target.closest('.admin-nav-btn').classList.add('active');
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  //  HOTELS — Persisted to localStorage
-  // ═══════════════════════════════════════════════════════════════
-
-  async function loadHotels() {
-    try {
-      const { data, error } = await sb.from('hotels').select('*').order('name');
-      if (error) throw error;
-      hotels = data || [];
-      nextHotelId = hotels.length ? Math.max(...hotels.map(h => h.id)) + 1 : 1;
-    } catch (err) {
-      toast('Failed to load hotels: ' + err.message, 'error');
-    }
-  }
-
-  function renderHotels() {
-    const body = el('hotelsTableBody');
-    if (!hotels.length) {
-      body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-secondary);">No hotels added yet</td></tr>';
-      updateStats();
-      return;
-    }
-
-    body.innerHTML = hotels.map(h => `
-      <tr>
-        <td style="color:var(--text-secondary);font-size:12px;">${h.id}</td>
-        <td>
-          <strong id="hotelName_${h.id}">${h.name}</strong>
-        </td>
-        <td>${formatDateDMYFromTimestamp(h.created_at)}</td>
-        <td style="text-align:right;">
-          <div style="display:flex;gap:6px;justify-content:flex-end;">
-            <button class="btn btn-outline btn-sm" onclick="startRenameHotel(${h.id})">Rename</button>
-            <button class="btn btn-danger btn-sm" onclick="promptDeleteHotel(${h.id})">Remove</button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-
-    updateStats();
-  }
-
-  async function addHotel() {
-    const name = el('newHotelName').value.trim();
-    if (!name) {
-      toast('Hotel name is required', 'error');
-      return;
-    }
-
-    if (hotels.find(h => h.name.toLowerCase() === name.toLowerCase())) {
-      toast('Hotel already exists', 'error');
-      return;
-    }
-
-    try {
-      const { data, error } = await sb.from('hotels').insert({ name }).select();
-      if (error) throw error;
-      hotels.push(data[0]);
-      el('addHotelForm').reset();
-      renderHotels();
-      toast(`Hotel "${name}" added`, 'success');
-    } catch (err) {
-      toast('Failed: ' + err.message, 'error');
-    }
-  }
-
-  function startRenameHotel(id) {
-    const hotel = hotels.find(h => h.id === id);
-    if (!hotel) return;
-    const cell = el('hotelName_' + id);
-    if (!cell) return;
-
-    cell.innerHTML = `
-      <input class="inline-edit" type="text" value="${hotel.name}" id="hotelRename_${id}" onkeydown="if(event.key==='Enter')finishRenameHotel(${id})">
-      <button class="btn btn-success btn-sm" style="margin-left:6px;" onclick="finishRenameHotel(${id})">Save</button>
-    `;
-    el('hotelRename_' + id).focus();
-    el('hotelRename_' + id).select();
-  }
-
-  async function finishRenameHotel(id) {
-    const input = el('hotelRename_' + id);
-    if (!input) return;
-    const newName = input.value.trim();
-    if (!newName) { toast('Name cannot be empty', 'error'); return; }
-
-    const hotel = hotels.find(h => h.id === id);
-    if (!hotel) return;
-
-    if (hotels.find(h => h.id !== id && h.name.toLowerCase() === newName.toLowerCase())) {
-      toast('A hotel with that name already exists', 'error');
-      return;
-    }
-
-    try {
-      const { error } = await sb.from('hotels').update({ name: newName }).eq('id', id);
-      if (error) throw error;
-      hotel.name = newName;
-      renderHotels();
-      toast('Hotel renamed', 'success');
-    } catch (err) {
-      toast('Rename failed: ' + err.message, 'error');
-    }
-  }
-
-  function promptDeleteHotel(id) {
-    const hotel = hotels.find(h => h.id === id);
-    if (!hotel) return;
-    deleteTarget = id;
-    deleteType = 'hotel';
-    el('deleteModalTitle').textContent = 'Remove Hotel';
-    el('deleteModalMsg').textContent = `Are you sure you want to remove "${hotel.name}"? Bookings using this hotel won't be affected.`;
-    el('deleteModal').classList.add('visible');
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  //  USERS
-  // ═══════════════════════════════════════════════════════════════
-
   function updateStats() {
     el('statTotal').textContent = users.length;
     el('statAdmins').textContent = users.filter(u => u.role === 'admin').length;
     el('statActive').textContent = users.filter(u => u.status === 'active').length;
-    el('statHotels').textContent = hotels.length;
   }
 
   function renderUsers() {
@@ -822,27 +619,31 @@
       updateStats();
       return;
     }
-
-    body.innerHTML = users.map(u => `
-      <tr>
-        <td><strong>${u.email}</strong></td>
-        <td><span class="badge badge-${u.role}">${u.role}</span></td>
-        <td><span class="badge badge-${u.status}">${u.status}</span></td>
-        <td>${formatDateDMYFromTimestamp(u.created_at)}</td>
-        <td style="text-align:right;">
-          <div style="display:flex;gap:6px;justify-content:flex-end;">
-            ${u.status === 'active'
-              ? `<button class="btn btn-outline btn-sm" onclick="toggleUserStatus(${u.id}, 'disabled')">Disable</button>`
-              : `<button class="btn btn-success btn-sm" onclick="toggleUserStatus(${u.id}, 'active')">Enable</button>`
-            }
-            <button class="btn btn-outline btn-sm" onclick="toggleUserRole(${u.id})">${u.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
-            <button class="btn btn-danger btn-sm" onclick="promptDeleteUser(${u.id})">Remove</button>
-          </div>
-        </td>
-      </tr>
-    `).join('');
-
+    body.innerHTML = AdminUsers.userRowsHtml(users, formatDateDMYFromTimestamp);
     updateStats();
+  }
+
+  function actionName(button) {
+    const kind = button.getAttribute('data-user-action');
+    if (kind === 'remove') return 'remove';
+    if (kind === 'role') return button.textContent.trim() === 'Demote' ? 'demote' : 'promote';
+    return button.getAttribute('data-user-status') === 'disabled' ? 'disable' : 'enable';
+  }
+
+  function askUserAction(button) {
+    const id = button.getAttribute('data-user-id');
+    const action = actionName(button);
+    const check = AdminUsers.guard(users, id, selfId, action);
+    if (!check.ok) {
+      toast(check.message, 'error');
+      return;
+    }
+    const copy = AdminUsers.confirmCopy(check.user, action);
+    pendingAction = { id: String(id), action: action };
+    el('deleteModalTitle').textContent = copy.title;
+    el('deleteModalMsg').textContent = copy.message;
+    el('confirmActionBtn').textContent = copy.confirm;
+    el('deleteModal').classList.add('visible');
   }
 
   async function loadUsers() {
@@ -896,74 +697,31 @@
     }
   }
 
-  async function toggleUserStatus(id, newStatus) {
-    try {
-      const { error } = await sb.from('profiles').update({ status: newStatus }).eq('id', id);
-      if (error) throw error;
-      const user = users.find(u => u.id === id);
-      if (user) user.status = newStatus;
-      renderUsers();
-      toast(`User ${newStatus === 'active' ? 'enabled' : 'disabled'}`, 'success');
-    } catch (err) {
-      toast('Failed: ' + err.message, 'error');
-    }
-  }
-
-  async function toggleUserRole(id) {
-    try {
-      const user = users.find(u => u.id === id);
-      if (!user) return;
-      const newRole = user.role === 'admin' ? 'user' : 'admin';
-      const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', id);
-      if (error) throw error;
-      user.role = newRole;
-      renderUsers();
-      toast(`Role changed to ${newRole}`, 'success');
-    } catch (err) {
-      toast('Failed: ' + err.message, 'error');
-    }
-  }
-
-  function promptDeleteUser(id) {
-    const user = users.find(u => u.id === id);
-    if (!user) return;
-    deleteTarget = id;
-    deleteType = 'user';
-    el('deleteModalTitle').textContent = 'Remove User';
-    el('deleteModalMsg').textContent = `Are you sure you want to remove ${user.email}? This cannot be undone.`;
-    el('deleteModal').classList.add('visible');
-  }
-
-  // ── Shared delete modal ──
-
   function closeModal() {
     el('deleteModal').classList.remove('visible');
-    deleteTarget = null;
-    deleteType = null;
+    pendingAction = null;
   }
 
-  async function confirmDelete() {
+  async function confirmAction() {
+    const job = pendingAction;
     closeModal();
-    if (!deleteTarget) return;
-
-    try {
-      if (deleteType === 'user') {
-        await sb.from('profiles').delete().eq('id', deleteTarget);
-        await loadUsers();
-        toast('User removed', 'success');
-      } else if (deleteType === 'hotel') {
-        const { error } = await sb.from('hotels').delete().eq('id', deleteTarget);
-        if (error) throw error;
-        hotels = hotels.filter(h => h.id !== deleteTarget);
-        renderHotels();
-        toast('Hotel removed', 'success');
-      }
-    } catch (err) {
-      toast('Delete failed: ' + err.message, 'error');
+    if (!job) return;
+    const again = AdminUsers.guard(users, job.id, selfId, job.action);
+    if (!again.ok) {
+      toast(again.message, 'error');
+      return;
     }
-
-    deleteTarget = null;
-    deleteType = null;
+    try {
+      if (job.action === 'disable') await AdminUsers.setStatus(sb, job.id, 'disabled');
+      else if (job.action === 'enable') await AdminUsers.setStatus(sb, job.id, 'active');
+      else if (job.action === 'demote') await AdminUsers.setRole(sb, job.id, 'user');
+      else if (job.action === 'promote') await AdminUsers.setRole(sb, job.id, 'admin');
+      else if (job.action === 'remove') await AdminUsers.removeProfile(sb, job.id);
+      await loadUsers();
+      toast(job.action === 'remove' ? 'Access removed from the form' : 'Saved', 'success');
+    } catch (err) {
+      toast((err && err.message) || 'Failed', 'error');
+    }
   }
 
   // ── Session check ──
@@ -993,10 +751,13 @@
     const session = await AuthGate.require(sb, { title: 'Admin' });
     if (!session) return;
     if (await checkAdminAccess()) {
+      selfId = String(session.user.id || '');
       await applyUserMenuFromSession();
-      await loadHotels();
       await loadUsers();
-      renderHotels();
+      el('usersTableBody').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-user-action]');
+        if (button) askUserAction(button);
+      });
     }
 
     document.addEventListener('click', (e) => {

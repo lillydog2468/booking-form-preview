@@ -94,6 +94,7 @@
         .eq('id', session.user.id)
         .maybeSingle();
       if (profile && profile.status === 'disabled') {
+        sb.__accountDisabled = true;
         await sb.auth.signOut();
         return false;
       }
@@ -341,9 +342,13 @@
       session = res && res.data ? res.data.session : null;
     } catch (_) { session = null; }
 
-    if (!(session && await sessionIsUsable(sb, session))) {
-      session = await showBox(sb, opts);
+    let blocked = '';
+    if (session && !(await sessionIsUsable(sb, session))) {
+      blocked = sb.__accountDisabled ? 'Your account has been disabled.' : '';
+      sb.__accountDisabled = false;
+      session = null;
     }
+    if (!session) session = await showBox(sb, opts, blocked);
     return session;
   }
 
