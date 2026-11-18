@@ -7480,7 +7480,7 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
           const catIndex = (state.catalogue || []).indexOf(p);
           return `
         <button type="button" class="place-name-item${sel}" data-select-place="${p.id}" data-catalogue-index="${catIndex}" aria-pressed="${on ? 'true' : 'false'}">
-          <span class="pname">${p.icon ? escapeHtml(p.icon) + ' ' : ''}${escapeHtml(p.name || 'Unnamed place')}${p.nickname && String(p.nickname).trim() && p.nickname !== p.name ? (' <span class="muted">(' + escapeHtml(p.nickname) + ')</span>') : ''}</span>
+          <span class="pname">${p.icon ? '<span class="place-list-icon">' + escapeHtml(p.icon) + '</span> ' : ''}${escapeHtml(p.name || 'Unnamed place')}${p.nickname && String(p.nickname).trim() && p.nickname !== p.name ? (' <span class="muted">(' + escapeHtml(p.nickname) + ')</span>') : ''}</span>
           ${badge}
         </button>`;
         }).join('')
@@ -7552,9 +7552,8 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
             <label class="field-label">Nickname</label>
             <input type="text" data-place-nickname="${p.id}" value="${escapeHtml(p.nickname || '')}" placeholder="Short name for Day at a glance" title="Shown in Day at a glance instead of the full title">
           </div>
-          <div>
-            <label class="field-label">Icon (emoji)</label>
-            <input type="text" data-place-icon="${p.id}" value="${escapeHtml(p.icon || '')}" placeholder="Leave blank for type icon" maxlength="8" title="Optional emoji for Day at a glance — e.g. tower for Studnice">
+          <div style="grid-column:1/-1;">
+            ${window.IconPicker ? IconPicker.html({ value: p.icon || '', inputAttr: 'data-place-icon', inputId: p.id }) : `<label class="field-label">Icon (emoji)</label><input type="text" data-place-icon="${p.id}" value="${escapeHtml(p.icon || '')}" maxlength="8" autocomplete="off">`}
           </div>
         </div>
         <input type="text" data-place-notes="${p.id}" value="${escapeHtml(p.notes || '')}" placeholder="Notes / description (editable)" style="margin-top:8px;">
@@ -7686,7 +7685,7 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     if (g.startsWith('<svg')) {
       icon = g; // trusted SVG from placeTypeSvg
     } else if (g) {
-      icon = escapeHtml(g); // optional per-place emoji
+      icon = '<span class="place-emoji">' + escapeHtml(g) + '</span>';
     } else {
       icon = placeTypeSvg(t);
     }
@@ -10688,7 +10687,12 @@ function renderDayTabs() {
       today: todayISO(),
       focusDay: state.overviewDay,
       label(stop) { return roughStopLabel(stop); },
-      cue(stop) { return cueForStop(stop) || { id: 'other', emoji: '📍', label: 'Place' }; },
+      cue(stop) {
+        const base = cueForStop(stop) || { id: 'other', emoji: '📍', label: 'Place' };
+        const place = placeById(stop.placeId || stop.place_id);
+        const icon = place && String(place.icon || '').trim();
+        return icon ? Object.assign({}, base, { emoji: icon }) : base;
+      },
       guests: overviewGuestLine,
       hotel: overviewHotelStay,
     });
@@ -13335,6 +13339,7 @@ function renderDayTabs() {
         if (p) { p.nickname = inp.value; scheduleAutoSave(); render(); }
       });
     });
+    if (window.IconPicker) IconPicker.bind(root);
     root.querySelectorAll('[data-place-icon]').forEach(inp => {
       inp.addEventListener('input', () => {
         const p = directoryPlace(inp.getAttribute('data-place-icon'));

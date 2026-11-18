@@ -226,6 +226,7 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
 .place-pop-note, .place-pop-muted { margin: 0; font-size: 12px; color: #6e695f; }
 .place-pop-line { margin: 0; font-size: 14px; }
 .place-pop-nav, .place-pop a { font-weight: 700; }
+.ov-emoji { font-size: 20px; line-height: 1; }
 @media (min-width: 761px) {
   .p2-days { display: none; }
   #p2Places { display: none; }

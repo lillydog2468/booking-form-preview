@@ -56,8 +56,10 @@
   }
 
   function cueFor(stop) {
-    if (window.PlaceCategories && PlaceCategories.stopCue) return PlaceCategories.stopCue(stop || {});
-    return { id: 'other', emoji: '', label: 'Stop' };
+    var base = (window.PlaceCategories && PlaceCategories.stopCue) ? PlaceCategories.stopCue(stop || {}) : { id: 'other', emoji: '', label: 'Stop' };
+    var place = (state.places || []).find(function (item) { return stop && String(item.id) === String(stop.placeId || ''); });
+    var icon = place && String(place.icon || '').trim();
+    return icon ? Object.assign({}, base, { emoji: icon }) : base;
   }
 
   function hotelFor(date, index) {

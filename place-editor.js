@@ -284,6 +284,7 @@
       + '<div class="pe-card" role="dialog" aria-labelledby="peTitle">'
       + '<div class="pe-head"><h2 id="peTitle">' + esc(place.name || 'Place') + '</h2>'
       + '<button type="button" class="pe-btn primary" data-pe-save>Save and close</button></div>'
+      + (root.IconPicker ? IconPicker.html({ value: place.icon || '', inputAttr: 'data-pe-icon' }) : '<label class="pe-field">Icon<input data-pe-icon value="' + esc(place.icon || '') + '" maxlength="8" autocomplete="off"></label>')
       + '<label class="pe-field">Name<input data-pe-name value="' + esc(place.name || '') + '"></label>'
       + '<div class="pe-field">Categories<div class="pe-checks">' + checksHtml(place) + '</div></div>'
       + '<div class="pe-grid">'
@@ -300,7 +301,6 @@
       + '</div>'
       + '<div class="pe-grid">'
       + '<label class="pe-field">Nickname<input data-pe-nickname value="' + esc(place.nickname || '') + '"></label>'
-      + '<label class="pe-field">Icon<input data-pe-icon value="' + esc(place.icon || '') + '" maxlength="8"></label>'
       + '</div>'
       + '<label class="pe-field">Notes<textarea data-pe-notes rows="3">' + esc(place.notes || '') + '</textarea></label>'
       + historyHtml(place, openState && openState.history)
@@ -309,6 +309,7 @@
       + '</div>'
       + '<p class="pe-status" data-pe-status></p>'
       + '</div>';
+    if (root.IconPicker) IconPicker.bind(sheet);
     sheet.querySelectorAll('[data-pe-save]').forEach(function (btn) {
       btn.addEventListener('click', function () { saveAndClose(); });
     });

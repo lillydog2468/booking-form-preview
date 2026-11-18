@@ -929,6 +929,8 @@
       .stop-cue.type-icon-badge { min-height: 32px; font-size: 16px; }
       .stop-cue-label { font-size: 12px; }
     }
+    .place-emoji, .place-list-icon, .ov-emoji { font-size: 22px; line-height: 1; }
+    .place-list-icon { font-size: 26px; }
     .type-icon-badge svg {
       width: 0.92em;
       height: 0.92em;
