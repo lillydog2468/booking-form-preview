@@ -70,7 +70,7 @@
     else if (state.refused) note = 'Other bookings are not opened here. ' + note;
     $('p2Note').textContent = note;
     $('p2Places').classList.toggle('on', state.tray);
-    $('p2Tray').hidden = !state.tray;
+    $('p2Tray').hidden = state.phone && !state.tray;
     var model = WeekOverview.build(plan, {
       today: '',
       focusDay: state.phone ? state.day : null,
@@ -111,6 +111,12 @@
     });
   }
 
+  function placeTone(place) {
+    var cue = cueFor({ type: Planner2.primaryType(place), title: place.name, name: place.name });
+    var palette = window.PlaceCategories && PlaceCategories.paletteFor ? PlaceCategories.paletteFor(cue.id) : null;
+    return { cue: cue, palette: palette };
+  }
+
   function renderTray() {
     var types = [{ id: 'all', singular: 'All' }].concat(
       (window.PlaceCategories && PlaceCategories.CATALOGUE_TYPES) || []
@@ -119,28 +125,106 @@
       var label = type.id === 'all' ? 'All' : (type.singular || type.label);
       return '<button type="button" class="p2-chip' + (state.type === type.id ? ' on' : '') + '" data-type="' + esc(type.id) + '">' + esc(label) + '</button>';
     }).join('');
-    var list = Planner2.filterPlaces(state.places, state.query, state.type).slice(0, 40);
-    $('p2Chips').innerHTML = list.map(function (place) {
-      var on = state.selected === place.id ? ' on' : '';
-      var name = place.nickname || place.name;
-      return '<button type="button" class="p2-chip' + on + '" draggable="true" data-place="' + esc(place.id) + '">' + esc(name) + '</button>';
-    }).join('') || '<p class="p2-note">No places.</p>';
+    var used = Planner2.usedPlaceIds(state.plan);
+    var groups = Planner2.groupPlaces(state.places, state.query, state.type);
+    $('p2Chips').innerHTML = groups.length ? groups.map(function (group) {
+      var heading = window.PlaceCategories && PlaceCategories.groupLabel
+        ? PlaceCategories.groupLabel(group.id)
+        : group.id;
+      var cards = group.places.map(function (place) {
+        var tone = placeTone(place);
+        var on = state.selected === place.id ? ' on' : '';
+        var mark = used[String(place.id)] ? '<span class="p2-used">On this week</span>' : '';
+        return '<button type="button" class="p2-card' + on + '" data-place="' + esc(place.id) + '">'
+          + '<span class="p2-card-name">' + esc(place.nickname || place.name) + '</span>' + mark + '</button>';
+      }).join('');
+      return '<section class="p2-group"><h3>' + esc(heading) + '</h3>' + cards + '</section>';
+    }).join('') : '<p class="p2-note">No places.</p>';
+    $('p2Chips').querySelectorAll('.p2-card').forEach(function (card) {
+      var place = state.places.find(function (item) { return item.id === card.getAttribute('data-place'); });
+      var tone = place ? placeTone(place) : null;
+      if (tone && tone.palette) {
+        card.style.background = tone.palette.wash;
+        card.style.boxShadow = 'inset 4px 0 0 ' + tone.palette.stripe;
+      }
+      bindPlacePointer(card);
+    });
     $('p2Types').querySelectorAll('[data-type]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         state.type = btn.getAttribute('data-type');
         renderTray();
       });
     });
-    $('p2Chips').querySelectorAll('[data-place]').forEach(function (chip) {
-      var id = chip.getAttribute('data-place');
-      chip.addEventListener('click', function () {
-        state.selected = state.selected === id ? null : id;
-        renderTray();
-      });
-      chip.addEventListener('dragstart', function (event) {
-        event.dataTransfer.setData('text/plain', id);
-        event.dataTransfer.effectAllowed = 'copy';
-      });
+  }
+
+  function bindPlacePointer(card) {
+    card.addEventListener('pointerdown', function (event) {
+      if (event.button != null && event.button !== 0) return;
+      var id = card.getAttribute('data-place');
+      var origin = { x: event.clientX, y: event.clientY, moved: false };
+      var ghost = null;
+      var snap = null;
+      try { card.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+      function clearDrag() {
+        card.classList.remove('dragging');
+        document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
+        if (ghost) ghost.remove();
+        if (snap) snap.remove();
+      }
+      function columnAt(x, y) {
+        var under = document.elementFromPoint(x, y);
+        if (!under || !under.closest) return null;
+        return under.closest('[data-ov-col]');
+      }
+      function move(e) {
+        if (e.pointerId !== event.pointerId) return;
+        if (!origin.moved && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < 8) return;
+        origin.moved = true;
+        e.preventDefault();
+        if (!ghost) {
+          ghost = card.cloneNode(true);
+          ghost.classList.add('ov-ghost');
+          ghost.style.width = Math.max(140, card.offsetWidth) + 'px';
+          document.body.appendChild(ghost);
+        }
+        ghost.style.left = (e.clientX + 12) + 'px';
+        ghost.style.top = (e.clientY + 12) + 'px';
+        if (snap) { snap.remove(); snap = null; }
+        document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
+        var col = columnAt(e.clientX, e.clientY);
+        if (!col) return;
+        col.classList.add('is-drop');
+        var mins = minutesOn(col, e.clientY);
+        snap = document.createElement('div');
+        snap.className = 'ov-snap';
+        snap.style.top = ((mins - WeekOverview.START_MIN) * WeekOverview.PX_PER_MIN) + 'px';
+        snap.textContent = WeekOverview.formatMinutes(mins);
+        col.appendChild(snap);
+      }
+      function up(e) {
+        if (e.pointerId !== event.pointerId) return;
+        card.removeEventListener('pointermove', move);
+        card.removeEventListener('pointerup', up);
+        card.removeEventListener('pointercancel', up);
+        var moved = origin.moved;
+        var col = moved ? columnAt(e.clientX, e.clientY) : null;
+        var mins = col ? minutesOn(col, e.clientY) : null;
+        clearDrag();
+        if (!moved) {
+          state.selected = state.selected === id ? null : id;
+          renderTray();
+          return;
+        }
+        if (!col || mins == null) return;
+        var place = state.places.find(function (item) { return item.id === id; });
+        if (place && Planner2.addPlace(state.plan, place, Number(col.getAttribute('data-ov-col')), WeekOverview.formatMinutes(mins))) {
+          state.selected = null;
+          afterEdit();
+        }
+      }
+      card.addEventListener('pointermove', move);
+      card.addEventListener('pointerup', up);
+      card.addEventListener('pointercancel', up);
     });
   }
 

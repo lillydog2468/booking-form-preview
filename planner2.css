@@ -26,9 +26,25 @@ body {
 .p2-days { display: none; gap: 4px; flex-wrap: wrap; }
 .p2-main { display: flex; align-items: flex-start; gap: 10px; padding: 0 12px 24px; }
 .p2-tray {
-  flex: 0 0 200px; max-height: 72vh; overflow: auto;
-  background: #fff; border: 1px solid #e6e1d8; border-radius: 12px; padding: 8px;
+  display: flex; flex-direction: column; flex: 0 0 280px; width: 280px;
+  height: calc(100vh - 148px); position: sticky; top: 8px;
+  background: #fff; border: 1px solid #e6e1d8; border-radius: 12px; padding: 10px 10px 8px;
 }
+.p2-tray-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+.p2-groups { overflow: auto; flex: 1; min-height: 0; padding-right: 2px; }
+.p2-group { margin: 10px 0 4px; }
+.p2-group h3 {
+  margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: #7a756c;
+}
+.p2-card {
+  display: block; width: 100%; text-align: left; border: 0; border-radius: 8px;
+  margin: 0 0 4px; padding: 6px 8px 6px 10px; cursor: grab; touch-action: none;
+  font: 650 13px/1.25 'DM Sans', system-ui, sans-serif; color: #1c1b19;
+}
+.p2-card.on { outline: 2px solid #3d6b4f; }
+.p2-card-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p2-used { display: block; margin-top: 1px; font-size: 10px; font-weight: 650; color: #5c574e; }
 .p2-search {
   width: 100%; margin-bottom: 6px; padding: 6px 8px; border-radius: 8px;
   border: 1px solid #e2ddd4; font: inherit; font-size: 13px; background: #faf9f7;
@@ -102,11 +118,13 @@ body {
   .p2-top h1 { font-size: 22px; }
   .p2-days { display: flex; }
   .p2-main { flex-direction: column; }
-  .p2-tray { flex: none; width: 100%; max-height: 220px; }
+  .p2-tray { position: static; flex: none; width: 100%; height: auto; max-height: 240px; }
+  .p2-tray[hidden] { display: none; }
   .ov-day { flex: 0 0 calc(100vw - 76px); min-width: calc(100vw - 76px); }
   .p2-scroll { scroll-snap-type: x mandatory; width: 100%; }
   .ov-day { scroll-snap-align: start; }
 }
 @media (min-width: 761px) {
   .p2-days { display: none; }
+  #p2Places { display: none; }
 }

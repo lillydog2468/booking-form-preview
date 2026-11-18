@@ -86,6 +86,17 @@ test('a new place and a last-day drop-off use the same clock', () => {
   const places = P.filterPlaces(P.samplePlaces(), 'antik', 'shop');
   assert.equal(places.length, 1);
   assert.equal(places[0].id, 'ks01');
+  const groups = P.groupPlaces(P.samplePlaces(), '', 'all');
+  const factory = groups.find(function (group) { return group.id === 'factory'; });
+  assert.ok(factory);
+  assert.equal(factory.places.length, 2);
+  assert.equal(groups[0].id, 'factory');
+  const flat = groups.reduce(function (n, group) { return n + group.places.length; }, 0);
+  assert.equal(flat, P.samplePlaces().length);
+  const used = P.usedPlaceIds(P.samplePlan());
+  assert.equal(used.kf02, true);
+  assert.equal(used.kf03, true);
+  assert.equal(used.missing, undefined);
 });
 
 test('the page saves only booking 310 and leaves the old planner alone', () => {
@@ -94,6 +105,12 @@ test('the page saves only booking 310 and leaves the old planner alone', () => {
   assert.equal(app.includes(".from('bookings').update"), false);
   assert.equal(app.includes('.from("bookings").update'), false);
   assert.match(app, /preview=mock/);
+  assert.match(app, /pointerdown/);
+  assert.match(app, /data-place/);
+  assert.match(app, /groupPlaces/);
+  assert.equal(app.includes('slice(0, 40)'), false);
+  assert.match(css, /\.p2-card/);
+  assert.match(css, /touch-action:\s*none/);
   assert.match(app, /Jennifer Lindsay/);
   assert.equal(oldHtml.includes('planner2'), false);
   assert.equal(oldJs.includes('planner2'), false);

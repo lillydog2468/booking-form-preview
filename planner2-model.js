@@ -176,6 +176,40 @@
     return stop;
   }
 
+  function primaryType(place) {
+    if (place && place.types && place.types.length) return String(place.types[0]);
+    return String((place && place.type) || 'other');
+  }
+
+  function usedPlaceIds(plan) {
+    var ids = {};
+    (plan && plan.days || []).forEach(function (day) {
+      (day && day.blocks || []).forEach(function (stop) {
+        var id = stop && (stop.placeId || stop.place_id);
+        if (id) ids[String(id)] = true;
+      });
+    });
+    return ids;
+  }
+
+  var GROUP_ORDER = ['hotel', 'factory', 'shop', 'antique', 'restaurant', 'snack', 'experience', 'museum', 'school', 'viewpoint', 'other'];
+
+  function groupPlaces(places, query, typeId) {
+    var buckets = {};
+    filterPlaces(places, query, typeId).forEach(function (place) {
+      var id = primaryType(place);
+      if (!buckets[id]) buckets[id] = [];
+      buckets[id].push(place);
+    });
+    var keys = GROUP_ORDER.filter(function (id) { return buckets[id]; });
+    Object.keys(buckets).forEach(function (id) {
+      if (keys.indexOf(id) === -1) keys.push(id);
+    });
+    return keys.map(function (id) {
+      return { id: id, places: buckets[id] };
+    });
+  }
+
   function filterPlaces(places, query, typeId) {
     var q = String(query || '').trim().toLowerCase();
     var type = String(typeId || 'all');
@@ -328,6 +362,9 @@
     addPlace: addPlace,
     addHandover: addHandover,
     filterPlaces: filterPlaces,
+    groupPlaces: groupPlaces,
+    usedPlaceIds: usedPlaceIds,
+    primaryType: primaryType,
     guestLine: guestLine,
     enumerateDates: enumerateDates,
     emptyPlanFromBooking: emptyPlanFromBooking,
