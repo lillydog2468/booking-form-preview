@@ -18,6 +18,9 @@
   <script src="booking-config.js"></script>
   <script src="planning-hide.js"></script>
   <script src="place-categories.js"></script>
+  <script src="place-visits.js"></script>
+  <script src="place-pin.js"></script>
+  <script src="place-editor.js"></script>
   <script src="global-search.js"></script>
   <script src="auth-gate.js"></script>
   <link rel="stylesheet" href="site-nav.css">
@@ -299,10 +302,10 @@
     <div class="topbar-inner">
       <div class="topbar-left">
         <div>
-          <h1>Places visit stats</h1>
+          <h1>Places</h1>
           <details class="page-help">
             <summary>Help</summary>
-            <div class="page-help-body"><p>How often each place appears across saved tour plans. A place with two categories is counted under each one. Snack is a supermarket or a bakery, not a restaurant. Visits are matched by place ID when present, otherwise by title. Counts come from cloud plans only.</p></div>
+            <div class="page-help-body"><p>The list is the saved Places catalogue. A visit counts when a plan stop matches a catalogue place by its id, or by its name or nickname. Travel, pick-ups, meals, other notes, drop-offs and handovers are left out. A place in more than one category counts once in the total. The chips count places, with visits beside them.</p></div>
           </details>
         </div>
         <nav class="site-nav" aria-label="Pages">
@@ -374,9 +377,16 @@
           </thead>
           <tbody id="placesBody"></tbody>
         </table>
-        <div class="empty" id="placesEmpty" style="display:none;">No place visits found in saved plans.</div>
+        <div class="empty" id="placesEmpty" style="display:none;">No places in the catalogue yet.</div>
       </div>
     </section>
+
+    <details class="panel" id="unmatchedPanel">
+      <summary>Unmatched plan entries (<span id="unmatchedCount">0</span>)</summary>
+      <div id="duplicateNote" class="muted" style="margin:8px 0;"></div>
+      <div id="oftenMissing"></div>
+      <div id="unmatchedBody"></div>
+    </details>
   </main>
 
   <script>
@@ -409,6 +419,7 @@
     let catalogueById = new Map();
     let rows = [];
     let typeTotals = new Map();
+    let visitTotals = new Map();
     let planCount = 0;
     let visitCount = 0;
 
@@ -428,21 +439,6 @@
 
     function normTitle(t) {
       return String(t || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    }
-
-    function isPlaceVisit(block) {
-      if (!block || typeof block !== 'object') return false;
-      const placeId = String(block.placeId || '').trim();
-      if (placeId) return true;
-      const type = String(block.type || '').trim().toLowerCase();
-      if (SKIP_TYPES.has(type)) return false;
-      return !!String(block.title || '').trim();
-    }
-
-    function placeKey(block) {
-      const placeId = String(block.placeId || '').trim();
-      if (placeId) return 'id:' + placeId;
-      return 'title:' + normTitle(block.title);
     }
 
     function categoryIds(source, fallbackType) {
@@ -468,73 +464,30 @@
       return PC ? PC.singularLabel(id) : String(id || 'Other');
     }
 
-    function collectVisits(plans) {
-      const map = new Map();
-      typeTotals = new Map();
-      visitCount = 0;
+    let unmatched = [];
+    let duplicates = [];
 
-      for (const plan of plans) {
-        const payload = plan.payload || {};
-        const groupName = String(payload.groupName || '').trim() ||
-          (plan.booking_id ? ('Booking #' + plan.booking_id) : (plan.client_key || ('Plan #' + plan.id)));
-        const planLabel = {
-          planId: plan.id,
-          bookingId: plan.booking_id,
-          clientKey: plan.client_key,
-          groupName
-        };
-
-        const days = Array.isArray(payload.days) ? payload.days : [];
-        for (const day of days) {
-          const blocks = Array.isArray(day && day.blocks) ? day.blocks : [];
-          for (const block of blocks) {
-            if (!isPlaceVisit(block)) continue;
-            const key = placeKey(block);
-            const placeId = String(block.placeId || '').trim() || null;
-            const title = String(block.title || '').trim() || (placeId ? (catalogueById.get(placeId)?.name || placeId) : 'Untitled stop');
-            const blockType = String(block.type || '').trim().toLowerCase() || 'other';
-            const cat = placeId ? catalogueById.get(placeId) : null;
-            const types = cat ? categoryIds(cat, blockType) : categoryIds(null, blockType);
-
-            let row = map.get(key);
-            if (!row) {
-              row = {
-                key,
-                placeId,
-                title: (cat && cat.name) || title,
-                type: types[0] || 'other',
-                types: types.slice(),
-                visits: 0,
-                planIds: new Set(),
-                groups: new Map(),
-                years: new Set()
-              };
-              map.set(key, row);
-            }
-            row.visits += 1;
-            row.planIds.add(plan.id);
-            row.groups.set(String(plan.id), planLabel);
-            const visitYear = String((day && day.date) || '').slice(0, 4);
-            if (/^\d{4}$/.test(visitYear)) {
-              if (!row.years) row.years = new Set();
-              row.years.add(visitYear);
-            }
-            if (!row.placeId && placeId) row.placeId = placeId;
-            if (cat && cat.name) row.title = cat.name;
-            if (cat) {
-              row.types = categoryIds(cat, blockType);
-              row.type = row.types[0] || 'other';
-            }
-
-            (row.types || types).forEach(type => {
-              typeTotals.set(type, (typeTotals.get(type) || 0) + 1);
-            });
-            visitCount += 1;
-          }
-        }
-      }
-
-      return [...map.values()].sort((a, b) => b.visits - a.visits || a.title.localeCompare(b.title, 'en-GB'));
+    function collectVisits(plans, catalogue) {
+      const summary = PlaceVisits.summariseCatalogue(catalogue, plans);
+      typeTotals = new Map(Object.entries(summary.placeCounts));
+      visitTotals = new Map(Object.entries(summary.visitCounts));
+      visitCount = summary.visitTotal;
+      unmatched = summary.unmatched;
+      duplicates = PlaceVisits.catalogueDuplicates(catalogue);
+      return summary.places.map(place => ({
+        key: place.id,
+        placeId: place.id,
+        title: place.name,
+        nickname: place.nickname,
+        type: place.type,
+        types: place.types.slice(),
+        visits: place.visits,
+        planIds: new Set(Object.keys(place.planKeys)),
+        groups: new Map(Object.entries(place.groups)),
+        years: new Set(Object.keys(place.years)),
+        sortOrder: Number.isFinite(place.sortOrder) ? place.sortOrder : place.index,
+        row: place.row
+      })).sort((a, b) => b.visits - a.visits || a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, 'en-GB'));
     }
 
     function renderSummary() {
@@ -567,9 +520,10 @@
         el.innerHTML = '<div class="muted">No typed visits yet.</div>';
         return;
       }
-      el.innerHTML = types.map(([type, n]) =>
-        `<span class="chip" title="${esc(categoryName(type))}"><span>${esc(categoryName(type))}</span><strong>${n}</strong></span>`
-      ).join('');
+      el.innerHTML = types.filter(([, n]) => n > 0).map(([type, n]) => {
+        const visits = visitTotals.get(type) || 0;
+        return `<span class="chip" title="${esc(categoryName(type))}"><span>${esc(categoryName(type))}</span><strong>${n}</strong><small style="font-weight:600;color:var(--muted,#6b7280);"> ${visits}</small></span>`;
+      }).join('') || '<div class="muted">No catalogue places yet.</div>';
     }
 
     function fillTypeFilter() {
@@ -599,6 +553,51 @@
       });
     }
 
+    function planHref(bookingId) {
+      const id = String(bookingId || '');
+      if (id === '310') return 'booking2.html';
+      if (window.HIDE_OLD_PLANNING === true) return '';
+      return 'tour-planner.html?booking=' + encodeURIComponent(id);
+    }
+
+    function yearHref(year, placeId) {
+      if (window.HIDE_OLD_PLANNING === true) return '';
+      return 'tour-planner.html?tab=visits&year=' + encodeURIComponent(String(year))
+        + (placeId ? ('&place=' + encodeURIComponent(String(placeId))) : '');
+    }
+
+    function pill(label, href) {
+      const text = esc(label);
+      if (!href) return `<span class="group-pill" title="${text}">${text}</span>`;
+      return `<a class="group-pill" href="${esc(href)}" title="${text}">${text}</a>`;
+    }
+
+    function renderUnmatched() {
+      const count = document.getElementById('unmatchedCount');
+      if (count) count.textContent = String(unmatched.length);
+      const dup = document.getElementById('duplicateNote');
+      if (dup) {
+        dup.innerHTML = duplicates.length
+          ? '<strong>Possible catalogue duplicates, not merged.</strong> ' + duplicates.map(pair =>
+              esc(pair.left) + ' (' + esc(pair.leftId) + ') and ' + esc(pair.right) + ' (' + esc(pair.rightId) + ')'
+            ).join('; ')
+          : 'No obvious catalogue duplicates.';
+      }
+      const often = unmatched.filter(row => row.visits >= 3);
+      const oftenEl = document.getElementById('oftenMissing');
+      if (oftenEl) {
+        oftenEl.innerHTML = often.length
+          ? '<p><strong>Often visited, not in the catalogue.</strong> Nothing has been added.</p><ul>'
+            + often.map(row => '<li>' + esc(row.title) + ' · ' + row.visits + '</li>').join('') + '</ul>'
+          : '';
+      }
+      const body = document.getElementById('unmatchedBody');
+      if (!body) return;
+      body.innerHTML = unmatched.length
+        ? '<ul>' + unmatched.map(row => '<li>' + esc(row.title) + ' · ' + row.visits + '</li>').join('') + '</ul>'
+        : '<p class="muted">Every counted stop matched a catalogue place.</p>';
+    }
+
     function renderTable() {
       const body = document.getElementById('placesBody');
       const empty = document.getElementById('placesEmpty');
@@ -615,26 +614,16 @@
       body.innerHTML = list.map(r => {
         const groups = [...r.groups.values()]
           .sort((a, b) => a.groupName.localeCompare(b.groupName, 'en-GB'))
-          .map(g => {
-            const id = g.bookingId || g.clientKey || '';
-            const label = esc(g.groupName);
-            if (!id) return `<span class="group-pill" title="${label}">${label}</span>`;
-            const href = 'tour-planner.html?booking=' + encodeURIComponent(String(id));
-            return `<a class="group-pill" href="${esc(href)}" title="${label}">${label}</a>`;
-          })
+          .map(g => pill(g.groupName, planHref(g.bookingId)))
           .join('');
         const years = [...(r.years || [])].sort();
         const yearLinks = years.length
-          ? `<div class="groups" style="margin-top:4px;">${years.map(year => {
-              const href = 'tour-planner.html?tab=visits&year=' + encodeURIComponent(String(year))
-                + (r.placeId ? ('&place=' + encodeURIComponent(String(r.placeId))) : '');
-              return `<a class="group-pill" href="${esc(href)}">${esc(String(year))}</a>`;
-            }).join('')}</div>`
+          ? `<div class="groups" style="margin-top:4px;">${years.map(year => pill(String(year), yearHref(year, r.placeId))).join('')}</div>`
           : '';
         const idHint = r.placeId
           ? `<div class="muted" style="font-size:11px;margin-top:2px;">ID: ${esc(r.placeId)}</div>`
           : `<div class="muted" style="font-size:11px;margin-top:2px;">Matched by title</div>`;
-        return `<tr>
+        return `<tr data-place-row="${esc(r.placeId)}" style="cursor:pointer;">
           <td><div class="place-name">${esc(r.title)}</div>${idHint}${yearLinks}</td>
           <td><div class="type-pills">${(r.types || [r.type || 'other']).map(t => `<span class="type-pill">${esc(categoryName(t))}</span>`).join('')}</div></td>
           <td class="num">${r.visits}</td>
@@ -642,6 +631,13 @@
           <td><div class="groups">${groups || '<span class="muted">—</span>'}</div></td>
         </tr>`;
       }).join('');
+      body.querySelectorAll('[data-place-row]').forEach(tr => {
+        tr.addEventListener('click', event => {
+          if (event.target.closest('a')) return;
+          const row = rows.find(item => item.placeId === tr.getAttribute('data-place-row'));
+          if (row && window.PlaceEditor) PlaceEditor.open({ sb, place: row.row });
+        });
+      });
     }
 
     function renderAll() {
@@ -649,21 +645,31 @@
       renderTypeChips();
       fillTypeFilter();
       renderTable();
+      renderUnmatched();
     }
+
+    window.PlacesStatsPreview = function (payload) {
+      const incoming = payload || {};
+      planCount = (incoming.plans || []).length;
+      rows = collectVisits(incoming.plans || [], incoming.catalogue || []);
+      renderAll();
+      setStatus('Preview counts', 'ok');
+    };
 
     async function loadData() {
       setStatus('Loading plans…', 'info');
       const plansRes = await sb.from('planner_plans').select('id,booking_id,client_key,payload,updated_at');
-      let placesRes = await sb.from('planner_places').select('client_id,name,place_type,place_types').order('name');
+      let placesRes = await sb.from('planner_places').select('*').order('sort_order');
       if (placesRes.error) {
-        placesRes = await sb.from('planner_places').select('client_id,name,place_type').order('name');
+        placesRes = await sb.from('planner_places').select('client_id,name,place_type,place_types,nickname,sort_order').order('name');
       }
 
       if (placesRes.error) throw placesRes.error;
       if (plansRes.error) throw plansRes.error;
 
+      const catalogue = placesRes.data || [];
       catalogueById = new Map();
-      for (const p of (placesRes.data || [])) {
+      for (const p of catalogue) {
         if (p.client_id) catalogueById.set(String(p.client_id), p);
       }
 
@@ -671,7 +677,7 @@
         return !(window.isLegacyDemoPlan && window.isLegacyDemoPlan(plan.client_key, plan.payload || {}));
       });
       planCount = plans.length;
-      rows = collectVisits(plans);
+      rows = collectVisits(plans, catalogue);
       renderAll();
       setStatus(
         planCount

@@ -150,6 +150,46 @@ test('cloud plan rows and booking ids still match', () => {
   assert.match(PV.visitsTabHref({ year: '2024', placeId: 'ks01', placeName: 'Antik shop beads' }), /tab=visits/);
 });
 
+test('the catalogue is the place list and notes are not places', () => {
+  assert.equal(PV.foldLoose('Křišťálový ráj'), 'kristalovy raj');
+  const catalogue = [
+    { client_id: 'kf03', name: 'GB Beads', nickname: 'GB', place_type: 'factory', place_types: ['factory', 'shop'], sort_order: 1 },
+    { client_id: 'ks01', name: 'Antik shop beads', place_type: 'shop', sort_order: 2 },
+  ];
+  const plans = [{
+    booking_id: 310,
+    payload: {
+      groupName: 'Jennifer Lindsay',
+      days: [{
+        date: '2027-05-10',
+        blocks: [
+          { title: 'GB Beads', type: 'factory', placeId: 'kf03' },
+          { title: 'GB', type: 'shop' },
+          { title: 'Drop-off', type: 'handover', handoverKind: 'dropoff' },
+          { title: 'Drive', type: 'travel' },
+          { title: 'Mystery kiln', type: 'factory' },
+          { title: 'Mystery kiln', type: 'experience' },
+        ],
+      }],
+    },
+  }];
+  const summary = PV.summariseCatalogue(catalogue, plans);
+  assert.equal(summary.places.length, 2);
+  assert.equal(summary.places.find(place => place.id === 'kf03').visits, 2);
+  assert.equal(summary.places.find(place => place.id === 'ks01').visits, 0);
+  assert.equal(summary.unmatched.length, 1);
+  assert.equal(summary.unmatched[0].visits, 2);
+  assert.equal(summary.placeCounts.factory, 1);
+  assert.equal(summary.placeCounts.shop, 2);
+  assert.equal(summary.visitCounts.factory, 2);
+  const copies = PV.catalogueDuplicates([
+    { client_id: 'a', name: 'GB Beads' },
+    { client_id: 'b', name: 'GB Beads shop' },
+  ]);
+  assert.equal(copies.length, 1);
+  assert.equal(copies[0].leftId, 'a');
+});
+
 test('the planner, places stats, and hotel directory link years, groups, and people', () => {
   const planner = require('./test-page').pageSource(path.join(__dirname, 'tour-planner.html'), 'utf8');
   assert.match(planner, /data-open-visit-year/);

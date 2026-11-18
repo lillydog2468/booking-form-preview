@@ -122,6 +122,7 @@ test('the page saves only booking 310 and leaves the old planner alone', () => {
   assert.equal(P.placeGesture(20, 4, 40), 'drag');
   assert.equal(P.placeGesture(2, 2, 320), 'drag');
   assert.equal(P.placeGesture(4, 4, 80), 'wait');
+  assert.match(app, /PlaceEditor\.open/);
   assert.match(app, /placeGesture/);
   assert.match(app, /gesture === 'scroll'/);
   assert.match(app, /Jennifer Lindsay/);

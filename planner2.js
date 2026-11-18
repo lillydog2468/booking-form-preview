@@ -251,8 +251,10 @@
         clearDrag();
         if (decided === 'scroll' || e.type === 'pointercancel') return;
         if (decided !== 'drag') {
-          state.selected = state.selected === id ? null : id;
-          renderTray();
+          var tapped = state.places.find(function (item) { return item.id === id; });
+          if (tapped && window.PlaceEditor) {
+            PlaceEditor.open({ sb: state.sb, place: tapped, readOnly: state.sample });
+          }
           return;
         }
         if (!col || mins == null) return;
@@ -492,14 +494,17 @@
   function placeFromRow(row) {
     var type = row.place_type || 'other';
     var types = Array.isArray(row.place_types) && row.place_types.length ? row.place_types : [type];
-    return {
-      id: row.client_id || String(row.id),
-      name: row.name || '',
-      nickname: row.nickname || '',
-      type: type,
-      types: types,
-      address: row.address || '',
-    };
+    var place = Object.assign({}, row);
+    place.id = row.client_id || String(row.id);
+    place.client_id = place.id;
+    place.name = row.name || '';
+    place.nickname = row.nickname || '';
+    place.type = type;
+    place.place_type = type;
+    place.types = types.slice();
+    place.place_types = types.slice();
+    place.address = row.address || '';
+    return place;
   }
 
   async function loadLive() {
@@ -524,8 +529,8 @@
     }
     if (booking.data && booking.data.group_name) state.plan.groupName = booking.data.group_name;
     var places = await state.sb.from('planner_places')
-      .select('id, client_id, name, place_type, place_types, nickname, address')
-      .order('name', { ascending: true });
+      .select('*')
+      .order('sort_order', { ascending: true });
     if (!places.error && places.data) state.places = places.data.map(placeFromRow);
     setStatus(state.row ? 'Booking 310 loaded' : 'No saved plan yet — edits will create one');
     render();

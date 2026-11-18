@@ -11,6 +11,17 @@
     return String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
+  function foldLoose(value) {
+    return String(value == null ? '' : value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ł/gi, 'l')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+
   function yearOf(value) {
     var match = /^(\d{4})/.exec(String(value == null ? '' : value).trim());
     if (!match) return '';
@@ -152,15 +163,167 @@
   }
 
   function titleMatches(title, names) {
-    var wanted = fold(title);
+    var wanted = foldLoose(title);
     if (!wanted) return false;
     return names.some(function (name) {
-      var folded = fold(name);
+      var folded = foldLoose(name);
       if (!folded) return false;
       if (wanted === folded) return true;
       if (folded.length < 4 || wanted.length < 4) return false;
       return wanted.indexOf(folded) !== -1 || folded.indexOf(wanted) !== -1;
     });
+  }
+
+  function excludedStop(stop) {
+    if (!stop || typeof stop !== 'object') return true;
+    var type = foldLoose(stop.type);
+    var handover = foldLoose(stop.handoverKind || stop.placeKind);
+    if (type === 'travel' || type === 'pickup' || type === 'meal' || type === 'other' || type === 'handover' || type === 'dropoff') return true;
+    if (handover === 'dropoff' || handover === 'pickup' || handover === 'handover') return true;
+    var title = foldLoose(stop.title);
+    if (title === 'drop off' || title === 'handover' || title === 'pick up' || title === 'pickup') return true;
+    return !title && !stopPlaceId(stop);
+  }
+
+  function placeLabelNames(place) {
+    var names = [];
+    function add(value) {
+      var clean = text(value);
+      if (!clean) return;
+      if (!names.some(function (existing) { return foldLoose(existing) === foldLoose(clean); })) names.push(clean);
+    }
+    add(place && (place.name || place.place_name));
+    add(place && (place.nickname || place.nick));
+    return names;
+  }
+
+  function categoriesOf(place) {
+    var PC = root.PlaceCategories;
+    if (PC && PC.placeCategories) return PC.placeCategories(place);
+    var primary = text(place && (place.place_type || place.type)) || 'other';
+    var extra = place && (place.place_types || place.types);
+    var list = Array.isArray(extra) && extra.length ? extra.map(text).filter(Boolean) : [primary];
+    if (list.indexOf(primary) === -1) list.unshift(primary);
+    return list;
+  }
+
+  function summariseCatalogue(catalogue, plans) {
+    var places = (catalogue || []).map(function (row, index) {
+      var id = text(row && (row.client_id || row.id));
+      var types = categoriesOf(row || {});
+      return {
+        id: id,
+        name: text(row && row.name) || 'Untitled place',
+        nickname: text(row && row.nickname),
+        names: placeLabelNames(row),
+        type: types[0] || 'other',
+        types: types,
+        sortOrder: Number(row && row.sort_order),
+        index: index,
+        visits: 0,
+        planKeys: {},
+        groups: {},
+        years: {},
+        updatedAt: row && row.updated_at || '',
+        row: row
+      };
+    });
+    var byId = {};
+    var byName = [];
+    places.forEach(function (place) {
+      if (place.id) byId[place.id] = place;
+      place.names.forEach(function (name) {
+        var folded = foldLoose(name);
+        if (folded) byName.push({ fold: folded, place: place });
+      });
+    });
+    function matchName(title) {
+      var wanted = foldLoose(title);
+      if (!wanted) return null;
+      var contained = null;
+      for (var i = 0; i < byName.length; i++) {
+        var item = byName[i];
+        if (item.fold === wanted) return item.place;
+        if (item.fold.length < 4 || wanted.length < 4) continue;
+        if (!contained && (wanted.indexOf(item.fold) !== -1 || item.fold.indexOf(wanted) !== -1)) contained = item.place;
+      }
+      return contained;
+    }
+    var unmatched = {};
+    eachPlan(plans, function (plan, key) {
+      var groupName = text(plan && plan.groupName) || (key ? ('Booking #' + key) : 'Untitled group');
+      var days = plan && Array.isArray(plan.days) ? plan.days : [];
+      days.forEach(function (day) {
+        if (!day || typeof day !== 'object') return;
+        var blocks = Array.isArray(day.blocks) ? day.blocks : [];
+        blocks.forEach(function (stop) {
+          if (excludedStop(stop)) return;
+          var id = stopPlaceId(stop);
+          var hit = (id && byId[id]) || matchName(stop.title);
+          var year = yearOf(day.date);
+          if (!hit) {
+            var title = text(stop.title) || 'Untitled';
+            var ukey = foldLoose(title) || 'untitled';
+            if (!unmatched[ukey]) unmatched[ukey] = { title: title, visits: 0, years: {} };
+            unmatched[ukey].visits += 1;
+            if (year) unmatched[ukey].years[year] = true;
+            return;
+          }
+          hit.visits += 1;
+          var planKey = key || ('visit:' + hit.visits);
+          hit.planKeys[planKey] = true;
+          hit.groups[planKey] = {
+            bookingId: /^[0-9]+$/.test(String(key)) ? String(key) : '',
+            groupName: groupName
+          };
+          if (year) hit.years[year] = true;
+        });
+      });
+    });
+    var placeCounts = {};
+    var visitCounts = {};
+    places.forEach(function (place) {
+      place.types.forEach(function (type) {
+        placeCounts[type] = (placeCounts[type] || 0) + 1;
+        visitCounts[type] = (visitCounts[type] || 0) + place.visits;
+      });
+    });
+    var unmatchedList = Object.keys(unmatched).map(function (key) {
+      return unmatched[key];
+    }).sort(function (a, b) { return b.visits - a.visits || a.title.localeCompare(b.title, 'en-GB'); });
+    return {
+      places: places,
+      unmatched: unmatchedList,
+      placeCounts: placeCounts,
+      visitCounts: visitCounts,
+      visitTotal: places.reduce(function (sum, place) { return sum + place.visits; }, 0)
+    };
+  }
+
+  function catalogueDuplicates(catalogue) {
+    var places = (catalogue || []).map(function (row) {
+      return {
+        id: text(row && (row.client_id || row.id)),
+        name: text(row && row.name),
+        nickname: text(row && row.nickname)
+      };
+    }).filter(function (place) { return place.name; });
+    var found = [];
+    for (var i = 0; i < places.length; i++) {
+      for (var j = i + 1; j < places.length; j++) {
+        var a = places[i];
+        var b = places[j];
+        var an = foldLoose(a.name);
+        var bn = foldLoose(b.name);
+        var anick = foldLoose(a.nickname);
+        var bnick = foldLoose(b.nickname);
+        var same = an && an === bn;
+        var nick = (anick && (anick === bn || anick === bnick)) || (bnick && bnick === an);
+        var contain = an.length >= 8 && bn.length >= 8 && an !== bn && (an.indexOf(bn) !== -1 || bn.indexOf(an) !== -1);
+        if (same || nick || contain) found.push({ left: a.name, right: b.name, leftId: a.id, rightId: b.id });
+      }
+    }
+    return found;
   }
 
   function stopPlaceId(stop) {
@@ -331,6 +494,10 @@
     visitsTabHref: visitsTabHref,
     bookingPlanHref: bookingPlanHref,
     personTabHref: personTabHref,
-    yearOf: yearOf
+    yearOf: yearOf,
+    foldLoose: foldLoose,
+    excludedStop: excludedStop,
+    summariseCatalogue: summariseCatalogue,
+    catalogueDuplicates: catalogueDuplicates
   };
 })(typeof window !== 'undefined' ? window : globalThis);
