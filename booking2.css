@@ -54,6 +54,9 @@ body {
   padding: 7px 8px; border-radius: 8px; border: 1px solid #e2ddd4; background: #faf9f7;
 }
 @media (max-width: 760px) {
+  .b2-note { display: none; }
+  .b2-top { padding: 8px 12px 4px; }
   .b2-top h1 { font-size: 22px; }
+  .b2-summary { margin: 0 8px 6px; }
   .b2-plan .p2-tray { height: auto; min-height: 0; }
 }

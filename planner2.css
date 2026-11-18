@@ -42,10 +42,15 @@ body {
   text-transform: uppercase; color: #7a756c;
 }
 .p2-card {
-  display: block; width: 100%; text-align: left; border: 0; border-radius: 8px;
-  margin: 0 0 4px; padding: 6px 8px 6px 10px; cursor: grab; touch-action: pan-y;
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; border: 0; border-radius: 8px;
+  margin: 0 0 4px; padding: 6px 8px 6px 8px; cursor: grab; touch-action: pan-y;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   font: 650 13px/1.25 'DM Sans', system-ui, sans-serif; color: #1c1b19;
+}
+.p2-grip {
+  flex: 0 0 12px; width: 12px; height: 16px;
+  background-image: radial-gradient(circle, #8a847a 1.15px, transparent 1.3px);
+  background-size: 6px 5px; background-position: center; background-repeat: repeat;
 }
 .p2-card.on { outline: 2px solid #3d6b4f; }
 .p2-card-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -90,11 +95,20 @@ body {
   border-top: 1px dashed #c4a574; color: #8a5a12;
   font-size: 10px; font-weight: 700; padding: 1px 4px;
 }
+.ov-mark-btn {
+  pointer-events: auto; cursor: pointer; width: 100%; text-align: left;
+  background: rgba(255, 252, 245, .94); border: 0; font: inherit; font-size: 11px; font-weight: 700;
+}
 .ov-stop {
   position: absolute; z-index: 2; overflow: hidden; border-radius: 8px;
   padding: 3px 16px 3px 7px; cursor: grab; touch-action: none;
   font-size: 12px; line-height: 1.2;
+  -webkit-user-select: none; user-select: none;
 }
+.p2-scroll, .ov-grid, .ov-head, .ov-mark, .p2-card {
+  -webkit-user-select: none; user-select: none;
+}
+body.is-dragging, body.is-dragging * { cursor: grabbing; -webkit-user-select: none; user-select: none; }
 .ov-time { display: block; font-weight: 700; font-size: 11px; font-variant-numeric: tabular-nums; }
 .ov-name { display: block; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ov-guests { display: block; font-size: 10px; color: #5c574e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -119,15 +133,23 @@ body {
 .p2-field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 12px; font-weight: 650; color: #5c574e; }
 .p2-field input { font: inherit; font-size: 15px; font-weight: 500; color: #1c1b19; padding: 8px; border-radius: 8px; border: 1px solid #e2ddd4; }
 .p2-sheet-actions { display: flex; gap: 8px; margin-top: 14px; }
+.p2-nav {
+  display: flex; align-items: center; min-height: 36px; margin-top: 6px; padding: 6px 10px;
+  border-radius: 8px; background: #efeae2; color: #1c1b19; font-size: 13px; font-weight: 700;
+  text-decoration: none;
+}
+.p2-nav-label { margin: 10px 0 0; font-size: 12px; font-weight: 700; color: #5c574e; }
 @media (max-width: 760px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
   .p2-top h1 { font-size: 22px; }
   .p2-days { display: flex; }
-  .p2-main { flex-direction: column; }
+  .p2-main { flex-direction: column; max-width: 100%; min-width: 0; }
   .p2-tray { position: static; flex: none; width: 100%; height: auto; max-height: 240px; }
   .p2-tray[hidden] { display: none; }
-  .ov-day { flex: 0 0 calc(100vw - 76px); min-width: calc(100vw - 76px); }
-  .p2-scroll { scroll-snap-type: x mandatory; width: 100%; }
-  .ov-day { scroll-snap-align: start; }
+  .p2-scroll { width: 100%; max-width: 100%; overflow-x: hidden; }
+  .ov-grid, .ov-days { max-width: 100%; min-width: 0; }
+  .ov-day { flex: 1 1 auto; width: auto; min-width: 0; max-width: 100%; }
+  .ov-day ~ .ov-day { display: none; }
 }
 @media (min-width: 761px) {
   .p2-days { display: none; }

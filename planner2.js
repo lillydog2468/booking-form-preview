@@ -37,8 +37,10 @@
   }
 
   function phoneNow() {
+    var width = window.innerWidth;
+    if (window.visualViewport && window.visualViewport.width) width = Math.min(width, window.visualViewport.width);
     var narrow = window.matchMedia && window.matchMedia('(max-width: ' + Planner2.PHONE_MAX + 'px)').matches;
-    state.phone = narrow || Planner2.usesPhoneLayout(window.innerWidth);
+    state.phone = narrow || Planner2.usesPhoneLayout(width);
     return state.phone;
   }
 
@@ -146,7 +148,8 @@
         var tone = placeTone(place);
         var on = state.selected === place.id ? ' on' : '';
         var mark = used[String(place.id)] ? '<span class="p2-used">On this week</span>' : '';
-        return '<div role="button" tabindex="0" class="p2-card' + on + '" data-place="' + esc(place.id) + '">'
+        return '<div role="button" tabindex="0" class="p2-card' + on + '" data-place="' + esc(place.id) + '" title="Drag onto a day">'
+          + '<span class="p2-grip" aria-hidden="true"></span>'
           + '<span class="p2-card-name">' + esc(place.nickname || place.name) + '</span>' + mark + '</div>';
       }).join('');
       return '<section class="p2-group"><h3>' + esc(heading) + '</h3>' + cards + '</section>';
@@ -171,6 +174,7 @@
   function bindPlacePointer(card) {
     card.addEventListener('pointerdown', function (event) {
       if (event.button != null && event.button !== 0) return;
+      if (event.pointerType === 'mouse') event.preventDefault();
       var id = card.getAttribute('data-place');
       var pointer = event.pointerId;
       var origin = { x: event.clientX, y: event.clientY, t: Date.now(), decided: '' };
@@ -212,11 +216,13 @@
         if (origin.decided === 'scroll') return;
         origin.decided = 'drag';
         clearTimeout(hold);
+        document.body.classList.add('is-dragging');
         try { card.setPointerCapture(pointer); } catch (_) { /* a scroll already owns the finger */ }
         follow(x, y);
       }
       function clearDrag() {
         clearTimeout(hold);
+        document.body.classList.remove('is-dragging');
         document.querySelectorAll('[data-ov-col]').forEach(function (el) { el.classList.remove('is-drop'); });
         if (ghost) ghost.remove();
         if (snap) snap.remove();
@@ -231,7 +237,12 @@
       function move(e) {
         if (e.pointerId !== pointer || origin.decided === 'scroll') return;
         if (origin.decided === 'drag') {
+          if (e.cancelable) e.preventDefault();
           follow(e.clientX, e.clientY);
+          return;
+        }
+        if (e.pointerType === 'mouse' && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) >= 6) {
+          beginDrag(e.clientX, e.clientY);
           return;
         }
         var gesture = Planner2.placeGesture(e.clientX - origin.x, e.clientY - origin.y, Date.now() - origin.t);
@@ -281,7 +292,7 @@
           afterEdit();
         }
       }
-      window.addEventListener('pointermove', move, { passive: true });
+      window.addEventListener('pointermove', move, { passive: false });
       window.addEventListener('pointerup', up);
       window.addEventListener('pointercancel', up);
     });
@@ -304,6 +315,7 @@
     root.querySelectorAll('[data-ov-stop]').forEach(function (card) {
       card.addEventListener('pointerdown', function (event) {
         if (event.button != null && event.button !== 0) return;
+        if (event.pointerType === 'mouse') event.preventDefault();
         if (event.target.closest && event.target.closest('.ov-x')) return;
         var stopId = card.getAttribute('data-ov-stop');
         var origin = { x: event.clientX, y: event.clientY, moved: false };
@@ -361,6 +373,14 @@
         card.addEventListener('pointermove', move);
         card.addEventListener('pointerup', up);
         card.addEventListener('pointercancel', up);
+      });
+    });
+    root.querySelectorAll('[data-ov-marker="pickup"]').forEach(function (mark) {
+      mark.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var day = mark.closest('[data-ov-day]');
+        openPickup(day ? Number(day.getAttribute('data-ov-day')) : 0);
       });
     });
     root.querySelectorAll('[data-ov-col]').forEach(function (col) {
@@ -426,12 +446,37 @@
     }, { passive: true });
   }
 
+  function pickupNavHtml(rows) {
+    var list = rows || [];
+    if (!list.length) return '<p class="p2-note">No hotel pick-ups on this day.</p>';
+    var html = '';
+    if (list.length > 1) {
+      var all = Planner2.appleAllHref(list.map(function (row) { return row.point; }));
+      if (all) html += '<a class="p2-nav" href="' + esc(all) + '" target="_blank" rel="noopener">Navigate to all hotels</a>';
+    }
+    html += '<p class="p2-nav-label">Navigate to each hotel separately</p>';
+    list.forEach(function (row) {
+      var href = Planner2.appleStopHref(row.point);
+      var label = [row.time, row.label].filter(Boolean).join(' · ');
+      html += '<a class="p2-nav" href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(label || 'Hotel') + '</a>';
+    });
+    return html;
+  }
+
+  function openPickup(dayIndex) {
+    var day = (state.plan && state.plan.days || [])[dayIndex] || { blocks: [] };
+    $('p2SheetTitle').textContent = 'Prague pick-up';
+    $('p2SheetBody').innerHTML = pickupNavHtml(Planner2.pickupRows(day));
+    $('p2Sheet').hidden = false;
+  }
+
   function openEditor(stopId) {
     var found = Planner2.findStop(state.plan, stopId);
     if (!found) return;
     var stop = found.stop;
-    $('p2SheetTitle').textContent = stop.title || 'Stop';
-    $('p2SheetBody').innerHTML = ''
+    var rows = Planner2.pickupRows({ blocks: [stop] });
+    $('p2SheetTitle').textContent = rows.length > 1 ? 'Prague pick-up' : (stop.title || 'Stop');
+    $('p2SheetBody').innerHTML = (rows.length > 1 ? pickupNavHtml(rows) : '')
       + '<label class="p2-field">Time<input type="time" id="p2EditTime" value="' + esc(stop.time || '') + '"></label>'
       + '<label class="p2-field">Name<input type="text" id="p2EditTitle" value="' + esc(stop.title || '') + '"></label>'
       + '<label class="p2-field">Notes<input type="text" id="p2EditNotes" value="' + esc(stop.notes || '') + '"></label>'
@@ -587,6 +632,9 @@
         if (event.target.id === 'p2Sheet') closeEditor();
       });
     }
+    document.addEventListener('selectstart', function (event) {
+      if (event.target.closest && event.target.closest('.p2-card, .ov-stop, .p2-scroll, .ov-grid')) event.preventDefault();
+    });
     window.addEventListener('resize', function () {
       var was = state.phone;
       if (phoneNow() !== was) render();

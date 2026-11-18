@@ -180,6 +180,51 @@
    * A finger on a place card is either scrolling the list or starting a drag.
    * Vertical movement scrolls. A sideways move, or a still finger held briefly, drags.
    */
+  function pickupRows(day) {
+    var rows = [];
+    (day && day.blocks || []).forEach(function (stop) {
+      if (!stop || typeof stop !== 'object') return;
+      var listed = Array.isArray(stop.praguePickups) ? stop.praguePickups : [];
+      if (listed.length) {
+        listed.forEach(function (row) {
+          var point = String((row && (row.address || row.hotel)) || '').trim();
+          if (!point) return;
+          rows.push({
+            time: String((row && row.time) || stop.time || ''),
+            label: String((row && row.hotel) || point),
+            point: point,
+          });
+        });
+        return;
+      }
+      var pickup = stop.handoverKind === 'pickup' || stop.autoStop === 'prague-pickup';
+      if (!pickup) return;
+      var single = String(stop.address || stop.hotelName || '').trim();
+      if (!single) return;
+      rows.push({
+        time: String(stop.time || ''),
+        label: String(stop.hotelName || single),
+        point: single,
+      });
+    });
+    return rows;
+  }
+
+  function appleStopHref(point) {
+    var text = String(point || '').trim();
+    if (!text) return '';
+    return 'https://maps.apple.com/?daddr=' + encodeURIComponent(text) + '&dirflg=d';
+  }
+
+  function appleAllHref(points) {
+    var list = (points || []).map(function (point) { return String(point || '').trim(); }).filter(Boolean);
+    if (!list.length) return '';
+    if (list.length === 1) return appleStopHref(list[0]);
+    return 'https://maps.apple.com/?saddr=' + encodeURIComponent('Current Location')
+      + '&daddr=' + list.map(function (point) { return encodeURIComponent(point); }).join('+to:')
+      + '&dirflg=d';
+  }
+
   function placeGesture(dx, dy, heldMs) {
     var adx = Math.abs(Number(dx) || 0);
     var ady = Math.abs(Number(dy) || 0);
@@ -308,7 +353,10 @@
         {
           date: '2027-05-10',
           blocks: [
-            { id: 'pick', type: 'handover', handoverKind: 'pickup', placeKind: 'hotel', time: '08:00', hotelName: 'Hotel Axa', title: 'Pick-up · Hotel Axa', guestIds: ['g1', 'g2', 'g3'] },
+            { id: 'pick', type: 'handover', handoverKind: 'pickup', placeKind: 'hotel', time: '08:00', autoStop: 'prague-pickup', hotelName: 'U Obecního dvora 7, Prague 1', title: 'Pick-up · Prague hotels', guestIds: ['g1', 'g2', 'g3'], praguePickups: [
+              { time: '08:00', hotel: 'U Obecního dvora 7, Prague 1' },
+              { time: '08:05', hotel: 'Hotel Atlantic, Na Poříčí 9, Prague 1' },
+            ] },
             { id: 'pass', type: 'factory', time: '11:00', title: 'Matubo', placeId: 'kf02' },
             { id: 'lunch1', type: 'restaurant', time: '13:00', title: 'Lunch', placeId: 'kr05' },
             { id: 'antik1', type: 'shop', time: '15:15', title: 'Antik', placeId: 'ks01' },
@@ -380,6 +428,9 @@
     usedPlaceIds: usedPlaceIds,
     primaryType: primaryType,
     placeGesture: placeGesture,
+    pickupRows: pickupRows,
+    appleStopHref: appleStopHref,
+    appleAllHref: appleAllHref,
     guestLine: guestLine,
     enumerateDates: enumerateDates,
     emptyPlanFromBooking: emptyPlanFromBooking,

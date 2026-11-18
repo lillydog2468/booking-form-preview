@@ -277,9 +277,9 @@
       var stay = hotelOf(day.date, index) || {};
       var night = String(stay.night || '').trim();
       var from = String(stay.from || '').trim();
-      var marker = index === 0
-        ? { label: 'Prague pick-up', time: '08:00', top: 0 }
-        : { label: 'Leave hotel', time: '09:00', top: (LEAVE_HOTEL_MIN - bounds.start) * px };
+        var marker = index === 0
+        ? { label: 'Prague pick-up', time: '08:00', top: 0, kind: 'pickup' }
+        : { label: 'Leave hotel', time: '09:00', top: (LEAVE_HOTEL_MIN - bounds.start) * px, kind: 'leave' };
       function edgeStop(stop) {
         var cue = cueOf(stop) || defaultCue(stop);
         var tone = String(cue.id || cue.tone || 'other').replace(/[^a-z0-9-]/g, '') || 'other';
@@ -401,9 +401,13 @@
           + '</div>';
       }).join('');
       var untimedRow = '<div class="ov-untimed">' + (untimed || '') + '</div>';
-      var marker = (!day.missing && day.marker)
-        ? '<div class="ov-mark" style="top:' + roundPx(day.marker.top) + 'px"><span>' + esc(day.marker.time) + ' ' + esc(day.marker.label) + '</span></div>'
-        : '';
+      var marker = '';
+      if (!day.missing && day.marker) {
+        var markText = esc(day.marker.time) + ' ' + esc(day.marker.label);
+        marker = day.marker.kind === 'pickup'
+          ? '<button type="button" class="ov-mark ov-mark-btn" data-ov-marker="pickup" style="top:' + roundPx(day.marker.top) + 'px">' + markText + '</button>'
+          : '<div class="ov-mark" style="top:' + roundPx(day.marker.top) + 'px"><span>' + markText + '</span></div>';
+      }
       var pins = (day.early || []).map(function (stop, pinIndex) {
         return pinHtml(stop, 'top', 2 + pinIndex * 28);
       }).join('') + (day.late || []).map(function (stop, pinIndex) {
