@@ -2511,6 +2511,48 @@
       vertical-align: middle;
     }
     .tour-full-badge[hidden] { display: none !important; }
+    .deposit-badge {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 0 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.3;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .deposit-green { background: #15803d; color: #fff; }
+    .deposit-amber { background: #fef3c7; color: #92400e; }
+    .deposit-red { background: #fee2e2; color: #b91c1c; }
+    .deposit-neutral { background: #e5e7eb; color: #374151; }
+    [data-theme="dark"] .deposit-amber { background: #78350f; color: #fef3c7; }
+    [data-theme="dark"] .deposit-red { background: #7f1d1d; color: #fee2e2; }
+    [data-theme="dark"] .deposit-neutral { background: #374151; color: #e5e7eb; }
+    .deposit-flag {
+      display: inline-flex;
+      margin-left: 4px;
+      color: #b45309;
+      font-weight: 800;
+    }
+    .deposit-note {
+      flex: 1 1 100%;
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #b45309;
+    }
+    .deposit-note[hidden] { display: none !important; }
+    .tour-fare-block > .deposit-badge { align-self: flex-end; }
+    .tour-fare-block > .no-deposit-toggle { white-space: nowrap; }
+    #missingDepositsButton[aria-pressed="true"] {
+      background: #b91c1c;
+      border-color: #991b1b;
+      color: #fff;
+    }
+    .record-sub .deposit-badge { margin: 0 0 0 4px; font-size: 11px; }
+    .data-table .deposit-badge { margin: 0; }
     .data-table .tour-full-badge { margin-left: 0; }
     .table-day-trip {
       display: inline-flex;

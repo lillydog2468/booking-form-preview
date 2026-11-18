@@ -218,6 +218,7 @@
 	              <option value="due_soon">Due soon (14d)</option>
 	              <option value="overdue">Overdue</option>
 	              <option value="fully_paid">Fully paid</option>
+              <option value="missing_deposits">Missing deposits</option>
 	            </select>
 	          </div>
 	          <div class="control">
@@ -274,6 +275,7 @@
         <h2>All Bookings</h2>
         <div class="table-toolbar-actions">
           <input type="text" class="table-search" placeholder="Search table..." oninput="filterTable(this.value)">
+          <button type="button" class="btn btn-outline btn-sm" id="missingDepositsButton" aria-pressed="false" onclick="toggleMissingDeposits()">Missing deposits</button>
           <div class="column-filter-wrapper">
             <button class="btn btn-outline btn-sm" id="columnMenuButton" onclick="toggleColumnMenu()">
               Columns

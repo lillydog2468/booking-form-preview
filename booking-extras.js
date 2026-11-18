@@ -1595,6 +1595,81 @@
     return list;
   }
 
+  // A recorded deposit is £100 for one guest. A larger amount on one guest
+  // never counts as another guest's deposit. The booking total is used only
+  // when no per-guest deposit rows exist.
+  var DEPOSIT_RECORDED_GBP = 100;
+
+  function depositFlagOn(value) {
+    return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
+  }
+
+  function guestDepositRecorded(guest) {
+    if (!guest || typeof guest !== 'object') return false;
+    var raw = guest.deposit;
+    if (raw == null || String(raw).trim() === '') return false;
+    var n = Number(raw);
+    return Number.isFinite(n) && n > 0;
+  }
+
+  function depositCover(input) {
+    var src = input && typeof input === 'object' ? input : {};
+    var headRaw = src.headcount != null ? src.headcount : src.no_people;
+    var headText = String(headRaw == null ? '' : headRaw).trim();
+    var headNum = Number(headText);
+    var head = headText !== '' && Number.isFinite(headNum) && headNum > 0 ? Math.round(headNum) : null;
+    var guests = Array.isArray(src.guests) ? src.guests : [];
+    var hasRows = src.hasPerGuest === false ? false : (src.hasPerGuest === true || guests.length > 0);
+    var rowCount = hasRows ? guests.length : 0;
+    var anyEntered = false;
+    if (hasRows) {
+      guests.forEach(function (guest) {
+        if (guest && guest.deposit != null && String(guest.deposit).trim() !== '') anyEntered = true;
+      });
+    }
+    // Blank guest rows are not deposit data. Use the booking total then.
+    var usePerGuest = hasRows && anyEntered;
+    var expected = head != null ? head : rowCount;
+    var mismatch = head != null && hasRows && rowCount !== head;
+    var waived = depositFlagOn(src.noDepositExpected) || depositFlagOn(src.no_deposit_expected);
+    if (waived) {
+      return {
+        waived: true,
+        paid: 0,
+        expected: expected,
+        mismatch: false,
+        missing: false,
+        tone: 'neutral',
+        label: 'No deposit expected',
+        note: ''
+      };
+    }
+    var paid = 0;
+    if (usePerGuest) {
+      guests.forEach(function (guest) {
+        if (guestDepositRecorded(guest)) paid += 1;
+      });
+    } else {
+      var lump = Number(src.depositMade != null ? src.depositMade : src.depositmade);
+      paid = Number.isFinite(lump) && lump > 0 ? Math.floor(lump / DEPOSIT_RECORDED_GBP) : 0;
+      if (expected > 0 && paid > expected) paid = expected;
+    }
+    var tone = 'neutral';
+    if (expected > 0 && paid >= expected) tone = 'green';
+    else if (paid > 0) tone = 'amber';
+    else if (expected > 0) tone = 'red';
+    return {
+      waived: false,
+      paid: paid,
+      expected: expected,
+      mismatch: mismatch,
+      missing: tone === 'red' || tone === 'amber',
+      tone: tone,
+      label: 'Deposits ' + paid + '/' + expected,
+      note: mismatch ? ('Headcount ' + head + ', guest list ' + rowCount) : ''
+    };
+  }
+
   root.BookingExtras = {
     START: START,
     END: END,
@@ -1642,6 +1717,7 @@
     guestLeftToPay: guestLeftToPay,
     inferGroupPrice: inferGroupPrice,
     guestPaymentTotals: guestPaymentTotals,
+    depositCover: depositCover,
     combinedPayMethod: combinedPayMethod,
     resolvePayMethod: resolvePayMethod,
     payMethodText: payMethodText,

@@ -1437,6 +1437,9 @@
         <div class="field-with-currency tour-fare-price"><div class="field"><label>Price / person (£)</label><input type="number" id="t${t}_price_per_person" step="0.01" placeholder="0.00"></div>${currencyMarkHTML()}</div>
         <div class="field tour-fare-head"><label>Headcount</label><input type="number" id="t${t}_no_people" min="1" step="1" placeholder="e.g. 3"></div>
         <button type="button" class="tour-full-toggle" id="t${t}_tour_full" aria-pressed="false" onclick="toggleTourFull('${t}')">Tour full</button>
+        <label class="day-trip-toggle group-price-toggle no-deposit-toggle"><input type="checkbox" id="t${t}_no_deposit_expected"> No deposit expected</label>
+        <span class="deposit-badge deposit-neutral" id="t${t}_deposit_badge">Deposits 0/0</span>
+        <p class="deposit-note" id="t${t}_deposit_note" hidden></p>
         <label class="day-trip-toggle group-price-toggle unverified-toggle"><input type="checkbox" id="t${t}_unverified"> Unverified</label>
         <label class="day-trip-toggle group-price-toggle"><input type="checkbox" id="t${t}_group_price"> One price for the whole group</label>
         <div class="field-with-currency tour-fare-total"><div class="field"><label>Beading tour price (£)</label><input type="number" id="t${t}_beading_tour_price" step="0.01" placeholder="0.00" title="Type a tour price, or leave it to follow the price per person. Leader half price takes a half off that organiser only."></div>${currencyMarkHTML()}</div>
@@ -6831,6 +6834,75 @@
     return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
   }
 
+  function bookingIsNoDepositExpected(booking) {
+    const value = booking && booking.no_deposit_expected;
+    return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
+  }
+
+  function depositCoverFromTab(tabId) {
+    const guests = perGuestRowsFromDom(tabId);
+    if (!window.BookingExtras || !BookingExtras.depositCover) {
+      return { waived: false, paid: 0, expected: 0, mismatch: false, missing: false, tone: 'neutral', label: 'Deposits 0/0', note: '' };
+    }
+    return BookingExtras.depositCover({
+      noDepositExpected: !!tEl(tabId, 'no_deposit_expected')?.checked,
+      headcount: tEl(tabId, 'no_people')?.value || '',
+      guests,
+      hasPerGuest: guests.length > 0,
+      depositMade: tEl(tabId, 'depositmade')?.value || '',
+    });
+  }
+
+  function depositCoverOf(record) {
+    if (!window.BookingExtras || !BookingExtras.depositCover) {
+      return { waived: false, paid: 0, expected: 0, mismatch: false, missing: false, tone: 'neutral', label: 'Deposits 0/0', note: '' };
+    }
+    const members = record && Array.isArray(record._members) ? record._members : [];
+    const loaded = !!(record && record._childrenLoaded);
+    const extrasGuests = record && record._extras && Array.isArray(record._extras.guests) ? record._extras.guests : [];
+    const extrasHaveDeposits = extrasGuests.some(g => g && g.deposit != null && String(g.deposit).trim() !== '');
+    let guests = [];
+    let hasPerGuest = false;
+    if (loaded && members.length) {
+      guests = members;
+      hasPerGuest = true;
+    } else if (extrasHaveDeposits) {
+      guests = extrasGuests;
+      hasPerGuest = true;
+    }
+    return BookingExtras.depositCover({
+      noDepositExpected: record && record.no_deposit_expected,
+      headcount: record && record.no_people,
+      guests,
+      hasPerGuest,
+      depositMade: record && record.depositmade,
+    });
+  }
+
+  function depositBadgeHTML(cover) {
+    const tone = cover && cover.tone ? cover.tone : 'neutral';
+    const label = cover && cover.label ? cover.label : 'Deposits 0/0';
+    const title = cover && cover.note ? ' title="' + escapeAttr(cover.note) + '"' : '';
+    const flag = cover && cover.note
+      ? '<span class="deposit-flag"' + title + '>≠</span>'
+      : '';
+    return '<span class="deposit-badge deposit-' + tone + '"' + title + '>' + escapeHtml(label) + '</span>' + flag;
+  }
+
+  function paintDepositIndicator(tabId) {
+    const badge = tEl(tabId, 'deposit_badge');
+    if (!badge) return;
+    const cover = depositCoverFromTab(tabId);
+    badge.textContent = cover.label;
+    badge.className = 'deposit-badge deposit-' + cover.tone;
+    badge.title = cover.note || '';
+    const note = tEl(tabId, 'deposit_note');
+    if (note) {
+      note.hidden = !cover.note;
+      note.textContent = cover.note || '';
+    }
+  }
+
   function nextHeadcountWhenFull(capRaw, requestedRaw) {
     const cap = String(capRaw == null ? '' : capRaw).trim();
     const requested = String(requestedRaw == null ? '' : requestedRaw).trim();
@@ -8027,6 +8099,7 @@
     if (typeof refreshGuestTravel === 'function') refreshGuestTravel(tabId);
     paintEmptyFields(el('tabPanel_' + tabId));
     refreshBookingLink(tabId);
+    paintDepositIndicator(tabId);
     if (autoSaveEnabled) scheduleTabAutoSave(tabId);
   }
 
@@ -8144,6 +8217,7 @@
     updateDepositHint(tabId);
     updateRoomWarning(tabId);
     refreshMemberPayments(tabId);
+    if (typeof paintDepositIndicator === 'function') paintDepositIndicator(tabId);
   }
 
   // ── Form data ──
@@ -8220,6 +8294,7 @@
     data.totalprofit = totalPayments - totalExpenses;
     data.leader_half_price = checkVal(tabId, 'leader_half_price');
     data.tour_full = tourFullOn(tabId);
+    data.no_deposit_expected = !!tEl(tabId, 'no_deposit_expected')?.checked;
     data.status = typeof statusAfterUnverifiedTick === 'function'
       ? statusAfterUnverifiedTick((tabs.get(tabId) || {}).loadedStatus, typeof unverifiedOn === 'function' && unverifiedOn(tabId))
       : null;
@@ -8385,6 +8460,8 @@
     noteLoadedRooms(tabId, roomRaw, record.keith_own_room);
     if (record.leader_half_price === true) setCheck(tabId, 'leader_half_price', true);
     applyTourFull(tabId, bookingIsTourFull(record));
+    const noDeposit = tEl(tabId, 'no_deposit_expected');
+    if (noDeposit) noDeposit.checked = bookingIsNoDepositExpected(record);
     noteLoadedPrice(tabId);
     noteLoadedNights(tabId);
     noteLoadedHotelCosts(tabId);
@@ -8533,6 +8610,8 @@
     tEl(tabId, 'formTitle').textContent = 'New Booking';
     updateTabTitle(tabId, 'New Booking');
     applyTourFull(tabId, false);
+    const noDeposit = tEl(tabId, 'no_deposit_expected');
+    if (noDeposit) noDeposit.checked = false;
     applyUnverified(tabId, false);
     syncBookingIdTag(tabId);
     const deleteBtn = tEl(tabId, 'deleteBtn');
@@ -8714,6 +8793,7 @@
 	    if (filter === 'fully_paid') return !outstanding;
 	    if (filter === 'due_soon') return outstanding && due >= today && due <= (today + 14 * 86400000);
 	    if (filter === 'overdue') return outstanding && due < today;
+	    if (filter === 'missing_deposits') return depositCoverOf(b).missing;
 	    return true;
 	  }
 
@@ -8872,6 +8952,7 @@
 	      const idTag = idLabel ? ' <span class="booking-id-tag">' + idLabel + '</span>' : '';
 	      const cancelledTag = cancelled ? ' <span class="cancelled-tag">Cancelled</span>' : '';
 	      const fullTag = bookingIsTourFull(r) ? ' <span class="tour-full-badge">FULL</span>' : '';
+	      const depositTag = typeof depositBadgeHTML === 'function' ? depositBadgeHTML(depositCoverOf(r)) : '';
 	      const delayText = cancelled ? delayUntilLabel(r) : '';
 	      parts.push(`
 	      <div class="record-item year-band year-band-${band} ${cancelled ? 'cancelled' : ''} ${unconfirmed ? 'unconfirmed' : ''} ${r.id === activeBookingId ? 'active' : ''}" onclick="openBookingInTab(${r.id})">
@@ -8879,7 +8960,7 @@
 	        <div class="record-title">${openIds.has(r.id) ? '<span style="color:var(--accent);margin-right:4px;">●</span>' : ''}${recordName}${idTag}${fullTag}${cancelledTag}</div>
 	        <div class="record-sub">${
 	          r.tour_arrival_date ? formatDateDMY(r.tour_arrival_date) : 'No date'
-	        } · ${r.no_people || '?'} people${
+	        } · ${r.no_people || '?'} people · ${depositTag}${
 	          (Number(r.left_to_pay) || 0) > 0
 	            ? ` · ${formatMoney(Number(r.left_to_pay) || 0, normalizeCurrency(r.beading_tour_price_currency || DEFAULT_CURRENCY))} left`
 	            : ''
@@ -9147,6 +9228,9 @@
     const optional = bookingColumnsFromExtras(extras, existing);
     if (bookingData && Object.prototype.hasOwnProperty.call(bookingData, 'tour_full')) {
       optional.tour_full = bookingData.tour_full === true;
+    }
+    if (bookingData && Object.prototype.hasOwnProperty.call(bookingData, 'no_deposit_expected')) {
+      optional.no_deposit_expected = bookingData.no_deposit_expected === true;
     }
     if (bookingData && Object.prototype.hasOwnProperty.call(bookingData, 'status')) {
       optional.status = bookingData.status;
@@ -9978,6 +10062,7 @@
     { key: 'status', label: 'Status' },
     { key: 'organiser_display', label: 'Organiser' },
     { key: 'no_people', label: 'People' },
+    { key: 'deposits', label: 'Deposits' },
     { key: 'room_plan_display', label: 'Rooms' },
     { key: 'payment_method_display', label: 'Payment' },
     { key: 'tour_arrival_date', label: 'Arrival' },
@@ -10345,15 +10430,29 @@
   }
 
   let tableShownRecords = null;
+  let missingDepositsOnly = false;
+  function applyMissingDepositsFilter(records) {
+    const list = records || [];
+    if (!missingDepositsOnly) return list;
+    return list.filter(record => depositCoverOf(record).missing);
+  }
+  function toggleMissingDeposits() {
+    missingDepositsOnly = !missingDepositsOnly;
+    const btn = document.getElementById('missingDepositsButton');
+    if (btn) btn.setAttribute('aria-pressed', missingDepositsOnly ? 'true' : 'false');
+    filterTable(tableFilterText);
+  }
+
   function renderTable(records) {
-    tableShownRecords = records || [];
+    const shown = applyMissingDepositsFilter(records || []);
+    tableShownRecords = shown;
     updateColumnLockLabel();
     if (tableColumnMenuOpen) renderColumnMenu();
     renderTableHead();
     const body = el('dataTableBody');
     const activeColumns = getActiveTableColumns();
     const colCount = Math.max(activeColumns.length, 1);
-    const sortedRecords = [...records].sort(compareBookingsNewestFirst);
+    const sortedRecords = [...shown].sort(compareBookingsNewestFirst);
 
     if (!sortedRecords.length) {
       body.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;color:var(--text-secondary);">No bookings to display</td></tr>`;
@@ -10406,6 +10505,8 @@
           } else if (col.key === 'status') {
             const shown = tableStatusCell(r);
             display = shown || '—';
+          } else if (col.key === 'deposits') {
+            display = depositBadgeHTML(depositCoverOf(r));
           } else if (col.key === 'extra_notes' || col.key === 'organiser_display' || col.key === 'room_plan_display' || col.key === 'payment_method_display') {
             display = val ? escapeHtml(String(val)) : '—';
           }
@@ -10563,7 +10664,7 @@
   }
 
   function exportTableCSV() {
-    const records = (tableFilterText
+    const records = applyMissingDepositsFilter(tableFilterText
       ? allBookings.filter(r => TABLE_COLUMNS.some(col => {
           const v = r[col.key];
           return v != null && String(v).toLowerCase().includes(tableFilterText);
@@ -10585,7 +10686,7 @@
     const headers = visibleColumns.map(c => escapeCSV(c.label));
     const rows = records.map(r =>
       visibleColumns.map(col => {
-        let val = r[col.key];
+        let val = col.key === 'deposits' ? depositCoverOf(r).label : r[col.key];
         if (val && isDateKey(col.key)) val = formatDateDMY(val);
         if (col.curKey && val != null) val = formatMoney(val, normalizeCurrency(r[col.curKey] || DEFAULT_CURRENCY));
         return escapeCSV(val);
