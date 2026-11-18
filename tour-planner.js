@@ -10511,7 +10511,8 @@ function renderDayTabs() {
       dest.blocks.push(stop);
       sortDayBlocks(days[from]);
     }
-    commitStopTime(stopId, hhmm, { render: true });
+    const snapped = WeekOverview.clampPlannedMinutes(WeekOverview.minutesOf(hhmm), dayIndex);
+    commitStopTime(stopId, WeekOverview.formatMinutes(snapped), { render: true });
     return true;
   }
 
@@ -10520,7 +10521,8 @@ function renderDayTabs() {
     const day = state.plan.days ? state.plan.days[dayIndex] : null;
     if (!day || typeof day !== 'object') return;
     const stop = newHandoverStop(kind);
-    stop.time = normaliseStopTime(hhmm, '');
+    const snapped = WeekOverview.clampPlannedMinutes(WeekOverview.minutesOf(hhmm), dayIndex);
+    stop.time = normaliseStopTime(WeekOverview.formatMinutes(snapped), '');
     stop.timeApprox = false;
     stop.period = periodForTime(stop.time);
     if (!Array.isArray(day.blocks)) day.blocks = [];
@@ -10584,7 +10586,7 @@ function renderDayTabs() {
     return `<div class="ov" id="weekOverview">
       <div class="ov-bar">
         <p class="ov-pace rough-week-pace pace-${escapeHtml(pace.key)}">${escapeHtml(pace.text)}</p>
-        <p class="ov-hint">Drag a stop to another day or time. Times snap to 15 minutes. Click a stop to edit it.</p>
+        <p class="ov-hint">The day runs 8:00–16:00. Day 1 pick-ups start at 8:00. Later days leave the hotel at 9:00, and a place cannot start before 9:15. Drag snaps to 15 minutes. Click a stop to edit it.</p>
         <div class="ov-tools">
           <button type="button" class="ov-btn" id="ovDayMode">${modeLabel}</button>
           <button type="button" class="ov-btn" id="btnSuggestRoughWeek">Suggest week</button>
@@ -10703,12 +10705,13 @@ function renderDayTabs() {
     const grid = document.querySelector('.ov-grid');
     if (!grid || !col || !window.WeekOverview) return null;
     const rect = col.getBoundingClientRect();
-    return WeekOverview.minutesFromOffset(
+    const raw = WeekOverview.minutesFromOffset(
       clientY - rect.top,
       Number(grid.getAttribute('data-ov-start')),
       Number(grid.getAttribute('data-ov-px')),
       Number(grid.getAttribute('data-ov-end'))
     );
+    return WeekOverview.clampPlannedMinutes(raw, Number(col.getAttribute('data-ov-col')));
   }
 
   function bindOverview() {

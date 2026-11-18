@@ -8,10 +8,12 @@
 (function (root) {
   'use strict';
 
-  var START_MIN = 7 * 60;
-  var END_MIN = 22 * 60;
+  var START_MIN = 8 * 60;
+  var END_MIN = 16 * 60;
+  var PLACE_FLOOR_MIN = 9 * 60 + 15;
+  var LEAVE_HOTEL_MIN = 9 * 60;
   var SNAP_MIN = 15;
-  var PX_PER_MIN = 0.78;
+  var PX_PER_MIN = 1.15;
   var WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -56,7 +58,7 @@
   /**
    * Clock minutes for a pointer offset inside a day column.
    * y is pixels from the top of the timed area. Result is snapped and kept
-   * inside the visible range, leaving one snap step at the bottom.
+   * inside the visible range, including the closing time.
    */
   function minutesFromOffset(y, start, px, end) {
     var scale = Number(px);
@@ -68,11 +70,23 @@
     var raw = origin + (Number(y) || 0) / scale;
     var snapped = snapMinutes(raw, SNAP_MIN);
     if (snapped == null) snapped = origin;
-    var maxStart = limit - SNAP_MIN;
-    if (maxStart < origin) maxStart = origin;
     if (snapped < origin) snapped = snapMinutes(origin, SNAP_MIN);
-    if (snapped > maxStart) snapped = Math.floor(maxStart / SNAP_MIN) * SNAP_MIN;
+    if (snapped > limit) snapped = snapMinutes(limit, SNAP_MIN);
+    if (snapped > limit) snapped = Math.floor(limit / SNAP_MIN) * SNAP_MIN;
     return snapped;
+  }
+
+  /**
+   * Day 1 can start at 8:00 (Prague pick-ups). Later days cannot place a
+   * stop before 9:15, and nothing new is planned after 16:00.
+   */
+  function clampPlannedMinutes(mins, dayIndex) {
+    var floor = Number(dayIndex) > 0 ? PLACE_FLOOR_MIN : START_MIN;
+    var n = snapMinutes(mins, SNAP_MIN);
+    if (n == null) return floor;
+    if (n < floor) n = floor;
+    if (n > END_MIN) n = END_MIN;
+    return n;
   }
 
   function durationOf(stop) {
@@ -98,20 +112,8 @@
     return !!(id || title || type);
   }
 
-  function weekBounds(stops) {
-    var start = START_MIN;
-    var end = END_MIN;
-    (stops || []).forEach(function (stop) {
-      var at = minutesOf(stop && stop.time);
-      if (at == null) return;
-      if (at < start) start = Math.floor(at / 60) * 60;
-      var finish = at + durationOf(stop);
-      var endHour = Math.ceil(finish / 60) * 60;
-      if (endHour > end) end = endHour;
-    });
-    if (end > 24 * 60) end = 24 * 60;
-    if (end - start < 60) end = Math.min(24 * 60, start + 60);
-    return { start: start, end: end };
+  function weekBounds() {
+    return { start: START_MIN, end: END_MIN };
   }
 
   function assignLanes(items) {
@@ -142,11 +144,23 @@
   function layoutDay(stops, range) {
     var timed = [];
     var untimed = [];
+    var early = [];
+    var late = [];
+    var origin = range && Number.isFinite(range.start) ? range.start : START_MIN;
+    var limit = range && Number.isFinite(range.end) ? range.end : END_MIN;
     (stops || []).forEach(function (stop) {
       if (!realStop(stop)) return;
       var at = minutesOf(stop.time);
       if (at == null) {
         untimed.push(stop);
+        return;
+      }
+      if (at < origin) {
+        early.push(stop);
+        return;
+      }
+      if (at > limit) {
+        late.push(stop);
         return;
       }
       var duration = durationOf(stop);
@@ -159,20 +173,31 @@
     assignLanes(timed);
     var px = range && Number(range.px);
     if (!Number.isFinite(px) || px <= 0) px = PX_PER_MIN;
-    var origin = range ? range.start : START_MIN;
     return {
       blocks: timed.map(function (item) {
+        var top = (item.start - origin) * px;
+        var height = Math.max(30, item.duration * px);
+        if (item.start >= limit) {
+          var edge = (limit - origin) * px;
+          top = Math.max(0, edge - 30);
+          height = 30;
+        } else {
+          var room = (limit - item.start) * px;
+          if (room > 0) height = Math.min(height, Math.max(30, room));
+        }
         return {
           stop: item.stop,
           start: item.start,
           duration: item.duration,
           lane: item.lane,
           lanes: item.lanes,
-          top: (item.start - origin) * px,
-          height: Math.max(30, item.duration * px),
+          top: top,
+          height: height,
         };
       }),
       untimed: untimed,
+      early: early,
+      late: late,
     };
   }
 
@@ -240,6 +265,9 @@
           today: false,
           blocks: [],
           untimed: [],
+          early: [],
+          late: [],
+          marker: null,
           night: '',
           from: '',
         };
@@ -249,6 +277,20 @@
       var stay = hotelOf(day.date, index) || {};
       var night = String(stay.night || '').trim();
       var from = String(stay.from || '').trim();
+      var marker = index === 0
+        ? { label: 'Prague pick-up', time: '08:00', top: 0 }
+        : { label: 'Leave hotel', time: '09:00', top: (LEAVE_HOTEL_MIN - bounds.start) * px };
+      function edgeStop(stop) {
+        var cue = cueOf(stop) || defaultCue(stop);
+        var tone = String(cue.id || cue.tone || 'other').replace(/[^a-z0-9-]/g, '') || 'other';
+        return {
+          id: stop.id,
+          time: formatMinutes(minutesOf(stop.time)),
+          label: labelOf(stop) || cue.label || 'Stop',
+          emoji: cue.emoji || '',
+          tone: tone,
+        };
+      }
       return {
         index: index,
         missing: false,
@@ -285,6 +327,9 @@
             tone: tone,
           };
         }),
+        early: (laid.early || []).map(edgeStop),
+        late: (laid.late || []).map(edgeStop),
+        marker: marker,
       };
     }).filter(Boolean);
     return {
@@ -309,6 +354,17 @@
       + '<span class="ov-name">' + (block.emoji ? '<span class="ov-emoji" aria-hidden="true">' + esc(block.emoji) + '</span>' : '') + esc(block.label) + '</span>'
       + guests
       + '<span class="ov-x" role="button" tabindex="-1" data-ov-remove="' + esc(block.id) + '" aria-label="Remove ' + esc(block.label) + '">×</span>'
+      + '</div>';
+  }
+
+  function pinHtml(stop, edge, offset) {
+    var style = edge === 'bottom'
+      ? 'bottom:' + offset + 'px'
+      : 'top:' + offset + 'px';
+    return '<div class="ov-stop ov-pin stop-tone-' + esc(stop.tone) + '" role="button" tabindex="0" data-ov-stop="' + esc(stop.id) + '" style="' + style + '" title="' + esc(stop.time + ' ' + stop.label) + '">'
+      + '<span class="ov-time">' + esc(stop.time) + '</span>'
+      + '<span class="ov-name">' + (stop.emoji ? '<span class="ov-emoji" aria-hidden="true">' + esc(stop.emoji) + '</span>' : '') + esc(stop.label) + '</span>'
+      + '<span class="ov-x" role="button" tabindex="-1" data-ov-remove="' + esc(stop.id) + '" aria-label="Remove ' + esc(stop.label) + '">×</span>'
       + '</div>';
   }
 
@@ -345,9 +401,17 @@
           + '</div>';
       }).join('');
       var untimedRow = '<div class="ov-untimed">' + (untimed || '') + '</div>';
+      var marker = (!day.missing && day.marker)
+        ? '<div class="ov-mark" style="top:' + roundPx(day.marker.top) + 'px"><span>' + esc(day.marker.time) + ' ' + esc(day.marker.label) + '</span></div>'
+        : '';
+      var pins = (day.early || []).map(function (stop, pinIndex) {
+        return pinHtml(stop, 'top', 2 + pinIndex * 28);
+      }).join('') + (day.late || []).map(function (stop, pinIndex) {
+        return pinHtml(stop, 'bottom', 2 + pinIndex * 28);
+      }).join('');
       var col = day.missing
         ? '<div class="ov-col is-missing">Missing day</div>'
-        : '<div class="ov-col" data-ov-col="' + day.index + '" style="height:' + roundPx(view.height) + 'px">' + lines + blocks + '</div>';
+        : '<div class="ov-col" data-ov-col="' + day.index + '" data-ov-floor="' + (day.index > 0 ? PLACE_FLOOR_MIN : START_MIN) + '" style="height:' + roundPx(view.height) + 'px">' + lines + marker + blocks + pins + '</div>';
       return '<section class="ov-day' + today + '" data-ov-day="' + day.index + '" aria-label="' + esc(day.weekday + ' ' + day.dateLabel) + '">'
         + '<header class="ov-head"><p class="ov-dow">' + (day.today ? 'Today · ' : '') + esc(day.weekday) + '</p><p class="ov-date">' + esc(day.dateLabel) + '</p>' + from + night + untimedRow + '</header>'
         + col
@@ -363,12 +427,15 @@
   root.WeekOverview = {
     START_MIN: START_MIN,
     END_MIN: END_MIN,
+    PLACE_FLOOR_MIN: PLACE_FLOOR_MIN,
+    LEAVE_HOTEL_MIN: LEAVE_HOTEL_MIN,
     SNAP_MIN: SNAP_MIN,
     PX_PER_MIN: PX_PER_MIN,
     minutesOf: minutesOf,
     formatMinutes: formatMinutes,
     snapMinutes: snapMinutes,
     minutesFromOffset: minutesFromOffset,
+    clampPlannedMinutes: clampPlannedMinutes,
     durationOf: durationOf,
     weekBounds: weekBounds,
     layoutDay: layoutDay,
