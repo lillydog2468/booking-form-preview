@@ -2764,7 +2764,10 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
   let saveTimer = null;
   function schedulePersist() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persist, 250);
+    saveTimer = setTimeout(async () => {
+      const ok = await persist();
+      if (!ok) paintPlanStatus('unsaved');
+    }, 250);
   }
 
   let autoSaveEnabled = false;
@@ -2793,7 +2796,7 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
       const key = state.plan.bookingKey != null ? String(state.plan.bookingKey) : '';
       if (key) state.plans[key] = state.plan;
     }
-    noteDirty(requested);
+    noteDirty(requested && requested.plan ? requested : Object.assign({ plan: true }, requested || {}));
     if (!autoSaveEnabled) {
       schedulePersist();
       return;
@@ -2833,6 +2836,71 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
         }, 2800);
       }
     }, AUTOSAVE_DELAY);
+  }
+
+  function applyRemotePlanRow(row) {
+    if (!row || !state.plan || String(row.booking_id || '') !== String(state.plan.bookingKey || '')) return;
+    if (row.updated_at && row.updated_at === state._seenPlanUpdatedAt) return;
+    const remote = normalizePlan({ ...(row.payload || {}), bookingKey: String(state.plan.bookingKey) });
+    remote._rowUpdatedAt = row.updated_at || '';
+    const sync = planSyncByKey[String(state.plan.bookingKey)];
+    const unsaved = state._planUnsaved || (sync && sync.baseline && window.PlanSync && !PlanSync.sameSchedule(sync.baseline, state.plan));
+    state._seenPlanUpdatedAt = row.updated_at || state._seenPlanUpdatedAt;
+    if (unsaved && window.PlanSync && !PlanSync.sameSchedule(state.plan, remote)) {
+      paintPlanStatus('unsaved');
+      return;
+    }
+    if (window.PlanSync && PlanSync.sameSchedule(state.plan, remote)) {
+      state.plan.lastSavedAt = remote.lastSavedAt;
+      state.plan.lastSavedFrom = remote.lastSavedFrom;
+      paintPlanStatus('current', remote);
+      return;
+    }
+    state.plan = remote;
+    state.plans[state.plan.bookingKey] = remote;
+    rememberPlanBaseline(remote);
+    render();
+    paintPlanStatus('newer', remote);
+  }
+
+  async function pollOpenPlan() {
+    if (!state.supabasePlanTable || !state.plan || !/^\d+$/.test(String(state.plan.bookingKey || ''))) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    try {
+      const { data, error } = await sb.from('planner_plans')
+        .select('id, booking_id, updated_at, payload')
+        .eq('booking_id', Number(state.plan.bookingKey))
+        .maybeSingle();
+      if (error || !data) return;
+      applyRemotePlanRow(data);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+
+  function watchOpenPlan() {
+    if (state._stopPlanWatch) state._stopPlanWatch();
+    state._stopPlanWatch = null;
+    if (!window.PlanSync || !state.plan || !/^\d+$/.test(String(state.plan.bookingKey || ''))) return;
+    state._stopPlanWatch = PlanSync.watch(sb, state.plan.bookingKey, {
+      onRow: applyRemotePlanRow,
+      poll: pollOpenPlan,
+    });
+  }
+
+  function paintPlanStatus(kind, plan) {
+    const el = document.getElementById('planSaveStatus');
+    state._planUnsaved = kind === 'unsaved';
+    if (!el || !window.PlanSync) return;
+    el.hidden = false;
+    el.className = 'plan-save-status' + (kind === 'unsaved' ? ' is-unsaved' : kind === 'newer' ? ' is-newer' : ' is-current');
+    if (kind === 'unsaved') el.textContent = PlanSync.UNSAVED;
+    else if (kind === 'newer') el.textContent = PlanSync.NEWER;
+    else {
+      const when = (plan && plan.lastSavedAt) || state._seenPlanUpdatedAt || new Date().toISOString();
+      const from = (plan && plan.lastSavedFrom) || PlanSync.deviceLabel();
+      el.textContent = PlanSync.currentLine(when, from);
+    }
   }
 
   function setCloudStatus(ok, detail) {
@@ -3575,6 +3643,18 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     if (window.BookingExtras && BookingExtras.sameJson) return BookingExtras.sameJson(a, b);
     try { return JSON.stringify(a) === JSON.stringify(b); } catch (_) { return false; }
   }
+  function planBody(plan) {
+    if (!plan || typeof plan !== 'object') return plan;
+    try {
+      const copy = JSON.parse(JSON.stringify(plan));
+      delete copy.lastSavedAt;
+      delete copy.lastSavedFrom;
+      delete copy._rowUpdatedAt;
+      return copy;
+    } catch (_) {
+      return plan;
+    }
+  }
   function patchEdited(server, baseline, current) {
     if (window.BookingExtras && BookingExtras.applyEditedPatch) {
       return BookingExtras.applyEditedPatch(server, baseline, current);
@@ -4046,6 +4126,8 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
       if (!data || !data.payload) return null;
       const plan = normalizePlan({ ...data.payload, bookingKey: String(key) });
       if (legacyRow(key, plan)) return null;
+      plan._rowUpdatedAt = data.updated_at || '';
+      state._seenPlanUpdatedAt = data.updated_at || '';
       return plan;
     } catch (err) {
       console.warn('Cloud plan not loaded:', err);
@@ -4205,16 +4287,15 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     const sync = planSyncByKey[key];
     let current;
     try { current = JSON.parse(JSON.stringify(plan)); } catch (_) { return { ok: false, wrote: false }; }
-    if (sync && sync.baseline && jsonSame(sync.baseline, current) && !force) {
-      return { ok: true, wrote: false };
+    delete current._rowUpdatedAt;
+    if (sync && sync.baseline && jsonSame(planBody(sync.baseline), planBody(current)) && !force) {
+      return { ok: true, wrote: false, unchanged: true };
     }
     if (!sync || !sync.baseline) {
       try {
         const existing = await fetchPlanRow(key);
-        if (existing) {
-          console.warn('Skipped plan write with no edit baseline:', key);
-          rememberPlanBaseline(plan);
-          return { ok: true, wrote: false };
+        if (existing && existing.payload) {
+          rememberPlanBaseline(normalizePlan({ ...existing.payload, bookingKey: key }));
         }
       } catch (err) {
         console.warn('Could not save plan to Supabase:', err);
@@ -4225,6 +4306,10 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
       for (let attempt = 0; attempt < 2; attempt++) {
         const row = await fetchPlanRow(key);
         if (!row) {
+          if (window.PlanSync) {
+            PlanSync.stamp(plan);
+            PlanSync.stamp(current);
+          }
           const isBooking = /^[0-9]+$/.test(key);
           const insertRow = {
             payload: current,
@@ -4232,15 +4317,19 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
             booking_id: isBooking ? Number(key) : null,
             client_key: isBooking ? ('booking:' + key) : key,
           };
-          const { error } = await sb.from('planner_plans').insert(insertRow);
+          const { data: inserted, error } = await sb.from('planner_plans').insert(insertRow).select('id');
           if (error) throw error;
+          if (!inserted || !inserted.length) return { ok: false, wrote: false };
           rememberPlanBaseline(plan);
           return { ok: true, wrote: true };
         }
-        const baseline = (sync && sync.baseline) ? sync.baseline : null;
-        if (!baseline) {
-          rememberPlanBaseline(plan);
-          return { ok: true, wrote: false };
+        // Re-read. The baseline may have been stored just above, after `sync` was captured.
+        const held = planSyncByKey[key];
+        const baseline = held && held.baseline ? held.baseline : null;
+        if (!baseline) return { ok: false, wrote: false };
+        if (window.PlanSync) {
+          PlanSync.stamp(plan);
+          PlanSync.stamp(current);
         }
         const patched = patchEdited(row.payload || {}, baseline, current);
         if (patched.value && Array.isArray(patched.value.hotels)) {
@@ -4256,9 +4345,9 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
             }
           });
         }
-        if (!patched.changed) {
+        if (!patched.changed && !force) {
           rememberPlanBaseline(plan);
-          return { ok: true, wrote: false };
+          return { ok: true, wrote: false, unchanged: true };
         }
         let q = sb.from('planner_plans').update({
           payload: patched.value,
@@ -4343,11 +4432,17 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
       if (snap && snap.planKey && !planResult.ok) cloudDirty.planKey = String(snap.planKey);
       failedPeople.forEach(id => cloudDirty.personIds.add(String(id)));
       failedPlaces.forEach(id => cloudDirty.placeIds.add(String(id)));
-      setCloudStatus(false, 'Cloud save failed');
+      paintPlanStatus('unsaved');
       return false;
     }
-    if ((snap && snap.planKey) || personIds.size || placeIds.size) {
-      setCloudStatus(true, 'Cloud saved');
+    if (snap && snap.planKey && planToSave && !planResult.unchanged && !planResult.wrote) {
+      cloudDirty.planKey = String(snap.planKey);
+      paintPlanStatus('unsaved');
+      return false;
+    }
+    if (planResult.wrote) {
+      paintPlanStatus('current', planToSave);
+      return true;
     }
     return true;
   }
@@ -5756,12 +5851,11 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     const localPlan = state.plans[key] && !legacyRow(key, state.plans[key]) ? state.plans[key] : null;
     if (legacyRow(key, state.plans[key])) delete state.plans[key];
     const cloudPlan = await loadPlanFromSupabase(key);
-    const chosen = preferRicherPlan(localPlan, cloudPlan);
+    const schedulesDiffer = !!(localPlan && cloudPlan && window.PlanSync && !PlanSync.sameSchedule(localPlan, cloudPlan));
+    const chosen = schedulesDiffer ? localPlan : (cloudPlan || preferRicherPlan(localPlan, cloudPlan));
+    state._planConflict = schedulesDiffer ? { cloud: cloudPlan } : null;
     if (chosen && !legacyRow(key, chosen)) {
       state.plans[key] = chosen;
-      if (localPlan && cloudPlan && chosen === localPlan && planRichnessScore(localPlan) > planRichnessScore(cloudPlan)) {
-        toast('Kept richer plan from this device (cloud had a thinner skeleton)');
-      }
     }
     const b = state.bookings.find(x => String(x.id) === String(key));
     if (b) {
@@ -5790,7 +5884,15 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     url.searchParams.set('booking', key);
     history.replaceState({}, '', url);
     render();
-    rememberPlanBaseline(state.plan);
+    if (state._planConflict && state._planConflict.cloud) {
+      rememberPlanBaseline(state._planConflict.cloud);
+      noteDirty({ plan: true });
+      paintPlanStatus('unsaved');
+    } else {
+      rememberPlanBaseline(state.plan);
+      paintPlanStatus('current', state.plan);
+    }
+    watchOpenPlan();
     persist({ localOnly: true });
     fillGroupSelect();
     fixExternalNavLinks();
@@ -10695,13 +10797,34 @@ function renderDayTabs() {
     });
   }
 
-  function overviewColumnAt(x, y) {
-    const under = document.elementFromPoint(x, y);
+  function overviewColumnAt(x, y, ignore) {
+    const hidden = [];
+    const cover = (el) => {
+      if (!el || hidden.some(pair => pair[0] === el)) return;
+      hidden.push([el, el.style.pointerEvents]);
+      el.style.pointerEvents = 'none';
+    };
+    cover(ignore);
+    document.querySelectorAll('.ov-ghost').forEach(cover);
+    let under = null;
+    try { under = document.elementFromPoint(x, y); } catch (_) { under = null; }
+    hidden.forEach(([el, previous]) => { el.style.pointerEvents = previous; });
     if (!under || !under.closest) return null;
     const direct = under.closest('[data-ov-col]');
     if (direct) return direct;
     const day = under.closest('[data-ov-day]');
     return day ? day.querySelector('[data-ov-col]') : null;
+  }
+
+  function overviewAutoScroll(x, y) {
+    const scroller = document.getElementById('ovScroll');
+    if (!scroller) return;
+    const rect = scroller.getBoundingClientRect();
+    const edge = 56;
+    if (x < rect.left + edge) scroller.scrollLeft -= 24;
+    else if (x > rect.right - edge) scroller.scrollLeft += 24;
+    if (y < rect.top + edge) scroller.scrollTop -= 16;
+    else if (y > rect.bottom - edge) scroller.scrollTop += 16;
   }
 
   function overviewMinutesAt(col, clientY) {
@@ -10854,37 +10977,45 @@ function renderDayTabs() {
       card.addEventListener('pointerdown', (event) => {
         if (event.button != null && event.button !== 0) return;
         if (event.target.closest('.ov-x')) return;
+        if (event.pointerType === 'mouse') event.preventDefault();
         const stopId = card.getAttribute('data-ov-stop');
-        const origin = { x: event.clientX, y: event.clientY, moved: false };
+        const pointerId = event.pointerId;
+        const touch = event.pointerType !== 'mouse';
+        const origin = { x: event.clientX, y: event.clientY };
+        let lastX = event.clientX;
+        let lastY = event.clientY;
+        let lifted = false;
         let ghost = null;
         let snap = null;
+        let finished = false;
         const clearMarks = () => {
           card.classList.remove('dragging');
+          card.style.pointerEvents = '';
           root.querySelectorAll('[data-ov-col]').forEach(el => el.classList.remove('is-drop'));
           if (ghost) ghost.remove();
           if (snap) snap.remove();
           ghost = null;
           snap = null;
         };
-        const move = (e) => {
-          if (!origin.moved && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < 8) return;
-          origin.moved = true;
-          e.preventDefault();
+        const follow = (x, y) => {
           card.classList.add('dragging');
+          card.style.pointerEvents = 'none';
           if (!ghost) {
             ghost = card.cloneNode(true);
             ghost.classList.add('ov-ghost');
+            ghost.style.pointerEvents = 'none';
             ghost.style.width = Math.max(120, card.offsetWidth) + 'px';
             document.body.appendChild(ghost);
           }
-          ghost.style.left = (e.clientX + 10) + 'px';
-          ghost.style.top = (e.clientY + 10) + 'px';
+          ghost.style.left = (x + 12) + 'px';
+          ghost.style.top = (y + 12) + 'px';
+          overviewAutoScroll(x, y);
           root.querySelectorAll('[data-ov-col]').forEach(el => el.classList.remove('is-drop'));
           if (snap) { snap.remove(); snap = null; }
-          const col = overviewColumnAt(e.clientX, e.clientY);
+          const col = overviewColumnAt(x, y, card);
           if (!col) return;
           col.classList.add('is-drop');
-          const mins = overviewMinutesAt(col, e.clientY);
+          const mins = overviewMinutesAt(col, y);
           if (mins == null) return;
           const grid = root.querySelector('.ov-grid');
           const px = Number(grid && grid.getAttribute('data-ov-px'));
@@ -10895,25 +11026,56 @@ function renderDayTabs() {
           snap.textContent = WeekOverview.formatMinutes(mins);
           col.appendChild(snap);
         };
-        const up = (e) => {
-          card.removeEventListener('pointermove', move);
-          card.removeEventListener('pointerup', up);
-          card.removeEventListener('pointercancel', up);
-          const moved = origin.moved;
-          const col = moved ? overviewColumnAt(e.clientX, e.clientY) : null;
-          const mins = col ? overviewMinutesAt(col, e.clientY) : null;
+        const lift = (x, y) => {
+          if (lifted) return;
+          lifted = true;
+          clearTimeout(hold);
+          try { card.setPointerCapture(pointerId); } catch (_) { /* the finger can still move */ }
+          follow(x, y);
+        };
+        const hold = setTimeout(() => lift(lastX, lastY), 300);
+        const move = (e) => {
+          if (e.pointerId !== pointerId) return;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          const dist = Math.hypot(e.clientX - origin.x, e.clientY - origin.y);
+          if (!lifted) {
+            if (!touch && dist >= 6) lift(e.clientX, e.clientY);
+            else if (touch && dist > 14 && Math.abs(e.clientY - origin.y) > Math.abs(e.clientX - origin.x)) {
+              clearTimeout(hold);
+              finished = true;
+              detach();
+            }
+            return;
+          }
+          if (e.cancelable) e.preventDefault();
+          follow(e.clientX, e.clientY);
+        };
+        const finish = (e) => {
+          if (finished || (e && e.pointerId != null && e.pointerId !== pointerId)) return;
+          finished = true;
+          detach();
+          const x = e && Number.isFinite(e.clientX) ? e.clientX : lastX;
+          const y = e && Number.isFinite(e.clientY) ? e.clientY : lastY;
+          const col = lifted ? overviewColumnAt(x, y, card) : null;
+          const mins = col ? overviewMinutesAt(col, y) : null;
           clearMarks();
-          if (!moved) {
+          if (!lifted) {
             openOverviewEditor(stopId);
             return;
           }
           if (!col || mins == null) return;
           placeOverviewStop(stopId, Number(col.getAttribute('data-ov-col')), WeekOverview.formatMinutes(mins));
         };
-        card.addEventListener('pointermove', move);
-        card.addEventListener('pointerup', up);
-        card.addEventListener('pointercancel', up);
-        try { card.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+        function detach() {
+          clearTimeout(hold);
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', finish);
+          window.removeEventListener('pointercancel', finish);
+        }
+        window.addEventListener('pointermove', move, { passive: false });
+        window.addEventListener('pointerup', finish);
+        window.addEventListener('pointercancel', finish);
       });
     });
     if (state.overviewDay != null) {
@@ -13679,6 +13841,11 @@ function renderDayTabs() {
   });
   document.getElementById('groupSelect').addEventListener('change', e => selectPlan(e.target.value));
   document.getElementById('btnForceCloudSave').addEventListener('click', () => forceSaveToCloud());
+  document.getElementById('planSaveStatus')?.addEventListener('click', () => {
+    if (!state._planUnsaved) return;
+    noteDirty({ plan: true });
+    schedulePersist();
+  });
   document.getElementById('btnExportPlan').addEventListener('click', () => exportPlanJson());
   document.getElementById('btnLookView').addEventListener('click', () => setViewPref('week'));
   document.getElementById('btnOverview').addEventListener('click', () => setViewPref('overview'));

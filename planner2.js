@@ -36,6 +36,17 @@
     if (el) el.textContent = text || '';
   }
 
+  function paintSaveStatus(kind, plan) {
+    var el = $('planSaveStatus');
+    state.unsaved = kind === 'unsaved';
+    if (!el || !window.PlanSync) return;
+    el.hidden = false;
+    el.className = 'plan-save-status' + (kind === 'unsaved' ? ' is-unsaved' : kind === 'newer' ? ' is-newer' : ' is-current');
+    if (kind === 'unsaved') el.textContent = PlanSync.UNSAVED;
+    else if (kind === 'newer') el.textContent = PlanSync.NEWER;
+    else el.textContent = PlanSync.currentLine((plan && plan.lastSavedAt) || state.seenUpdatedAt, (plan && plan.lastSavedFrom) || PlanSync.deviceLabel());
+  }
+
   function phoneNow() {
     var width = window.innerWidth;
     if (window.visualViewport && window.visualViewport.width) width = Math.min(width, window.visualViewport.width);
@@ -299,6 +310,7 @@
   }
 
   function afterEdit() {
+    state.unsaved = true;
     render();
     scheduleSave();
   }
@@ -518,6 +530,7 @@
     var payload = JSON.parse(JSON.stringify(state.plan));
     payload.bookingKey = String(ONLY);
     delete payload.sample;
+    if (window.PlanSync) PlanSync.stamp(payload);
     var updatedAt = new Date().toISOString();
     try {
       if (!state.row || !state.row.id) {
@@ -539,15 +552,22 @@
         var updated = await query.select('id, updated_at, booking_id');
         if (updated.error) throw updated.error;
         if (!updated.data || !updated.data.length) {
-          setStatus('The plan changed elsewhere. Reload before editing again.');
+          paintSaveStatus('unsaved');
           state.saving = false;
           return;
         }
         state.row = updated.data[0];
       }
+      state.plan.lastSavedAt = payload.lastSavedAt;
+      state.plan.lastSavedFrom = payload.lastSavedFrom;
+      state.seenUpdatedAt = (state.row && state.row.updated_at) || updatedAt;
+      state.savedPlan = JSON.parse(JSON.stringify(state.plan));
+      state.unsaved = false;
+      paintSaveStatus('current', state.plan);
       setStatus('Saved booking 310');
     } catch (err) {
       console.warn(err);
+      paintSaveStatus('unsaved');
       setStatus('Could not save');
     }
     state.saving = false;
@@ -594,8 +614,57 @@
       .select('*')
       .order('sort_order', { ascending: true });
     if (!places.error && places.data) state.places = places.data.map(placeFromRow);
+    state.savedPlan = JSON.parse(JSON.stringify(state.plan));
+    state.seenUpdatedAt = state.row && state.row.updated_at;
     setStatus(state.row ? 'Booking 310 loaded' : 'No saved plan yet — edits will create one');
+    paintSaveStatus('current', state.plan);
+    watchPlan();
     render();
+  }
+
+  function planIsDirty() {
+    if (state.unsaved) return true;
+    if (!state.savedPlan || !window.PlanSync) return false;
+    return !PlanSync.sameSchedule(state.savedPlan, state.plan);
+  }
+
+  function applyRemoteRow(row) {
+    if (!row || !row.payload || (row.updated_at && row.updated_at === state.seenUpdatedAt)) return;
+    var remote = row.payload;
+    remote.bookingKey = String(ONLY);
+    state.seenUpdatedAt = row.updated_at || state.seenUpdatedAt;
+    if (planIsDirty() && window.PlanSync && !PlanSync.sameSchedule(state.plan, remote)) {
+      paintSaveStatus('unsaved');
+      return;
+    }
+    if (window.PlanSync && PlanSync.sameSchedule(state.plan, remote)) {
+      state.plan.lastSavedAt = remote.lastSavedAt;
+      state.plan.lastSavedFrom = remote.lastSavedFrom;
+      paintSaveStatus('current', remote);
+      return;
+    }
+    state.plan = remote;
+    state.savedPlan = JSON.parse(JSON.stringify(remote));
+    state.row = row;
+    state.unsaved = false;
+    render();
+    paintSaveStatus('newer', remote);
+  }
+
+  async function pollPlan() {
+    if (state.sample || !state.sb || !state.plan) return;
+    if (document.visibilityState === 'hidden') return;
+    try {
+      var res = await state.sb.from('planner_plans').select('id, booking_id, updated_at, payload').eq('booking_id', ONLY).maybeSingle();
+      if (!res.error && res.data) applyRemoteRow(res.data);
+    } catch (err) { console.warn(err); }
+  }
+
+  function watchPlan() {
+    if (state.stopWatch) state.stopWatch();
+    state.stopWatch = null;
+    if (state.sample || !state.sb || !window.PlanSync) return;
+    state.stopWatch = PlanSync.watch(state.sb, ONLY, { onRow: applyRemoteRow, poll: pollPlan });
   }
 
   function bootSample() {
@@ -624,6 +693,11 @@
         renderTray();
       });
     }
+    var saveLine = $('planSaveStatus');
+    if (saveLine) saveLine.addEventListener('click', function () {
+      if (!state.unsaved) return;
+      savePlan();
+    });
     var close = $('p2SheetClose');
     if (close) close.addEventListener('click', closeEditor);
     var sheet = $('p2Sheet');

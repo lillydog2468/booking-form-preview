@@ -42,6 +42,7 @@
         <div class="group-heading-bar" id="groupHeadingBar">
         <p class="group-heading" id="groupHeading" aria-live="polite">Tour group</p>
         <p class="group-dates" id="groupDates"></p>
+        <button type="button" id="planSaveStatus" class="plan-save-status" hidden></button>
       </div>
       <div id="plannerNavMount"></div>
     </div>
@@ -110,6 +111,7 @@
   if (window.PlanningHide && PlanningHide.oldPlanningHidden()) PlanningHide.showNote(document.body);
 </script>
 <script src="site-nav.js"></script>
+<script src="plan-sync.js"></script>
 <script src="tour-planner.js" defer></script>
 
 </body>

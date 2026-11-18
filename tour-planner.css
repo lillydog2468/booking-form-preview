@@ -1538,6 +1538,16 @@
     .autosave-status.saving { color: var(--warning); }
     .autosave-status.saved { color: var(--success); }
     .autosave-status.failed { color: #c0392b; font-weight: 700; }
+    .plan-save-status {
+      display: block; width: 100%; margin: 6px 0 0; padding: 8px 12px;
+      border: 0; border-radius: 10px; text-align: left; font: 700 13px/1.35 'DM Sans', system-ui, sans-serif;
+      background: #e8f6ee; color: #14532d;
+    }
+    .plan-save-status[hidden] { display: none !important; }
+    .plan-save-status.is-newer { background: #fef3c7; color: #92400e; }
+    .plan-save-status.is-unsaved { background: #fee2e2; color: #991b1b; cursor: pointer; }
+    body.view-week .plan-save-status,
+    body.view-phone .plan-save-status { display: block !important; }
     #btnForceCloudSave, #btnExportPlan { white-space: nowrap; }
 
     @media (max-width: 600px) {
@@ -2816,6 +2826,7 @@
     .ov-stop {
       position: absolute; z-index: 2; overflow: hidden; border-radius: 6px;
       padding: 2px 16px 2px 6px; cursor: grab; touch-action: none;
+      -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
       border: 1px solid transparent; font-size: 11px; line-height: 1.2;
     }
     .ov-stop:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -2834,8 +2845,9 @@
     .ov-untimed { display: flex; gap: 4px; min-height: 26px; margin-top: 3px; }
     .ov-untimed-stop { position: relative; height: 26px; flex: 1 1 auto; min-width: 0; }
     .ov-ghost {
-      position: fixed; z-index: 80; pointer-events: none; opacity: .92;
+      position: fixed; z-index: 80; pointer-events: none !important; opacity: .92;
       box-shadow: var(--shadow-lg); width: 140px;
+      -webkit-user-select: none; user-select: none;
     }
     .ov-notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; }
     .ov-notes summary { cursor: pointer; font-size: 12px; font-weight: 800; }
