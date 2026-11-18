@@ -12,6 +12,9 @@ test('the place editor saves one catalogue row and does not remove it', () => {
   assert.equal(editor.includes('.delete('), false);
   assert.equal(editor.includes('Remove place'), false);
   assert.match(editor, /data-pe-save/);
+  assert.match(editor, /<details class="pe-history">/);
+  assert.match(editor, /<summary>Visit history<\/summary>/);
+  assert.equal(editor.includes('<details class="pe-history" open'), false);
   assert.match(editor, /google\.com\/maps/);
   assert.match(stats, /PlaceVisits\.summariseCatalogue/);
   assert.match(stats, /Unmatched plan entries/);

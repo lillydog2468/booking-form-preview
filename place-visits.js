@@ -272,11 +272,17 @@
           hit.visits += 1;
           var planKey = key || ('visit:' + hit.visits);
           hit.planKeys[planKey] = true;
-          hit.groups[planKey] = {
-            bookingId: /^[0-9]+$/.test(String(key)) ? String(key) : '',
-            groupName: groupName
-          };
-          if (year) hit.years[year] = true;
+          if (!hit.groups[planKey]) {
+            hit.groups[planKey] = {
+              bookingId: /^[0-9]+$/.test(String(key)) ? String(key) : '',
+              groupName: groupName,
+              years: {}
+            };
+          }
+          if (year) {
+            hit.years[year] = true;
+            hit.groups[planKey].years[year] = true;
+          }
         });
       });
     });

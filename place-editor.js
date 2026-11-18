@@ -46,6 +46,9 @@
       '.pe-checks{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:6px;}',
       '.pe-checks label{font-size:13px;font-weight:600;color:#1c1b19;}',
       '.pe-readonly{margin:8px 0 0;font-size:13px;color:#5c574e;}',
+      '.pe-history{margin-top:12px;border-top:1px solid #eeeae3;padding-top:8px;}',
+      '.pe-history summary{cursor:pointer;font-weight:700;font-size:14px;min-height:40px;display:flex;align-items:center;touch-action:manipulation;}',
+      '.pe-history ul{margin:6px 0 0;padding-left:18px;font-size:13px;font-weight:500;color:#1c1b19;}',
       '.pe-map{height:220px;border-radius:10px;border:1px solid #e6e1d8;margin-top:6px;}',
       '.pe-status{min-height:1.2em;font-size:12px;color:#6e695f;}',
       '.pe-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}',
@@ -82,6 +85,27 @@
     var years = place.visit_years || place.visitYears || [];
     if (!Array.isArray(years) || !years.length) return 'Not recorded yet';
     return years.join(', ');
+  }
+
+  function historyHtml(place, history) {
+    var extra = history || {};
+    var visits = extra.visits != null
+      ? extra.visits
+      : (place.visit_count != null ? place.visit_count : (place.visitCount || 0));
+    var years = extra.years && extra.years.length ? extra.years.join(', ') : yearsText(place);
+    var groups = extra.groups || [];
+    var lines = groups.map(function (group) {
+      var name = group.groupName || group;
+      var when = group.years ? Object.keys(group.years).sort().join(', ') : '';
+      return '<li>' + esc(name) + (when ? ' · ' + esc(when) : '') + '</li>';
+    }).join('');
+    return '<details class="pe-history">'
+      + '<summary>Visit history</summary>'
+      + '<p class="pe-readonly">Visit count ' + esc(visits)
+      + ' · First visited ' + esc(firstText(place))
+      + ' · Years visited ' + esc(years) + '</p>'
+      + (lines ? '<ul>' + lines + '</ul>' : '<p class="pe-readonly">No group list for this place.</p>')
+      + '</details>';
   }
 
   function firstText(place) {
@@ -217,17 +241,19 @@
       + '<label class="pe-field">How we contact them<select data-pe-contact>' + contactOptions(place.contact_method || place.contactMethod || '') + '</select></label>'
       + '<label class="pe-field">Contact detail<input data-pe-detail value="' + esc(place.contact_detail || place.contactDetail || '') + '"></label>'
       + '<label class="pe-field">Address or map link<input data-pe-address value="' + esc(place.address || '') + '"></label>'
-      + '<label class="pe-field">Nickname<input data-pe-nickname value="' + esc(place.nickname || '') + '"></label>'
-      + '<label class="pe-field">Icon<input data-pe-icon value="' + esc(place.icon || '') + '" maxlength="8"></label>'
       + '</div>'
-      + '<label class="pe-field">Notes<textarea data-pe-notes rows="3">' + esc(place.notes || '') + '</textarea></label>'
-      + '<p class="pe-readonly">First visited ' + esc(firstText(place))
-      + ' · Visits ' + esc(place.visit_count != null ? place.visit_count : (place.visitCount || 0))
-      + ' · Years ' + esc(yearsText(place)) + '</p>'
       + '<div class="pe-field">Map<div class="pe-map" data-pe-map></div><p class="pe-status" data-pe-pin></p></div>'
       + '<div class="pe-actions">'
       + '<button type="button" class="pe-btn" data-pe-clear>Clear pin</button>'
       + (href ? '<a class="pe-btn" data-pe-nav href="' + esc(href) + '" target="_blank" rel="noopener">Navigate</a>' : '')
+      + '</div>'
+      + '<div class="pe-grid">'
+      + '<label class="pe-field">Nickname<input data-pe-nickname value="' + esc(place.nickname || '') + '"></label>'
+      + '<label class="pe-field">Icon<input data-pe-icon value="' + esc(place.icon || '') + '" maxlength="8"></label>'
+      + '</div>'
+      + '<label class="pe-field">Notes<textarea data-pe-notes rows="3">' + esc(place.notes || '') + '</textarea></label>'
+      + historyHtml(place, openState && openState.history)
+      + '<div class="pe-actions">'
       + '<button type="button" class="pe-btn primary" data-pe-save>Save</button>'
       + '</div>'
       + '<p class="pe-status" data-pe-status></p>'
@@ -312,6 +338,7 @@
       sb: opts.sb || null,
       readOnly: !!opts.readOnly,
       onSaved: opts.onSaved || null,
+      history: opts.history || null,
     };
     render(place);
   }

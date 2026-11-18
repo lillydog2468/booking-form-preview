@@ -635,7 +635,17 @@
         tr.addEventListener('click', event => {
           if (event.target.closest('a')) return;
           const row = rows.find(item => item.placeId === tr.getAttribute('data-place-row'));
-          if (row && window.PlaceEditor) PlaceEditor.open({ sb, place: row.row });
+          if (row && window.PlaceEditor) {
+            PlaceEditor.open({
+              sb: sb,
+              place: row.row,
+              history: {
+                visits: row.visits,
+                years: [...(row.years || [])].sort(),
+                groups: [...row.groups.values()]
+              }
+            });
+          }
         });
       });
     }
