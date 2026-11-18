@@ -317,7 +317,8 @@ test('the public Supabase URL and key live in one config file', () => {
     'admin.html',
     'places-stats.html',
     'tax-summary.html',
-    'interest-2027.html'
+    'interest-2027.html',
+    'planner2.html'
   ];
   for (const name of pages) {
     const html = require('./test-page').pageSource(path.join(root, name));
