@@ -550,6 +550,10 @@
     });
   }
 
+  var bookingLink = $('p2Booking');
+  if (bookingLink && /(?:\?|&)preview=mock(?:&|$)/.test(location.search)) {
+    bookingLink.setAttribute('href', 'booking2.html?preview=mock');
+  }
   var params = new URLSearchParams(location.search);
   state.refused = params.get('booking') && !Planner2.isAllowedBooking(params.get('booking'));
   if (/(?:\?|&)preview=mock(?:&|$)/.test(location.search)) {

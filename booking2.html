@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Jennifer Lindsay — test booking</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="booking-config.js"></script>
+  <script src="auth-gate.js"></script>
+  <script src="booking-extras.js"></script>
+  <script src="booking2-model.js"></script>
+  <link rel="stylesheet" href="booking2.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+</head>
+<body>
+  <header class="b2-top">
+    <p class="b2-kicker">Test booking</p>
+    <h1 id="b2Title">Jennifer Lindsay</h1>
+    <p class="b2-dates" id="b2Dates"></p>
+    <p class="b2-note" id="b2Note">This page opens only Jennifer Lindsay’s group, booking 310. The real booking is read-only.</p>
+  </header>
+  <div class="b2-bar">
+    <a class="b2-btn" id="b2Plan" href="planner2.html">Week plan</a>
+    <span class="b2-status" id="b2Status"></span>
+  </div>
+  <main class="b2-main">
+    <aside class="b2-side" id="b2Side" aria-label="Guests and sections"></aside>
+    <div class="b2-body" id="b2Body"></div>
+  </main>
+  <script src="booking2.js" defer></script>
+</body>
+</html>
