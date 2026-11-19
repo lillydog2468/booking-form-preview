@@ -312,10 +312,19 @@
     (plan && plan.days || []).forEach(function (day) {
       (day && day.blocks || []).forEach(function (stop) {
         var id = stop && (stop.placeId || stop.place_id);
-        if (id) ids[String(id)] = true;
+        if (!id) return;
+        var key = String(id);
+        ids[key] = (ids[key] || 0) + 1;
       });
     });
     return ids;
+  }
+
+  function placeUseMark(count) {
+    var n = Number(count) || 0;
+    if (n >= 2) return 'many';
+    if (n === 1) return 'once';
+    return 'none';
   }
 
   var GROUP_ORDER = ['hotel', 'factory', 'shop', 'antique', 'restaurant', 'snack', 'experience', 'museum', 'school', 'viewpoint', 'other'];
@@ -563,6 +572,7 @@
     filterPlaces: filterPlaces,
     groupPlaces: groupPlaces,
     usedPlaceIds: usedPlaceIds,
+    placeUseMark: placeUseMark,
     primaryType: primaryType,
     placeGesture: placeGesture,
     pickupRows: pickupRows,

@@ -169,20 +169,34 @@
         ? PlaceCategories.groupLabel(group.id)
         : group.id;
       var cards = group.places.map(function (place) {
-        var tone = placeTone(place);
         var on = state.selected === place.id ? ' on' : '';
-        var mark = used[String(place.id)] ? '<span class="p2-used">On this week</span>' : '';
-        return '<div role="button" tabindex="0" class="p2-card' + on + '" data-place="' + esc(place.id) + '" title="Drag onto a day">'
+        var count = used[String(place.id)] || 0;
+        var use = Planner2.placeUseMark(count);
+        var useClass = use === 'once' ? ' is-used-once' : (use === 'many' ? ' is-used-many' : '');
+        var hint = 'Drag onto a day';
+        if (count === 1) hint += ' · used once';
+        else if (count > 1) hint += ' · used ' + count + ' times';
+        return '<div role="button" tabindex="0" class="p2-card' + on + useClass + '" data-place="' + esc(place.id) + '" data-used="' + count + '" title="' + esc(hint) + '">'
           + '<span class="p2-grip" aria-hidden="true"></span>'
-          + '<span class="p2-card-name">' + esc(place.nickname || place.name) + '</span>' + mark + '</div>';
+          + '<span class="p2-card-name">' + esc(place.nickname || place.name) + '</span></div>';
       }).join('');
       return '<section class="p2-group"><h3>' + esc(heading) + '</h3>' + cards + '</section>';
     }).join('') : '<p class="p2-note">No places.</p>';
     $('p2Chips').querySelectorAll('.p2-card').forEach(function (card) {
       var place = state.places.find(function (item) { return item.id === card.getAttribute('data-place'); });
       var tone = place ? placeTone(place) : null;
-      if (tone && tone.palette) {
+      var count = Number(card.getAttribute('data-used')) || 0;
+      if (count >= 2) {
+        card.style.background = '#b42318';
+        card.style.color = '#fff';
+        card.style.boxShadow = 'none';
+      } else if (count === 1 && tone && tone.palette) {
+        card.style.background = 'linear-gradient(90deg, ' + tone.palette.wash + ' 0 50%, #f4c7c7 50% 100%)';
+        card.style.color = '#1c1b19';
+        card.style.boxShadow = 'inset 4px 0 0 ' + tone.palette.stripe;
+      } else if (tone && tone.palette) {
         card.style.background = tone.palette.wash;
+        card.style.color = '';
         card.style.boxShadow = 'inset 4px 0 0 ' + tone.palette.stripe;
       }
       bindPlacePointer(card);

@@ -54,6 +54,12 @@ body {
   background-size: 6px 5px; background-position: center; background-repeat: repeat;
 }
 .p2-card.on { outline: 2px solid #3d6b4f; }
+.p2-card.is-used-many { color: #fff; }
+.p2-card.is-used-many .p2-card-name { color: #fff; }
+.p2-card.is-used-many .p2-grip {
+  background-image: radial-gradient(circle, #fff 1.15px, transparent 1.3px);
+}
+.p2-card.is-used-once .p2-card-name { color: #1c1b19; }
 .p2-card-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p2-used { display: block; margin-top: 1px; font-size: 10px; font-weight: 650; color: #5c574e; }
 .p2-search {

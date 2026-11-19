@@ -157,9 +157,17 @@ test('a new place and a last-day drop-off use the same clock', () => {
   const flat = groups.reduce(function (n, group) { return n + group.places.length; }, 0);
   assert.equal(flat, P.samplePlaces().length);
   const used = P.usedPlaceIds(P.samplePlan());
-  assert.equal(used.kf02, true);
-  assert.equal(used.kf03, true);
+  assert.equal(used.kf02, 2);
+  assert.equal(used.kf03, 2);
+  assert.equal(used.km01, 1);
+  assert.equal(used.kr06, 1);
   assert.equal(used.missing, undefined);
+  assert.equal(P.placeUseMark(0), 'none');
+  assert.equal(P.placeUseMark(1), 'once');
+  assert.equal(P.placeUseMark(3), 'many');
+  assert.match(app, /is-used-once/);
+  assert.match(app, /is-used-many/);
+  assert.match(css, /\.p2-card\.is-used-many[\s\S]*color:\s*#fff/);
 });
 
 test('the page saves the open booking and leaves the bookings table alone', () => {
