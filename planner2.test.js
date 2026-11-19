@@ -145,6 +145,10 @@ test('a new place and a last-day drop-off use the same clock', () => {
   const places = P.filterPlaces(P.samplePlaces(), 'antik', 'shop');
   assert.equal(places.length, 1);
   assert.equal(places[0].id, 'ks01');
+  const both = P.filterPlaces(P.samplePlaces(), '', ['factory', 'viewpoint']);
+  assert.deepEqual(both.map(function (place) { return place.id; }).sort(), ['kf02', 'kf03', 'kr01']);
+  assert.equal(P.filterPlaces(P.samplePlaces(), '', []).length, P.samplePlaces().length);
+  assert.equal(P.filterPlaces(P.samplePlaces(), '', 'shop').length, P.filterPlaces(P.samplePlaces(), '', ['shop']).length);
   const groups = P.groupPlaces(P.samplePlaces(), '', 'all');
   const factory = groups.find(function (group) { return group.id === 'factory'; });
   assert.ok(factory);

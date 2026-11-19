@@ -336,15 +336,28 @@
     });
   }
 
+  function chosenTypes(typeId) {
+    var list = Array.isArray(typeId) ? typeId : [typeId];
+    var out = [];
+    list.forEach(function (item) {
+      var id = String(item == null ? '' : item).trim();
+      if (!id || id === 'all' || out.indexOf(id) !== -1) return;
+      out.push(id);
+    });
+    return out;
+  }
+
+  function placeHasType(place, type) {
+    var types = place.types && place.types.length ? place.types : [place.type || 'other'];
+    return types.indexOf(type) !== -1 || place.type === type;
+  }
+
   function filterPlaces(places, query, typeId) {
     var q = String(query || '').trim().toLowerCase();
-    var type = String(typeId || 'all');
+    var chosen = chosenTypes(typeId);
     return (places || []).filter(function (place) {
       if (!place || !place.name) return false;
-      if (type !== 'all') {
-        var types = place.types && place.types.length ? place.types : [place.type || 'other'];
-        if (types.indexOf(type) === -1 && place.type !== type) return false;
-      }
+      if (chosen.length && !chosen.some(function (type) { return placeHasType(place, type); })) return false;
       if (!q) return true;
       var hay = [place.name, place.nickname, place.address].join(' ').toLowerCase();
       return hay.indexOf(q) !== -1;
