@@ -45,6 +45,49 @@ test('any numbered booking can be planned, and the sample stays booking 310', ()
   assert.equal(jennifer.tourHotelName, 'Park Hotel');
 });
 
+test('a stale plan takes its dates from the booking and keeps blocks on those days', () => {
+  const booking = {
+    id: 292,
+    group_name: 'Dorris',
+    tour_arrival_date: '2027-10-02',
+    departure_date: '2027-10-10',
+  };
+  const stale = {
+    bookingKey: '292',
+    arrivalDate: '2027-10-02',
+    departureDate: '2027-10-02',
+    days: [],
+  };
+  assert.equal(P.planDatesMatchBooking(stale, booking), false);
+  P.alignPlanToBooking(stale, booking);
+  assert.equal(stale.arrivalDate, '2027-10-02');
+  assert.equal(stale.departureDate, '2027-10-10');
+  assert.equal(stale.days.length, 9);
+  assert.equal(stale.days[0].date, '2027-10-02');
+  assert.equal(stale.days[8].date, '2027-10-10');
+  assert.equal(stale.days.every(function (day) { return day.blocks.length === 0; }), true);
+  assert.equal(P.planDatesMatchBooking(stale, booking), true);
+  const kept = {
+    arrivalDate: '2026-01-01',
+    departureDate: '2026-01-02',
+    days: [
+      { date: '2027-09-01', blocks: [{ id: 'old', title: 'Outside' }] },
+      { date: '2027-10-04', blocks: [{ id: 'bead', title: 'Matubo' }] },
+    ],
+  };
+  P.alignPlanToBooking(kept, booking);
+  assert.equal(kept.days.length, 9);
+  assert.equal(kept.days[2].date, '2027-10-04');
+  assert.equal(kept.days[2].blocks[0].title, 'Matubo');
+  assert.equal(kept.days.some(function (day) { return day.date === '2027-09-01'; }), false);
+  const app = fs.readFileSync(path.join(__dirname, 'planner2.js'), 'utf8');
+  const save = app.slice(app.indexOf('async function savePlan'), app.indexOf('function placeFromRow'));
+  assert.match(save, /alignPlanToBooking/);
+  assert.match(save, /planDatesMatchBooking/);
+  const load = app.slice(app.indexOf('async function loadLive'), app.indexOf('function planIsDirty'));
+  assert.match(load, /alignPlanToBooking/);
+});
+
 test('iPad and Mac show the week, a phone shows one day', () => {
   assert.equal(P.usesPhoneLayout(390), true);
   assert.equal(P.usesPhoneLayout(700), true);
@@ -139,8 +182,9 @@ test('the page saves the open booking and leaves the bookings table alone', () =
   assert.match(app, /placeGesture/);
   assert.match(app, /gesture === 'scroll'/);
   assert.match(app, /Jennifer Lindsay/);
-  assert.equal(oldHtml.includes('planner2'), false);
-  assert.equal(oldJs.includes('planner2'), false);
+  assert.equal(oldHtml.includes('src="planner2.js"'), false);
+  assert.match(oldHtml, /planner2-model\.js/);
+  assert.match(oldJs, /alignPlanToBooking/);
   const sample = P.samplePlan();
   const model = WeekOverview.build(sample, { px: 1, focusDay: null });
   assert.equal(model.start, 8 * 60);

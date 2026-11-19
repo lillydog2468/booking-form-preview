@@ -109,7 +109,6 @@ body {
   -webkit-user-select: none; user-select: none;
 }
 body.is-dragging, body.is-dragging * { cursor: grabbing; -webkit-user-select: none; user-select: none; }
-body.is-resizing, body.is-resizing * { cursor: col-resize; -webkit-user-select: none; user-select: none; }
 .ov-time { display: inline; margin-right: 4px; font-weight: 700; font-size: 11px; font-variant-numeric: tabular-nums; }
 .ov-name { display: inline; font-weight: 650; white-space: normal; overflow: visible; text-overflow: unset; }
 .ov-guests { display: block; font-size: 10px; color: #5c574e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -184,7 +183,6 @@ body.is-resizing, body.is-resizing * { cursor: col-resize; -webkit-user-select: 
 }
 html.is-phone body { height: auto; display: block; overflow: auto; }
 html.is-phone .p2-main { flex-direction: column; max-width: 100%; }
-html.is-phone .p2-split { display: none; }
 html.is-phone .p2-tray { position: static; flex: none; width: 100%; height: auto; max-height: 240px; }
 html.is-phone .p2-scroll { width: 100%; overflow-x: hidden; }
 html.is-phone .ov-day ~ .ov-day { display: none; }
@@ -206,8 +204,8 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
   .p2-main { flex: 1 1 auto; min-height: 0; gap: 0; padding: 0; align-items: stretch; }
   .p2-tray {
     position: relative; top: auto; right: auto; bottom: auto; left: auto;
-    flex: 0 0 var(--p2-places, 380px); width: var(--p2-places, 380px); height: auto; max-height: none;
-    align-self: stretch; margin: 0; border-radius: 0; border: 0;
+    flex: 0 0 380px; width: 380px; height: auto; max-height: none;
+    align-self: stretch; margin: 0; border-radius: 0; border-top: 0; border-bottom: 0; border-left: 0;
     display: flex; flex-direction: column; overflow: hidden;
   }
   .p2-groups { flex: 1 1 auto; min-height: 0; overflow: auto; display: block; }
@@ -215,17 +213,6 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
   .p2-group h3 { grid-column: 1 / -1; margin: 0; font-size: 10px; }
   .p2-card { padding: 0 2px; margin: 0; min-height: 16px; font-size: 11px; line-height: 1.1; }
   .p2-used { display: none; }
-  .p2-split {
-    flex: 0 0 12px; width: 12px; cursor: col-resize; touch-action: none;
-    position: relative; background: #fff; z-index: 3;
-  }
-  .p2-split::before {
-    content: ''; position: absolute; top: 0; bottom: 0; left: 5px; width: 2px; background: #e2ddd4;
-  }
-  .p2-split::after {
-    content: ''; position: absolute; top: 50%; left: 1px; width: 10px; height: 36px;
-    transform: translateY(-50%); border-radius: 5px; border: 1px solid #d9d1c4; background: #f7f5f1;
-  }
   .p2-scroll {
     position: relative; top: auto; right: auto; bottom: auto; left: auto;
     flex: 1 1 auto; min-width: 0; min-height: 0; height: auto;
@@ -249,7 +236,6 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
   .b2-summary { display: block; }
   .b2-details-toggle, .b2-brief, .b2-tools { display: none; }
   .p2-main { min-height: 0; gap: 10px; padding: 0 12px 24px; }
-  .p2-split { display: none; }
   .p2-tray, .p2-scroll { position: static; width: 100%; height: auto; max-height: none; flex: none; overflow: visible; }
 }
 .place-pop { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }

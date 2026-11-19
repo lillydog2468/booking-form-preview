@@ -742,6 +742,16 @@
     var payload = JSON.parse(JSON.stringify(state.plan));
     var id = bookingId();
     payload.bookingKey = String(id);
+    if (state.bookingRow) {
+      Planner2.alignPlanToBooking(payload, state.bookingRow);
+      Planner2.alignPlanToBooking(state.plan, state.bookingRow);
+      if (!Planner2.planDatesMatchBooking(payload, state.bookingRow)) {
+        state.saving = false;
+        paintSaveStatus('unsaved');
+        setStatus('Not saved — the tour dates do not match the booking');
+        return;
+      }
+    }
     delete payload.sample;
     if (window.PlanSync) PlanSync.stamp(payload);
     var updatedAt = new Date().toISOString();
@@ -821,6 +831,7 @@
       .maybeSingle();
     if (planRow.error) throw planRow.error;
     state.row = planRow.data || null;
+    state.bookingRow = booking.data || null;
     if (state.row && state.row.payload) {
       state.plan = state.row.payload;
       state.plan.bookingKey = String(id);
@@ -828,6 +839,7 @@
     } else {
       state.plan = Planner2.emptyPlanFromBooking(booking.data || { id: id, group_name: 'Booking ' + id });
     }
+    if (state.bookingRow) Planner2.alignPlanToBooking(state.plan, state.bookingRow);
     if (booking.data && booking.data.group_name) state.plan.groupName = booking.data.group_name;
     var members = await state.sb.from('members')
       .select('id, first_name, last_name, prague_stays, arrival_date, departure_date, arrival_flight, departure_flight, arrival_time, departure_time')
@@ -855,6 +867,7 @@
     if (!row || !row.payload || (row.updated_at && row.updated_at === state.seenUpdatedAt)) return;
     var remote = row.payload;
     remote.bookingKey = String(bookingId());
+    if (state.bookingRow) Planner2.alignPlanToBooking(remote, state.bookingRow);
     state.seenUpdatedAt = row.updated_at || state.seenUpdatedAt;
     if (planIsDirty() && window.PlanSync && !PlanSync.sameSchedule(state.plan, remote)) {
       paintSaveStatus('unsaved');
@@ -898,77 +911,10 @@
     render();
   }
 
-  function wideLayout() {
-    if (state.phone) return false;
-    return window.matchMedia && window.matchMedia('(min-width: 761px)').matches;
-  }
-
-  function splitPointer() {
-    var coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    var points = navigator.maxTouchPoints || 0;
-    return SplitPane.pointerKind({ coarse: coarse, maxTouchPoints: points });
-  }
-
-  function applyPlacesWidth(px) {
-    var main = document.querySelector('.p2-main');
-    if (!main) return;
-    main.style.setProperty('--p2-places', px + 'px');
-  }
-
-  function bindSplit() {
-    var handle = $('p2Split');
-    var main = document.querySelector('.p2-main');
-    if (!handle || !main || !window.SplitPane || handle.dataset.splitBound) return;
-    handle.dataset.splitBound = '1';
-    var key = SplitPane.storageKey(splitPointer());
-    function total() { return main.getBoundingClientRect().width; }
-    function applySaved() {
-      if (!wideLayout()) return;
-      var saved = SplitPane.read(window.localStorage, key);
-      var width = SplitPane.clamp(saved == null ? SplitPane.DEFAULT_PX : saved, total(), handle.offsetWidth || 12);
-      applyPlacesWidth(width);
-    }
-    applySaved();
-    window.addEventListener('resize', applySaved);
-    handle.addEventListener('pointerdown', function (event) {
-      if (!wideLayout()) return;
-      if (event.button != null && event.button !== 0) return;
-      event.preventDefault();
-      var pointer = event.pointerId;
-      var startX = event.clientX;
-      var startW = SplitPane.clamp(parseFloat(getComputedStyle(main).getPropertyValue('--p2-places')) || main.querySelector('.p2-tray').getBoundingClientRect().width, total(), handle.offsetWidth || 12);
-      try { handle.setPointerCapture(pointer); } catch (_) { /* the finger can still move */ }
-      document.body.classList.add('is-resizing');
-      function move(e) {
-        if (e.pointerId !== pointer) return;
-        if (e.cancelable) e.preventDefault();
-        applyPlacesWidth(SplitPane.clamp(startW + (e.clientX - startX), total(), handle.offsetWidth || 12));
-      }
-      function end(e) {
-        if (e.pointerId !== pointer) return;
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', end);
-        handle.removeEventListener('pointercancel', end);
-        document.body.classList.remove('is-resizing');
-        var width = parseFloat(getComputedStyle(main).getPropertyValue('--p2-places'));
-        if (Number.isFinite(width)) SplitPane.write(window.localStorage, key, width);
-      }
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', end);
-      handle.addEventListener('pointercancel', end);
-    });
-    handle.addEventListener('dblclick', function () {
-      if (!wideLayout()) return;
-      SplitPane.clear(window.localStorage, key);
-      applyPlacesWidth(SplitPane.clamp(SplitPane.DEFAULT_PX, total(), handle.offsetWidth || 12));
-    });
-  }
-
   var chromeBound = false;
   function bindChrome() {
     if (chromeBound) return;
     chromeBound = true;
-    bindSplit();
     var placesBtn = $('p2Places');
     if (placesBtn) {
       placesBtn.addEventListener('click', function () {

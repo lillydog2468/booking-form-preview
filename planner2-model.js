@@ -382,6 +382,62 @@
     return out;
   }
 
+  function isoDay(value) {
+    var match = /^(\d{4}-\d{2}-\d{2})/.exec(String(value == null ? '' : value).trim());
+    return match ? match[1] : '';
+  }
+
+  function bookingSpan(booking) {
+    var row = booking || {};
+    var arrival = isoDay(row.tour_arrival_date != null && String(row.tour_arrival_date).trim() !== '' ? row.tour_arrival_date : row.arrivalDate);
+    var departure = isoDay(row.departure_date != null && String(row.departure_date).trim() !== '' ? row.departure_date : row.departureDate);
+    if (!arrival && !departure) return null;
+    if (!arrival) arrival = departure;
+    if (!departure) departure = arrival;
+    return { arrival: arrival, departure: departure, dates: enumerateDates(arrival, departure) };
+  }
+
+  /**
+   * The bookings row owns the tour dates. A saved plan may be stale
+   * (booking 292 had departureDate equal to arrival and days: []).
+   * Fill a day for every date in the booking range and keep blocks
+   * already stored on those dates.
+   */
+  function alignPlanToBooking(plan, booking) {
+    if (!plan || typeof plan !== 'object') return plan;
+    var span = bookingSpan(booking);
+    if (!span) return plan;
+    var byDate = {};
+    (Array.isArray(plan.days) ? plan.days : []).forEach(function (day) {
+      var date = day && isoDay(day.date);
+      if (date && !byDate[date]) byDate[date] = day;
+    });
+    plan.arrivalDate = span.arrival;
+    plan.departureDate = span.departure;
+    plan.days = span.dates.map(function (date) {
+      var kept = byDate[date];
+      if (!kept) return { date: date, blocks: [] };
+      kept.date = date;
+      if (!Array.isArray(kept.blocks)) kept.blocks = [];
+      return kept;
+    });
+    return plan;
+  }
+
+  function planDatesMatchBooking(plan, booking) {
+    var span = bookingSpan(booking);
+    if (!span) return true;
+    if (!plan) return false;
+    if (isoDay(plan.arrivalDate) !== span.arrival || isoDay(plan.departureDate) !== span.departure) return false;
+    var have = (plan.days || []).map(function (day) { return day && isoDay(day.date); });
+    if (have.length !== span.dates.length) return false;
+    var i;
+    for (i = 0; i < span.dates.length; i += 1) {
+      if (have[i] !== span.dates[i]) return false;
+    }
+    return true;
+  }
+
   function emptyPlanFromBooking(booking) {
     var row = booking || {};
     var arrival = String(row.tour_arrival_date || row.arrivalDate || '').slice(0, 10);
@@ -504,6 +560,8 @@
     routeHref: routeHref,
     guestLine: guestLine,
     enumerateDates: enumerateDates,
+    alignPlanToBooking: alignPlanToBooking,
+    planDatesMatchBooking: planDatesMatchBooking,
     emptyPlanFromBooking: emptyPlanFromBooking,
     samplePlan: samplePlan,
     samplePlaces: samplePlaces,

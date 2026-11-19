@@ -4279,6 +4279,11 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
 
   async function savePlanMerged(plan, opts) {
     const force = !!(opts && opts.force);
+    const bookingForDates = plan ? bookingRecordForPlan(plan) : null;
+    if (bookingForDates && window.Planner2 && Planner2.alignPlanToBooking) {
+      Planner2.alignPlanToBooking(plan, bookingForDates);
+      if (!Planner2.planDatesMatchBooking(plan, bookingForDates)) return { ok: false, wrote: false };
+    }
     if (plan && Array.isArray(plan.hotels)) plan.hotels = normalizePlanHotels(plan.hotels);
     if (plan) plan.days = prepareDaysForSave(plan.days, plan);
     if (!state.supabasePlanTable || !plan) return { ok: false, wrote: false };
@@ -5773,9 +5778,9 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
       existing.tourHotelName = base.tourHotelName;
       if (base.tourHotelPlaceId) existing.tourHotelPlaceId = base.tourHotelPlaceId;
     }
-    if (!existing.arrivalDate && base.arrivalDate) existing.arrivalDate = base.arrivalDate;
-    if (!existing.departureDate && base.departureDate) existing.departureDate = base.departureDate;
-    if (base.arrivalDate && (existing.arrivalDate !== base.arrivalDate || existing.departureDate !== base.departureDate)) {
+    if (window.Planner2 && Planner2.alignPlanToBooking) {
+      Planner2.alignPlanToBooking(existing, b);
+    } else if (base.arrivalDate && (existing.arrivalDate !== base.arrivalDate || existing.departureDate !== base.departureDate)) {
       existing.arrivalDate = base.arrivalDate;
       existing.departureDate = base.departureDate;
       mergeDays(existing, base.days);
