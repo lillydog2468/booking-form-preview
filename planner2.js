@@ -107,7 +107,9 @@
     var model = WeekOverview.build(plan, {
       today: '',
       focusDay: state.phone ? state.day : null,
-      label: function (stop) { return String(stop.title || stop.hotelName || '').trim(); },
+      label: function (stop) {
+        return Planner2.displayStopTitle(stop, cataloguePlace(stop && stop.placeId));
+      },
       cue: cueFor,
       guests: function (stop) { return Planner2.guestLine(stop, plan.guests); },
       hotel: hotelFor,
@@ -173,12 +175,13 @@
         var count = used[String(place.id)] || 0;
         var use = Planner2.placeUseMark(count);
         var useClass = use === 'once' ? ' is-used-once' : (use === 'many' ? ' is-used-many' : '');
-        var hint = 'Drag onto a day';
+        var label = Planner2.placeLabel(place);
+        var hint = label;
         if (count === 1) hint += ' · used once';
         else if (count > 1) hint += ' · used ' + count + ' times';
         return '<div role="button" tabindex="0" class="p2-card' + on + useClass + '" data-place="' + esc(place.id) + '" data-used="' + count + '" title="' + esc(hint) + '">'
           + '<span class="p2-grip" aria-hidden="true"></span>'
-          + '<span class="p2-card-name">' + esc(place.nickname || place.name) + '</span></div>';
+          + '<span class="p2-card-name">' + esc(label) + '</span></div>';
       }).join('');
       return '<section class="p2-group"><h3>' + esc(heading) + '</h3>' + cards + '</section>';
     }).join('') : '<p class="p2-note">No places.</p>';
@@ -221,7 +224,7 @@
       var tone = placeTone(place);
       return {
         icon: tone && tone.cue && tone.cue.emoji ? tone.cue.emoji : '',
-        name: place.nickname || place.name || 'Place',
+        name: Planner2.placeLabel(place),
         time: '',
       };
     }
@@ -659,6 +662,11 @@
     $('p2Sheet').hidden = false;
   }
 
+  function cataloguePlace(id) {
+    if (!id) return null;
+    return (state.places || []).find(function (item) { return String(item.id) === String(id); }) || null;
+  }
+
   function placeForStop(stop) {
     if (!stop || !stop.placeId) return null;
     return (state.places || []).find(function (place) {
@@ -715,11 +723,12 @@
     var place = stop.placeId ? placeForStop(stop) : null;
     var pop = place && window.PlacePopup ? PlacePopup.popupHtml(place) : '';
     var nav = drop ? dropoffNavHtml(Planner2.dropoffRows(state.plan)) : (rows.length ? pickupNavHtml(rows) : '');
-    $('p2SheetTitle').textContent = drop ? 'Prague drop-off' : (rows.length > 1 ? 'Prague pick-up' : (stop.title || 'Stop'));
+    var shown = Planner2.displayStopTitle(stop, stop.placeId ? cataloguePlace(stop.placeId) : null);
+    $('p2SheetTitle').textContent = drop ? 'Prague drop-off' : (rows.length > 1 ? 'Prague pick-up' : (shown || 'Stop'));
     $('p2SheetBody').innerHTML = nav
       + pop
       + '<label class="p2-field">Time<input type="time" id="p2EditTime" value="' + esc(stop.time || '') + '"></label>'
-      + '<label class="p2-field">Name<input type="text" id="p2EditTitle" value="' + esc(stop.title || '') + '"></label>'
+      + '<label class="p2-field">Name<input type="text" id="p2EditTitle" value="' + esc(shown || '') + '"></label>'
       + '<label class="p2-field">Notes<input type="text" id="p2EditNotes" value="' + esc(stop.notes || '') + '"></label>'
       + '<label class="p2-field">Address<input type="text" id="p2EditAddress" value="' + esc(stop.address || stop.hotelName || '') + '"></label>'
       + '<div class="p2-sheet-actions"><button type="button" class="p2-btn" id="p2EditSave">Save</button>'

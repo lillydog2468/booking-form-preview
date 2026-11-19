@@ -168,6 +168,17 @@ test('a new place and a last-day drop-off use the same clock', () => {
   assert.match(app, /is-used-once/);
   assert.match(app, /is-used-many/);
   assert.match(css, /\.p2-card\.is-used-many[\s\S]*color:\s*#fff/);
+  var lucka = { id: '4', name: 'Beads for You — Lucka', nickname: 'wood pile · Zolli · Zoli Duos' };
+  assert.equal(P.placeLabel(lucka), 'Beads for You — Lucka');
+  assert.equal(P.displayStopTitle({ title: 'Beads for You — Lucka', placeId: '4' }, lucka), 'Beads for You — Lucka');
+  assert.equal(P.displayStopTitle({ title: 'wood pile · Zolli · Zoli Duos', placeId: '4' }, lucka), 'Beads for You — Lucka');
+  assert.equal(P.displayStopTitle({ title: 'Keith wrote this', placeId: '4' }, lucka), 'Keith wrote this');
+  var renamed = { id: '4', name: 'beads4u', nickname: 'wood pile · Zolli · Zoli Duos' };
+  assert.equal(P.displayStopTitle({ title: 'wood pile · Zolli · Zoli Duos' }, renamed), 'beads4u');
+  assert.equal(P.displayStopTitle({ title: 'Beads for You — Lucka' }, renamed), 'Beads for You — Lucka');
+  assert.match(app, /placeLabel\(place\)/);
+  assert.match(app, /displayStopTitle/);
+  assert.equal(app.includes('place.nickname || place.name'), false);
 });
 
 test('the page saves the open booking and leaves the bookings table alone', () => {

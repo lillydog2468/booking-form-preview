@@ -307,6 +307,21 @@
     return String((place && place.type) || 'other');
   }
 
+  function placeLabel(place) {
+    return String(place && place.name || '').trim() || 'Place';
+  }
+
+  function displayStopTitle(stop, place) {
+    var title = String(stop && stop.title || '').trim();
+    var hotel = String(stop && stop.hotelName || '').trim();
+    if (!place) return title || hotel;
+    var name = String(place.name || '').trim();
+    var nick = String(place.nickname || '').trim();
+    if (!name) return title || hotel || nick;
+    if (!title || title === name || (nick && title === nick)) return name;
+    return title;
+  }
+
   function usedPlaceIds(plan) {
     var ids = {};
     (plan && plan.days || []).forEach(function (day) {
@@ -571,6 +586,8 @@
     addHandover: addHandover,
     filterPlaces: filterPlaces,
     groupPlaces: groupPlaces,
+    placeLabel: placeLabel,
+    displayStopTitle: displayStopTitle,
     usedPlaceIds: usedPlaceIds,
     placeUseMark: placeUseMark,
     primaryType: primaryType,
