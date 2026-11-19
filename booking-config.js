@@ -12,5 +12,5 @@
   // tour-planner.html and hides Day planner, Start planning, the Planner tab,
   // and the other old planner links. planner2.html is not affected.
   // Switch the old planner back on by setting this to false.
-  root.HIDE_OLD_PLANNING = true;
+  root.HIDE_OLD_PLANNING = false;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

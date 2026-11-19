@@ -1,6 +1,6 @@
 /*
- * Pure rules for the new test planner.
- * It opens one booking only: Jennifer Lindsay, booking 310.
+ * Pure rules for the week planner.
+ * Any saved booking can be opened. Booking 310 is only the sample week.
  * Times use the Overview clock (8:00–18:00, 15-minute snap).
  * Nothing here talks to the network.
  */
@@ -15,8 +15,15 @@
     return root.WeekOverview;
   }
 
+  function bookingNumber(id) {
+    var text = String(id == null ? '' : id).trim();
+    if (!/^\d+$/.test(text)) return null;
+    var n = Number(text);
+    return n > 0 ? n : null;
+  }
+
   function isAllowedBooking(id) {
-    return String(id == null ? '' : id).trim() === String(BOOKING_ID);
+    return bookingNumber(id) != null;
   }
 
   function canSave(plan) {
@@ -381,7 +388,7 @@
     var departure = String(row.departure_date || row.departureDate || '').slice(0, 10);
     var hotel = (row.hotels && row.hotels.name) || row.hotel_name || '';
     return {
-      bookingKey: String(BOOKING_ID),
+      bookingKey: String(bookingNumber(row.id) || ''),
       groupName: row.group_name || GROUP_NAME,
       arrivalDate: arrival,
       departureDate: departure,
@@ -473,6 +480,7 @@
     BOOKING_ID: BOOKING_ID,
     GROUP_NAME: GROUP_NAME,
     PHONE_MAX: PHONE_MAX,
+    bookingNumber: bookingNumber,
     isAllowedBooking: isAllowedBooking,
     canSave: canSave,
     usesPhoneLayout: usesPhoneLayout,

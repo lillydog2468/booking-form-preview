@@ -1,12 +1,19 @@
 /*
- * Standalone test planner for Jennifer Lindsay, booking 310.
+ * Week planner for the booking named in the address.
  * Wide screens show the whole week. A phone shows one day and swipes.
- * Saves only that booking's planner_plans row. It does not write the bookings table.
+ * Saves that booking's planner_plans row when the week is edited. It does not write the bookings table. Opening a booking with no plan keeps an empty week on screen until an edit is saved.
  */
 (function () {
   'use strict';
 
-  var ONLY = Planner2.BOOKING_ID;
+  function bookingId() {
+    if (state.bookingId) return state.bookingId;
+    var params = new URLSearchParams(location.search);
+    var named = params.get('booking');
+    if (named) return Planner2.bookingNumber(named);
+    return Planner2.BOOKING_ID;
+  }
+
   var state = {
     sample: false,
     plan: null,
@@ -87,7 +94,7 @@
       if (datesEl) datesEl.textContent = [plan.arrivalDate, plan.departureDate].filter(Boolean).join(' – ');
       var noteEl = $('p2Note');
       if (noteEl) {
-        var note = 'This page opens only Jennifer Lindsay’s group, booking 310. The old planner is unchanged.';
+        var note = 'Booking details are read-only. The week plan is on this page.';
         if (state.sample) note = 'Sample week for layout. Nothing is saved. ' + note;
         else if (state.refused) note = 'Other bookings are not opened here. ' + note;
         noteEl.textContent = note;
@@ -733,7 +740,8 @@
     state.saving = true;
     setStatus('Saving…');
     var payload = JSON.parse(JSON.stringify(state.plan));
-    payload.bookingKey = String(ONLY);
+    var id = bookingId();
+    payload.bookingKey = String(id);
     delete payload.sample;
     if (window.PlanSync) PlanSync.stamp(payload);
     var updatedAt = new Date().toISOString();
@@ -742,17 +750,17 @@
         var inserted = await state.sb.from('planner_plans').insert({
           payload: payload,
           updated_at: updatedAt,
-          booking_id: ONLY,
-          client_key: 'booking:' + ONLY,
+          booking_id: id,
+          client_key: 'booking:' + id,
         }).select('id, updated_at, booking_id').single();
         if (inserted.error) throw inserted.error;
-        if (Number(inserted.data.booking_id) !== ONLY) throw new Error('Refused a write that was not booking 310');
+        if (Number(inserted.data.booking_id) !== id) throw new Error('Refused a write for a different booking');
         state.row = inserted.data;
       } else {
         var query = state.sb.from('planner_plans').update({
           payload: payload,
           updated_at: updatedAt,
-        }).eq('id', state.row.id).eq('booking_id', 310);
+        }).eq('id', state.row.id).eq('booking_id', id);
         if (state.row.updated_at) query = query.eq('updated_at', state.row.updated_at);
         var updated = await query.select('id, updated_at, booking_id');
         if (updated.error) throw updated.error;
@@ -769,7 +777,7 @@
       state.savedPlan = JSON.parse(JSON.stringify(state.plan));
       state.unsaved = false;
       paintSaveStatus('current', state.plan);
-      setStatus('Saved booking 310');
+      setStatus('Saved booking ' + id);
     } catch (err) {
       console.warn(err);
       paintSaveStatus('unsaved');
@@ -795,29 +803,35 @@
   }
 
   async function loadLive() {
-    setStatus('Loading booking 310…');
+    var id = bookingId();
+    if (!id) {
+      setStatus('This address does not name a booking');
+      return;
+    }
+    state.bookingId = id;
+    setStatus('Loading booking ' + id + '…');
     var booking = await state.sb.from('bookings')
       .select('id, group_name, tour_arrival_date, departure_date, hotels(name)')
-      .eq('id', ONLY)
+      .eq('id', id)
       .maybeSingle();
     if (booking.error) throw booking.error;
     var planRow = await state.sb.from('planner_plans')
       .select('id, payload, updated_at, booking_id')
-      .eq('booking_id', 310)
+      .eq('booking_id', id)
       .maybeSingle();
     if (planRow.error) throw planRow.error;
     state.row = planRow.data || null;
     if (state.row && state.row.payload) {
       state.plan = state.row.payload;
-      state.plan.bookingKey = String(ONLY);
+      state.plan.bookingKey = String(id);
       if (!Array.isArray(state.plan.days)) state.plan.days = [];
     } else {
-      state.plan = Planner2.emptyPlanFromBooking(booking.data || { id: ONLY, group_name: Planner2.GROUP_NAME });
+      state.plan = Planner2.emptyPlanFromBooking(booking.data || { id: id, group_name: 'Booking ' + id });
     }
     if (booking.data && booking.data.group_name) state.plan.groupName = booking.data.group_name;
     var members = await state.sb.from('members')
       .select('id, first_name, last_name, prague_stays, arrival_date, departure_date, arrival_flight, departure_flight, arrival_time, departure_time')
-      .eq('booking_id', ONLY);
+      .eq('booking_id', id);
     state.members = !members.error && members.data ? members.data : [];
     var places = await state.sb.from('planner_places')
       .select('*')
@@ -825,7 +839,7 @@
     if (!places.error && places.data) state.places = places.data.map(placeFromRow);
     state.savedPlan = JSON.parse(JSON.stringify(state.plan));
     state.seenUpdatedAt = state.row && state.row.updated_at;
-    setStatus(state.row ? 'Booking 310 loaded' : 'No saved plan yet — edits will create one');
+    setStatus(state.row ? ('Booking ' + id + ' loaded') : 'No saved plan yet — edits will create one');
     paintSaveStatus('current', state.plan);
     watchPlan();
     render();
@@ -840,7 +854,7 @@
   function applyRemoteRow(row) {
     if (!row || !row.payload || (row.updated_at && row.updated_at === state.seenUpdatedAt)) return;
     var remote = row.payload;
-    remote.bookingKey = String(ONLY);
+    remote.bookingKey = String(bookingId());
     state.seenUpdatedAt = row.updated_at || state.seenUpdatedAt;
     if (planIsDirty() && window.PlanSync && !PlanSync.sameSchedule(state.plan, remote)) {
       paintSaveStatus('unsaved');
@@ -864,7 +878,7 @@
     if (state.sample || !state.sb || !state.plan) return;
     if (document.visibilityState === 'hidden') return;
     try {
-      var res = await state.sb.from('planner_plans').select('id, booking_id, updated_at, payload').eq('booking_id', ONLY).maybeSingle();
+      var res = await state.sb.from('planner_plans').select('id, booking_id, updated_at, payload').eq('booking_id', bookingId()).maybeSingle();
       if (!res.error && res.data) applyRemoteRow(res.data);
     } catch (err) { console.warn(err); }
   }
@@ -873,7 +887,7 @@
     if (state.stopWatch) state.stopWatch();
     state.stopWatch = null;
     if (state.sample || !state.sb || !window.PlanSync) return;
-    state.stopWatch = PlanSync.watch(state.sb, ONLY, { onRow: applyRemoteRow, poll: pollPlan });
+    state.stopWatch = PlanSync.watch(state.sb, bookingId(), { onRow: applyRemoteRow, poll: pollPlan });
   }
 
   function bootSample() {
@@ -983,19 +997,19 @@
       state.sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       AuthGate.require(state.sb, { title: 'Jennifer Lindsay planner' }).then(function (session) {
         if (!session) {
-          setStatus('Sign in to open booking 310');
+          setStatus('Sign in to open this booking');
           return;
         }
         loadLive().catch(function (err) {
           console.warn(err);
-          setStatus('Could not load booking 310');
+          setStatus('Could not load this booking');
         });
       });
       return;
     }
     loadLive().catch(function (err) {
       console.warn(err);
-      setStatus('Could not load booking 310');
+      setStatus('Could not load this booking');
     });
   }
 

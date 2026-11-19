@@ -219,7 +219,7 @@ test('the planner, places stats, and hotel directory link years, groups, and peo
 
   const stats = fs.readFileSync(path.join(__dirname, 'places-stats.html'), 'utf8');
   assert.match(stats, /tour-planner\.html\?tab=visits/);
-  assert.match(stats, /tour-planner\.html\?booking=/);
+  assert.match(stats, /booking2\.html\?booking=/);
 
   const directory = fs.readFileSync(path.join(__dirname, 'hotel-directory.js'), 'utf8');
   assert.match(directory, /tab=visits/);

@@ -604,9 +604,8 @@
 
     function planHref(bookingId) {
       const id = String(bookingId || '');
-      if (id === '310') return 'booking2.html';
-      if (window.HIDE_OLD_PLANNING === true) return '';
-      return 'tour-planner.html?booking=' + encodeURIComponent(id);
+      if (!id) return '';
+      return 'booking2.html?booking=' + encodeURIComponent(id);
     }
 
     function yearHref(year, placeId) {

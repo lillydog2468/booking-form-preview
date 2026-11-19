@@ -1,11 +1,16 @@
 /*
- * Read-only booking page for Jennifer Lindsay, booking 310.
+ * Booking summary and week plan for the booking in the address.
  * ?preview=mock edits sample figures in memory only. No table is written.
  */
 (function () {
   'use strict';
 
-  var ONLY = Booking2.BOOKING_ID;
+  function bookingId() {
+    var params = new URLSearchParams(location.search);
+    var named = params.get('booking');
+    if (named) return Booking2.bookingNumber(named);
+    return Booking2.BOOKING_ID;
+  }
   var state = { view: null, sample: false, refused: false, sb: null, plannerStarted: false };
 
   function $(id) { return document.getElementById(id); }
@@ -29,6 +34,11 @@
     var view = state.view;
     if (!view) return;
     $('b2Title').textContent = view.groupName || Booking2.GROUP_NAME;
+    var home = $('b2Home');
+    if (home) {
+      var homeId = view.id || bookingId();
+      home.href = homeId ? ('booking-form.html?booking=' + encodeURIComponent(homeId)) : 'booking-form.html';
+    }
     var rooms = view.rooms || {};
     var roomCount = function (value) {
       var text = String(value == null ? '' : value).trim();
@@ -44,9 +54,9 @@
     if (brief) brief.textContent = [people, roomBits].filter(Boolean).join(' · ');
     var nights = view.nights == null ? '' : (view.nights + (view.nights === 1 ? ' night' : ' nights'));
     $('b2Dates').textContent = [view.arrival, view.departure].filter(Boolean).join(' – ') + (nights ? ' · ' + nights : '');
-    var note = 'This page opens only Jennifer Lindsay’s group, booking 310. Booking details are read-only. The week plan is on this page.';
+    var note = 'Booking details are read-only. The week plan is on this page.';
     if (state.sample) note = 'Sample booking. Edits stay on this screen and are not saved. ' + note;
-    else if (state.refused) note = 'Other bookings are not opened here. ' + note;
+    else if (state.refused) note = 'This address does not name a booking. ' + note;
     $('b2Note').textContent = note;
     $('b2Summary').innerHTML = summaryHtml(view);
     if (state.sample) bindSampleEdits();
@@ -168,17 +178,23 @@
     const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
     var sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     state.sb = sb;
-    var session = await AuthGate.require(sb, { title: 'Jennifer Lindsay booking' });
-    if (!session) {
-      setStatus('Sign in to read booking 310');
+    var id = bookingId();
+    if (!id) {
+      state.refused = true;
+      setStatus('This address does not name a booking');
       return;
     }
-    setStatus('Loading booking 310…');
-    var booking = await sb.from('bookings').select('*, hotels(name)').eq('id', 310).maybeSingle();
+    var session = await AuthGate.require(sb, { title: 'Booking ' + id });
+    if (!session) {
+      setStatus('Sign in to read booking ' + id);
+      return;
+    }
+    setStatus('Loading booking ' + id + '…');
+    var booking = await sb.from('bookings').select('*, hotels(name)').eq('id', id).maybeSingle();
     if (booking.error) throw booking.error;
-    var members = await sb.from('members').select('*').eq('booking_id', ONLY).order('id');
-    var flights = await sb.from('flights').select('*').eq('booking_id', ONLY).order('id');
-    var hotels = await sb.from('booking_hotels').select('*, hotels(name)').eq('booking_id', ONLY).order('sort_order');
+    var members = await sb.from('members').select('*').eq('booking_id', id).order('id');
+    var flights = await sb.from('flights').select('*').eq('booking_id', id).order('id');
+    var hotels = await sb.from('booking_hotels').select('*, hotels(name)').eq('booking_id', id).order('sort_order');
     var extras = {};
     var notes = '';
     var organiser = '';
@@ -189,7 +205,7 @@
       organiser = BookingExtras.organiserFullName(extras);
     }
     show(Booking2.present({
-      booking: booking.data || { id: ONLY, group_name: Booking2.GROUP_NAME },
+      booking: booking.data || { id: id, group_name: 'Booking ' + id },
       members: members.data || [],
       flights: flights.data || [],
       hotels: hotels.data || [],
@@ -217,7 +233,7 @@
   } else {
     loadLive().catch(function (err) {
       console.warn(err);
-      setStatus('Could not read booking 310');
+      setStatus('Could not read this booking');
     });
   }
 }());

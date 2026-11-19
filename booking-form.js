@@ -8488,8 +8488,7 @@
   function planningPageHref(id) {
     const key = String(id || '').trim();
     if (!key) return '';
-    if (key === '310') return 'booking2.html?booking=310';
-    return 'tour-planner.html?booking=' + encodeURIComponent(key);
+    return 'booking2.html?booking=' + encodeURIComponent(key);
   }
 
   function paintPlanningButton(tabId) {
@@ -8508,8 +8507,8 @@
   function openTourPlanner(tabId) {
     const id = openBookingId(tabId);
     window.location.href = id
-      ? ('tour-planner.html?booking=' + encodeURIComponent(id))
-      : 'tour-planner.html';
+      ? ('booking2.html?booking=' + encodeURIComponent(id))
+      : 'booking2.html';
   }
 
   function plannerLinkHref(tabId, tab, year) {

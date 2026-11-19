@@ -1,5 +1,6 @@
 /*
- * Read-only view of one booking: Jennifer Lindsay, booking 310.
+ * Read-only booking summary for whichever tour is open.
+ * Booking 310 is the sample. Nothing here writes.
  * Sample mode (?preview=mock) may be edited in memory. Nothing here writes.
  */
 (function (root) {
@@ -18,8 +19,15 @@
     { bg: '#e8f0ff', border: '#8aade0', ink: '#1c3a6e' },
   ];
 
+  function bookingNumber(id) {
+    var text = String(id == null ? '' : id).trim();
+    if (!/^\d+$/.test(text)) return null;
+    var n = Number(text);
+    return n > 0 ? n : null;
+  }
+
   function isAllowedBooking(id) {
-    return String(id == null ? '' : id).trim() === String(BOOKING_ID);
+    return bookingNumber(id) != null;
   }
 
   function usesPhoneLayout(width) {
@@ -121,8 +129,9 @@
     var src = input || {};
     var booking = src.booking || {};
     var sample = !!src.sample;
-    if (!sample && !isAllowedBooking(booking.id)) {
-      return { refused: true, readOnly: true, id: BOOKING_ID, groupName: GROUP_NAME };
+    var id = bookingNumber(booking.id);
+    if (!sample && id == null) {
+      return { refused: true, readOnly: true, id: null, groupName: GROUP_NAME };
     }
     var arrival = isoDate(booking.tour_arrival_date || booking.arrivalDate);
     var departure = isoDate(booking.departure_date || booking.departureDate);
@@ -180,7 +189,7 @@
       refused: false,
       readOnly: !sample,
       sample: sample,
-      id: BOOKING_ID,
+      id: id || BOOKING_ID,
       groupName: booking.group_name || GROUP_NAME,
       organiser: organiser,
       arrival: arrival,
@@ -250,6 +259,7 @@
     BOOKING_ID: BOOKING_ID,
     GROUP_NAME: GROUP_NAME,
     PHONE_MAX: PHONE_MAX,
+    bookingNumber: bookingNumber,
     isAllowedBooking: isAllowedBooking,
     usesPhoneLayout: usesPhoneLayout,
     nightsBetween: nightsBetween,

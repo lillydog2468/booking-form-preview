@@ -14,27 +14,35 @@ const app = fs.readFileSync(path.join(__dirname, 'planner2.js'), 'utf8');
 const oldHtml = fs.readFileSync(path.join(__dirname, 'tour-planner.html'), 'utf8');
 const oldJs = fs.readFileSync(path.join(__dirname, 'tour-planner.js'), 'utf8');
 
-test('the new page opens only Jennifer Lindsay, booking 310', () => {
+test('any numbered booking can be planned, and the sample stays booking 310', () => {
   assert.equal(P.BOOKING_ID, 310);
   assert.equal(P.GROUP_NAME, 'Jennifer Lindsay');
   assert.equal(P.isAllowedBooking(310), true);
   assert.equal(P.isAllowedBooking('310'), true);
-  assert.equal(P.isAllowedBooking(311), false);
+  assert.equal(P.isAllowedBooking(28), true);
+  assert.equal(P.isAllowedBooking(315), true);
   assert.equal(P.isAllowedBooking(''), false);
   assert.equal(P.isAllowedBooking(null), false);
+  assert.equal(P.canSave({ bookingKey: '28' }), true);
+  assert.equal(P.canSave({ bookingKey: '' }), false);
+  const empty = P.emptyPlanFromBooking({ id: 28, group_name: 'Sharon Harris', tour_arrival_date: '2027-05-17', departure_date: '2027-05-21' });
+  assert.equal(empty.bookingKey, '28');
+  assert.equal(empty.groupName, 'Sharon Harris');
+  assert.equal(empty.days.length, 5);
+  assert.equal(empty.days[0].blocks.length, 0);
   assert.equal(P.canSave({ bookingKey: '310' }), true);
-  assert.equal(P.canSave({ bookingKey: '20' }), false);
+  assert.equal(P.canSave({ bookingKey: '20' }), true);
   assert.equal(P.canSave(null), false);
-  const empty = P.emptyPlanFromBooking({
+  const jennifer = P.emptyPlanFromBooking({
     id: 310,
     group_name: 'Jennifer Lindsay',
     tour_arrival_date: '2027-05-10',
     departure_date: '2027-05-12',
     hotels: { name: 'Park Hotel' },
   });
-  assert.equal(empty.bookingKey, '310');
-  assert.equal(empty.days.length, 3);
-  assert.equal(empty.tourHotelName, 'Park Hotel');
+  assert.equal(jennifer.bookingKey, '310');
+  assert.equal(jennifer.days.length, 3);
+  assert.equal(jennifer.tourHotelName, 'Park Hotel');
 });
 
 test('iPad and Mac show the week, a phone shows one day', () => {
@@ -69,10 +77,14 @@ test('dragging keeps other times and follows the day pattern', () => {
   assert.equal(P.findStop(plan, 'snack').stop.time, '12:00');
   assert.notDeepEqual(plan.days[1].blocks.map(function (stop) { return stop.id + '@' + (stop.time || ''); }), before);
   const other = P.samplePlan();
-  other.bookingKey = '20';
+  other.bookingKey = '';
   other.sample = false;
   assert.equal(P.placeStop(other, 'gb', 1, '11:00'), false);
   assert.equal(P.findStop(other, 'gb').stop.time, '09:15');
+  const opened = P.samplePlan();
+  opened.bookingKey = '28';
+  opened.sample = false;
+  assert.equal(P.placeStop(opened, 'gb', 1, '11:00'), true);
 });
 
 test('a new place and a last-day drop-off use the same clock', () => {
@@ -103,8 +115,9 @@ test('a new place and a last-day drop-off use the same clock', () => {
   assert.equal(used.missing, undefined);
 });
 
-test('the page saves only booking 310 and leaves the old planner alone', () => {
-  assert.match(app, /booking_id', 310/);
+test('the page saves the open booking and leaves the bookings table alone', () => {
+  assert.match(app, /booking_id: id/);
+  assert.equal(app.includes("eq('booking_id', 310)"), false);
   assert.match(app, /planner_plans/);
   assert.equal(app.includes(".from('bookings').update"), false);
   assert.equal(app.includes('.from("bookings").update'), false);
@@ -164,6 +177,10 @@ test('the page saves only booking 310 and leaves the old planner alone', () => {
   assert.match(P.routeHref(['Hotel A'], { prefersApple: true }), /maps\.apple\.com/);
   assert.match(app, /data-ov-marker', 'dropoff'/);
   assert.match(app, /DragLabel/);
+  assert.match(bookingHtml, /id="b2Home"/);
   assert.match(bookingHtml, /b2Suggest/);
+  const formJs = fs.readFileSync(path.join(__dirname, 'booking-form.js'), 'utf8');
+  assert.match(formJs, /booking2\.html\?booking=/);
+  assert.equal(formJs.includes("key === '310'"), false);
   assert.match(bookingHtml, /b2PragueEnds/);
 });

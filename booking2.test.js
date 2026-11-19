@@ -13,13 +13,17 @@ const plannerHtml = fs.readFileSync(path.join(__dirname, 'planner2.html'), 'utf8
 const form = fs.readFileSync(path.join(__dirname, 'booking-form.html'), 'utf8');
 const oldPlanner = fs.readFileSync(path.join(__dirname, 'tour-planner.html'), 'utf8');
 
-test('the page is only Jennifer Lindsay, booking 310', () => {
+test('any numbered booking opens, and a blank id does not', () => {
   assert.equal(B.isAllowedBooking(310), true);
   assert.equal(B.isAllowedBooking('310'), true);
-  assert.equal(B.isAllowedBooking(20), false);
-  const refused = B.present({ booking: { id: 20, group_name: 'Someone else', depositmade: 50 } });
+  assert.equal(B.isAllowedBooking(28), true);
+  assert.equal(B.isAllowedBooking(''), false);
+  const other = B.present({ booking: { id: 28, group_name: 'Sharon Harris' } });
+  assert.equal(other.refused, false);
+  assert.equal(other.id, 28);
+  assert.equal(other.groupName, 'Sharon Harris');
+  const refused = B.present({ booking: { id: 'nope', group_name: 'Someone else' } });
   assert.equal(refused.refused, true);
-  assert.equal(refused.readOnly, true);
   assert.equal(B.usesPhoneLayout(390), true);
   assert.equal(B.usesPhoneLayout(768), false);
   assert.equal(B.usesPhoneLayout(1440), false);
@@ -56,13 +60,16 @@ test('dates, hotel strips and money come from the booking', () => {
 test('the real booking is never written, and the old pages stay put', () => {
   assert.equal(/\.(update|insert|delete)\s*\(/.test(app), false);
   assert.match(app, /\.select\(/);
-  assert.match(app, /eq\('id', 310\)/);
+  assert.match(app, /eq\('id', id\)/);
+  assert.equal(app.includes("eq('id', 310)"), false);
   assert.match(app, /preview=mock/);
   assert.match(html, /planner2\.js/);
   assert.match(html, /id="b2Summary"/);
   assert.match(html, /id="p2Tray"/);
   assert.equal(html.includes('href="planner2.html"'), false);
-  assert.match(html, /booking 310/);
+  assert.match(html, /id="b2Home"/);
+  assert.match(html, /booking-form\.html/);
+  assert.match(css, /\.b2-home/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /\.b2-summary/);
   assert.match(app, /Planner2Page\.mount/);
