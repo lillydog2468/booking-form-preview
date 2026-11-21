@@ -11,6 +11,7 @@ const analytics = read('analytics.html');
 const hotels = read('hotels.html');
 const places = read('places-stats.html');
 const tax = read('tax-summary.html');
+const forecast = read('profit-forecast.html');
 const oldPlanner = read('tour-planner.html');
 const booking2 = read('booking2.html');
 const navJs = read('site-nav.js');
@@ -39,6 +40,9 @@ function hasPrimary(html) {
   assert.equal(menu.includes('>Hotels<'), false);
   assert.match(menu, />Analytics</);
   assert.match(menu, />Tax summary</);
+  assert.match(menu, />Profit, size of tour forecast</);
+  assert.match(menu, /href="profit-forecast\.html"/);
+  assert.equal(nav.slice(0, nav.indexOf('site-more-menu')).includes('profit-forecast.html'), false);
   assert.match(menu, />Admin</);
   assert.match(menu, />2027 interest</);
   assert.match(html, /src="site-nav\.js"/);
@@ -64,7 +68,10 @@ test('the booking form keeps its own tabs and puts other pages under More', () =
 });
 
 test('the other pages share Bookings, Places and Planning', () => {
-  [analytics, hotels, places, tax, oldPlanner].forEach(hasPrimary);
+  [analytics, hotels, places, tax, forecast, oldPlanner].forEach(hasPrimary);
+  assert.match(forecast, /href="profit-forecast\.html" aria-current="page"/);
+  assert.match(forecast, /<h1>Profit, size of tour forecast<\/h1>/);
+  assert.match(forecast, /site-more-btn is-current/);
   assert.match(places, /href="places-stats\.html"[^>]*aria-current="page"/);
   assert.match(analytics, /href="analytics\.html"[^>]*aria-current="page"/);
   assert.match(hotels, /id="navHotels" href="hotels\.html" aria-current="page"/);

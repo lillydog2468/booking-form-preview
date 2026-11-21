@@ -95,6 +95,7 @@ test('every page that reads the shared tables signs in before it loads', () => {
     'admin.html',
     'places-stats.html',
     'tax-summary.html',
+    'profit-forecast.html',
     'interest-2027.html',
   ];
   for (const name of pages) {

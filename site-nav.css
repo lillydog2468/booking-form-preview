@@ -49,6 +49,7 @@
   text-decoration: none;
   font-size: 14px;
   font-weight: 650;
+  white-space: nowrap;
 }
 .site-more-menu a:hover,
 .site-more-menu a[aria-current="page"] { background: var(--bg, #f4f3f0); }

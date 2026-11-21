@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+  <script>
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', stored || (prefersDark ? 'dark' : 'light'));
+      } catch {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no">
+  <title>Profit, size of tour forecast</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="booking-config.js"></script>
+  <script src="planning-hide.js"></script>
+  <link rel="stylesheet" href="site-nav.css">
+  <script src="auth-gate.js"></script>
+  <script src="profit-forecast.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7; --surface: #ffffff; --surface-alt: #f9fafb;
+      --border: #e2e4e9; --text: #1a1d26; --text-secondary: #6b7280;
+      --input-bg: #ffffff; --accent: #4f46e5; --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
+    [data-theme="dark"] {
+      --bg: #111318; --surface: #1a1d24; --surface-alt: #21242c;
+      --border: #2e3240; --text: #e4e6eb; --text-secondary: #8b8f9a;
+      --input-bg: #21242c; --accent: #6366f1;
+      --shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+    body {
+      margin: 0;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.4;
+      min-height: 100vh;
+    }
+    a { color: inherit; }
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .topbar-inner {
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+    .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -.2px; margin: 0; }
+    main { max-width: 980px; margin: 0 auto; padding: 20px 24px 48px; }
+    .intro, .source { margin: 0 0 14px; color: var(--text-secondary); font-size: 14px; }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .controls { display: grid; gap: 14px; }
+    .size-head, .field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    label, .field-label { font-size: 12px; font-weight: 800; letter-spacing: .02em; color: var(--text-secondary); }
+    .people-out { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    input[type="range"] {
+      width: 100%;
+      height: 44px;
+      margin: 4px 0 0;
+      accent-color: var(--accent);
+      touch-action: manipulation;
+    }
+    select, input[type="number"] {
+      width: 100%;
+      margin-top: 4px;
+      font: inherit;
+      font-size: 16px;
+      color: var(--text);
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-height: 44px;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .check input { width: 22px; height: 22px; accent-color: var(--accent); }
+    .whatif { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .whatif button {
+      grid-column: 1 / -1;
+      min-height: 44px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .figures {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .stat h2 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--text-secondary); }
+    .stat p { margin: 4px 0 0; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat .detail { margin-top: 4px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+    .stat.profit { grid-column: 1 / -1; background: var(--surface); }
+    .stat.profit p { font-size: 34px; color: var(--accent); }
+    #vehicle { font-size: 18px; line-height: 1.25; }
+    .chart-wrap { overflow: hidden; display: flex; justify-content: center; }
+    @media (min-width: 800px) {
+      .figures { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    .forecast-chart { display: block; width: 100%; max-width: 640px; height: auto; }
+    .chart-title { font: 700 13px 'DM Sans', system-ui, sans-serif; fill: var(--text); }
+    .chart-size, .chart-value { font: 700 12px 'DM Sans', system-ui, sans-serif; fill: var(--text); }
+    .chart-bar { fill: #c5c8d4; }
+    .chart-bar.is-current { fill: var(--accent); }
+    .chart-current { fill: rgba(79, 70, 229, .1); }
+    [data-theme="dark"] .chart-bar { fill: #3a3f4d; }
+    [data-theme="dark"] .chart-current { fill: rgba(99, 102, 241, .22); }
+    .note { margin: 4px 2px 0; color: #6b7280; font-size: 13px; }
+    [data-theme="dark"] .note { color: var(--text-secondary); }
+    @media (max-width: 700px) {
+      .topbar-inner { padding: 12px max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left)); }
+      .topbar h1 { font-size: 16px; line-height: 1.25; }
+      main { padding: 14px 12px calc(28px + env(safe-area-inset-bottom)); }
+      .whatif { grid-template-columns: 1fr; }
+      .stat.profit p { font-size: 30px; }
+    }
+  </style>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <h1>Profit, size of tour forecast</h1>
+        <nav class="site-nav" aria-label="Pages">
+          <a class="site-nav-link" href="booking-form.html">Bookings</a>
+          <a class="site-nav-link" href="places-stats.html">Places</a>
+          <a class="site-nav-link" href="booking2.html">Planning</a>
+          <a class="site-nav-link" id="navHotels" href="hotels.html">Hotels</a>
+          <div class="site-more">
+            <button type="button" class="site-more-btn is-current" aria-expanded="false" aria-haspopup="true">More</button>
+            <div class="site-more-menu" hidden>
+              <a href="analytics.html">Analytics</a>
+              <a href="tax-summary.html">Tax summary</a>
+              <a href="profit-forecast.html" aria-current="page">Profit, size of tour forecast</a>
+              <a href="admin.html">Admin</a>
+              <a href="interest-2027.html" hidden style="display:none">2027 interest</a>
+              <a href="tour-planner.html">Tour planner</a>
+            </div>
+          </div>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <p class="intro">Compare 2027 list prices for 2 to 7 guests. Each guest has a single room, and Keith has his own room.</p>
+    <p class="source" id="priceSource">2027 list prices. What-if figures stay on this screen.</p>
+
+    <section class="panel controls" aria-label="Forecast choices">
+      <div>
+        <div class="size-head">
+          <label for="people">Group size</label>
+          <output class="people-out" id="peopleOut" for="people">4</output>
+        </div>
+        <input id="people" type="range" min="2" max="7" step="1" value="4" aria-valuemin="2" aria-valuemax="7" aria-valuenow="4" aria-valuetext="4 people">
+      </div>
+      <label>Tour length
+        <select id="length"></select>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="leader">
+        Leader at half price
+      </label>
+      <div class="whatif">
+        <label>Hotel rate per room-night
+          <input id="hotelRate" type="number" inputmode="decimal" min="0" step="0.01" value="41">
+        </label>
+        <label>Fuel for this tour
+          <input id="fuel" type="number" inputmode="decimal" min="0" step="1" value="15">
+        </label>
+        <button type="button" id="resetCosts">Use the usual hotel rate and fuel</button>
+      </div>
+    </section>
+
+    <section class="figures" aria-live="polite">
+      <article class="stat profit">
+        <h2>Profit</h2>
+        <p id="profit">£0</p>
+      </article>
+      <article class="stat">
+        <h2>Profit per person</h2>
+        <p id="profitEach">£0</p>
+      </article>
+      <article class="stat">
+        <h2>Revenue</h2>
+        <p id="revenue">£0</p>
+        <p class="detail" id="revenueDetail"></p>
+      </article>
+      <article class="stat">
+        <h2>Rooms</h2>
+        <p id="rooms">0</p>
+        <p class="detail" id="roomsDetail"></p>
+      </article>
+      <article class="stat">
+        <h2>Hotel cost</h2>
+        <p id="hotel">£0</p>
+        <p class="detail" id="hotelDetail"></p>
+      </article>
+      <article class="stat">
+        <h2>Fuel</h2>
+        <p id="fuelOut">£0</p>
+        <p class="detail" id="fuelDetail"></p>
+      </article>
+      <article class="stat">
+        <h2>Vehicle</h2>
+        <p id="vehicle"></p>
+        <p class="detail" id="vehicleDetail"></p>
+      </article>
+    </section>
+
+    <section class="panel chart-wrap" aria-label="Profit across group sizes">
+      <div id="chart"></div>
+    </section>
+
+    <p class="note">This estimate covers the hotel and fuel only. Meals and entries are not recorded.</p>
+  </main>
+
+  <script>
+    const SUPABASE_URL = BOOKING_SUPABASE_URL;
+    const SUPABASE_ANON_KEY = BOOKING_SUPABASE_ANON_KEY;
+    const sb = AuthGate.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    document.addEventListener('DOMContentLoaded', function () {
+      var page = ProfitForecast.bind(document);
+      AuthGate.require(sb, { title: 'Profit, size of tour forecast' }).then(function (session) {
+        if (!session) return;
+        page.loadBook(sb);
+      });
+    });
+  </script>
+  <script src="site-nav.js"></script>
+</body>
+</html>

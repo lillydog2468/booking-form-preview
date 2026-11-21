@@ -317,6 +317,7 @@ test('the public Supabase URL and key live in one config file', () => {
     'admin.html',
     'places-stats.html',
     'tax-summary.html',
+    'profit-forecast.html',
     'interest-2027.html',
     'planner2.html',
     'booking2.html'
