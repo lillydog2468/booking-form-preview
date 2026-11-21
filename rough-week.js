@@ -341,11 +341,11 @@
       if (pin) return pin;
       if (text(matches[0].address)) return text(matches[0].address);
     }
-    if (root.PragueExit && PragueExit.coordFor) {
-      var coord = PragueExit.coordFor(hotel);
-      if (coord) return coord.lat + ',' + coord.lng;
+    if (root.PragueExit && PragueExit.placeFor) {
+      var known = PragueExit.placeFor(hotel);
+      if (known && known.address) return known.address;
     }
-    return '';
+    return hotel + ', Prague, Czechia';
   }
 
   function bookingHotel(extras) {

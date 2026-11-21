@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+require('./prague-exit.js');
 require('./week-overview.js');
 require('./planner2-model.js');
 
@@ -296,4 +297,56 @@ test('the page saves the open booking and leaves the bookings table alone', () =
   assert.match(formJs, /booking2\.html\?booking=/);
   assert.equal(formJs.includes("key === '310'"), false);
   assert.match(bookingHtml, /b2PragueEnds/);
+});
+
+test('day-one pick-up and last-day drop-off name the street, and a saved wrong pin does not beat a known hotel', () => {
+  const places = [{ name: 'Hotel Atlantic', nickname: 'Atlantic', address: 'Na Poříčí 9, Praha 1' }];
+  const axa = P.hotelLines({
+    handoverKind: 'pickup',
+    time: '08:00',
+    hotelName: 'hotel axa',
+    praguePickups: [
+      { time: '08:00', hotel: 'axa' },
+      { time: '08:05', hotel: 'Hotel Atlantic' },
+    ],
+  }, places, 0, 5);
+  assert.equal(axa[0].hotel, 'Hotel AXA');
+  assert.equal(axa[0].street, 'Na Poříčí');
+  assert.equal(axa[0].house, '40');
+  assert.equal(axa[0].time, '8:00');
+  assert.equal(axa[0].missing, false);
+  assert.equal(axa[1].hotel, 'Hotel Atlantic');
+  assert.equal(axa[1].street, 'Na Poříčí');
+  assert.equal(axa[1].house, '9');
+  const unknown = P.hotelLines({
+    handoverKind: 'dropoff',
+    time: '18:00',
+    hotelName: 'Pension Rosa',
+  }, [], 4, 5);
+  assert.equal(unknown[0].missing, true);
+  assert.equal(unknown[0].street, '');
+  assert.equal(P.hotelLines({ handoverKind: 'pickup', hotelName: 'Hotel AXA', time: '08:00' }, [], 2, 5), null);
+  const plan = P.emptyPlanFromBooking({ id: 297, group_name: 'Heather', tour_arrival_date: '2027-04-12', departure_date: '2027-04-16' });
+  plan.days[0].blocks = [{
+    id: 'pick', type: 'handover', handoverKind: 'pickup', placeKind: 'hotel', time: '08:00',
+    hotelName: 'hotel axa', title: 'Pick-up · hotel axa', address: '50.0894,14.4392',
+    geocodeLat: 50.051, geocodeLng: 14.436,
+    praguePickups: [{ time: '08:00', hotel: 'hotel axa', address: '50.0894,14.4392' }],
+  }];
+  plan.days[plan.days.length - 1].blocks = [{
+    id: 'drop', type: 'handover', handoverKind: 'dropoff', placeKind: 'hotel', time: '18:00',
+    hotelName: 'Pension Rosa', title: 'Drop-off · Pension Rosa',
+  }];
+  const model = WeekOverview.build(plan, {
+    hotelLines: function (stop, index, count) { return P.hotelLines(stop, [], index, count); },
+  });
+  const html = WeekOverview.render(model);
+  assert.match(html, /Hotel AXA/);
+  assert.match(html, /Na Poříčí/);
+  assert.match(html, /ov-house"> 40</);
+  assert.match(html, /8:00/);
+  assert.match(html, /address not confirmed/);
+  assert.match(css, /\.ov-street\.is-missing/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.ov-house \{ display: none/);
+  assert.equal(P.samplePlan().pragueHotel.address, 'Na Poříčí 40, Prague');
 });

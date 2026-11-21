@@ -110,6 +110,9 @@
       label: function (stop) {
         return Planner2.displayStopTitle(stop, cataloguePlace(stop && stop.placeId));
       },
+      hotelLines: function (stop, index, count) {
+        return Planner2.hotelLines(stop, state.places || [], index, count);
+      },
       cue: cueFor,
       guests: function (stop) { return Planner2.guestLine(stop, plan.guests); },
       hotel: hotelFor,
@@ -689,25 +692,89 @@
     return { prefersApple: apple };
   }
 
+  function locatedHotel(row) {
+    var label = row && (row.label || row.hotel) || '';
+    var found = window.PlacePin && PlacePin.resolveHotel
+      ? PlacePin.resolveHotel(label, {
+        places: state.places || [],
+        geocodeLat: row && row.geocodeLat,
+        geocodeLng: row && row.geocodeLng,
+        geocodeQuery: row && (row.geocodeQuery || row.point),
+      })
+      : null;
+    var known = window.PragueExit && PragueExit.placeFor ? PragueExit.placeFor(label) : null;
+    if (found && found.source === 'pin') {
+      return { point: found.lat + ',' + found.lng, address: found.address || (known && known.address) || '', lat: found.lat, lng: found.lng, label: label, time: row.time || '' };
+    }
+    if (known) {
+      return { point: known.lat + ',' + known.lng, address: (found && found.address) || known.address, lat: known.lat, lng: known.lng, label: label, time: row.time || '' };
+    }
+    if (found && found.lat != null && found.source !== 'query') {
+      return { point: found.lat + ',' + found.lng, address: found.address || '', lat: found.lat, lng: found.lng, label: label, time: row.time || '' };
+    }
+    var query = (found && found.query) || (label ? label + ', Prague, Czechia' : (row && row.point) || '');
+    return { point: query, address: (found && found.address) || '', label: label, time: row.time || '' };
+  }
+
+  function hotelMapHtml(row) {
+    if (row.lat == null || row.lng == null) return '';
+    var z = 17;
+    var n = Math.pow(2, z);
+    var x = (row.lng + 180) / 360 * n;
+    var latRad = row.lat * Math.PI / 180;
+    var y = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n;
+    var tileX = Math.floor(x);
+    var tileY = Math.floor(y);
+    var fx = (x - tileX) * 256;
+    var fy = (y - tileY) * 256;
+    var viewW = 256;
+    var viewH = 180;
+    var originX = viewW / 2 - fx;
+    var originY = viewH / 2 - fy;
+    var tiles = '';
+    var dx;
+    var dy;
+    for (dy = -1; dy <= 1; dy++) {
+      for (dx = -1; dx <= 1; dx++) {
+        var left = Math.round(originX + dx * 256);
+        var top = Math.round(originY + dy * 256);
+        if (left > viewW || top > viewH || left + 256 < 0 || top + 256 < 0) continue;
+        var src = 'https://tile.openstreetmap.org/' + z + '/' + (tileX + dx) + '/' + (tileY + dy) + '.png';
+        tiles += '<img alt="" src="' + esc(src) + '" style="left:' + left + 'px;top:' + top + 'px">';
+      }
+    }
+    var where = row.address || row.label;
+    return '<div class="p2-hotel-map">' + tiles
+      + '<span class="p2-map-pin" style="left:' + (viewW / 2) + 'px;top:' + (viewH / 2) + 'px"></span>'
+      + '<span class="p2-map-pop">' + esc(row.label) + (where ? '<br>' + esc(where) : '') + '</span></div>';
+  }
+
   function hotelNavHtml(list, towardExit, emptyNote) {
-    var rows = list || [];
+    var rows = (list || []).map(locatedHotel);
     if (!rows.length) return '<p class="p2-note">' + esc(emptyNote || 'No hotels on this stop.') + '</p>';
+    var names = rows.map(function (row) { return row.label || row.point; });
     var ordered = window.PragueExit
-      ? PragueExit.order(rows.map(function (row) { return row.point; }), { towardExit: towardExit !== false })
-      : { points: rows.map(function (row) { return row.point; }), reason: '' };
-    var byPoint = {};
-    rows.forEach(function (row) { byPoint[row.point] = row; });
+      ? PragueExit.order(names, { towardExit: towardExit !== false })
+      : { points: names, reason: '' };
+    var byLabel = {};
+    rows.forEach(function (row) { byLabel[row.label || row.point] = row; });
     var html = '';
     if (ordered.points.length > 1) {
-      var all = Planner2.routeHref(ordered.points, mapsPref());
+      var allPoints = ordered.points.map(function (label) {
+        var row = byLabel[label];
+        return row ? row.point : label;
+      });
+      var all = Planner2.routeHref(allPoints, mapsPref());
       var note = ordered.reason ? ' title="' + esc(ordered.reason) + '"' : '';
       if (all) html += '<a class="p2-nav" href="' + esc(all) + '"' + note + ' target="_blank" rel="noopener">Navigate to all hotels</a>';
     }
     html += '<p class="p2-nav-label">Navigate to each hotel separately</p>';
-    ordered.points.forEach(function (point) {
-      var row = byPoint[point] || { point: point, label: point };
-      var href = Planner2.routeHref([point], mapsPref());
+    ordered.points.forEach(function (label) {
+      var row = byLabel[label] || { point: label, label: label };
+      var href = Planner2.routeHref([row.point], mapsPref());
       var label = [row.time, row.label].filter(Boolean).join(' · ');
+      if (row.address) html += '<p class="p2-hotel-address">' + esc(row.address) + '</p>';
+      html += hotelMapHtml(row);
       html += '<a class="p2-nav" href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(label || 'Hotel') + '</a>';
     });
     return html;

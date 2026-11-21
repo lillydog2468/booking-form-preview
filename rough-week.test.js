@@ -65,11 +65,18 @@ test('booking 297 falls back to the Prague hotel on the booking when guests have
   const extras = globalThis.BookingExtras.splitNotesAndExtras(notes).extras;
   assert.equal(extras.travel.pickupPlace, 'axa');
   assert.equal(extras.samePrague, true);
-  const axa = globalThis.PragueExit.coordFor('axa');
-  const named = globalThis.PragueExit.coordFor('hotel axa');
+  const axa = globalThis.PragueExit.placeFor('axa');
+  const named = globalThis.PragueExit.placeFor('hotel axa');
+  const titled = globalThis.PragueExit.placeFor('Hotel AXA');
+  assert.equal(axa.address, 'Na Poříčí 40, Praha 1');
+  assert.equal(named.address, axa.address);
+  assert.equal(titled.address, axa.address);
+  assert.equal(axa.street, 'Na Poříčí');
   assert.equal(axa.lat, named.lat);
-  assert.equal(axa.lng, 14.4392);
-  assert.equal(R.resolveHotelPoint('axa', []), axa.lat + ',' + axa.lng);
+  assert.ok(Math.abs(axa.lng - 14.435736) < 0.0001);
+  assert.equal(R.resolveHotelPoint('axa', []), 'Na Poříčí 40, Praha 1');
+  assert.equal(R.resolveHotelPoint('hotel axa', []), axa.address);
+  assert.equal(R.resolveHotelPoint('Hotel AXA', []), axa.address);
   const pinned = R.resolveHotelPoint('axa', [
     { name: 'Hotel Axa', address: 'Na Poříčí 40, Prague 1', pinLat: 50.091, pinLng: 14.44 },
   ]);
@@ -88,7 +95,7 @@ test('booking 297 falls back to the Prague hotel on the booking when guests have
   assert.equal(pickup.time, '08:00');
   assert.equal(pickup.hotelName, 'axa');
   assert.match(pickup.title, /Heather Kingsley Heath/);
-  assert.equal(pickup.address, axa.lat + ',' + axa.lng);
+  assert.equal(pickup.address, 'Na Poříčí 40, Praha 1');
   assert.equal(pickup.praguePickups[0].address, pickup.address);
   const rows = globalThis.Planner2.pickupRows(plan.days[0]);
   assert.equal(rows[0].point, pickup.address);

@@ -311,6 +311,109 @@
     return String(place && place.name || '').trim() || 'Place';
   }
 
+  function wordHit(left, right) {
+    var a = String(left || '').trim().toLowerCase();
+    var b = String(right || '').trim().toLowerCase();
+    if (!a || !b) return false;
+    if (a === b) return true;
+    function hasWord(text, word) {
+      return new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(text);
+    }
+    return hasWord(a, b) || hasWord(b, a);
+  }
+
+  function barePoint(text) {
+    return /^[+-]?\d+(?:\.\d+)?\s*,\s*[+-]?\d+(?:\.\d+)?$/.test(String(text || '').trim());
+  }
+
+  function catalogueAddress(name, places) {
+    var hotel = String(name || '').trim();
+    var i;
+    for (i = 0; i < (places || []).length; i++) {
+      var place = places[i];
+      if (!place) continue;
+      if (!wordHit(place.name, hotel) && !wordHit(place.nickname, hotel)) continue;
+      var addr = String(place.address || '').trim();
+      if (addr && !barePoint(addr)) return addr;
+    }
+    return '';
+  }
+
+  function shortHotelName(name) {
+    var raw = String(name || '').trim();
+    var folded = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (/\baxa\b/.test(folded)) return 'Hotel AXA';
+    if (/\batlantic\b/.test(folded)) return 'Hotel Atlantic';
+    if (/\bjosef\b/.test(folded)) return 'Hotel Josef';
+    if (/obecniho domu/.test(folded)) return 'Obecní dům';
+    if (/obecniho dvora/.test(folded)) return 'U Obecního dvora';
+    var head = raw.split(',')[0].trim();
+    if (head && head === head.toLowerCase()) {
+      head = head.replace(/\b[a-z]/g, function (ch) { return ch.toUpperCase(); });
+    }
+    return head || 'Hotel';
+  }
+
+  function shortClock(value) {
+    var match = /^(\d{1,2}):(\d{2})/.exec(String(value || '').trim());
+    if (!match) return String(value || '').trim();
+    return String(Number(match[1])) + ':' + match[2];
+  }
+
+  function stayRows(stop) {
+    var listed = stop && Array.isArray(stop.praguePickups) ? stop.praguePickups : [];
+    if (listed.length) {
+      return listed.map(function (row) {
+        return {
+          hotel: String((row && row.hotel) || stop.hotelName || '').trim(),
+          time: String((row && row.time) || stop.time || '').trim(),
+        };
+      }).filter(function (row) { return row.hotel; });
+    }
+    var hotel = String((stop && (stop.hotelName || stop.title)) || '').trim();
+    if (!hotel) return [];
+    return [{ hotel: hotel, time: String(stop.time || '').trim() }];
+  }
+
+  function isHotelPickup(stop) {
+    if (!stop || stop.placeKind === 'airport') return false;
+    return stop.handoverKind === 'pickup' || stop.autoStop === 'prague-pickup' || stop.type === 'pickup';
+  }
+
+  function isHotelDropoff(stop) {
+    if (!stop || stop.placeKind === 'airport' || stop.autoStop === 'airport-dropoff') return false;
+    return stop.handoverKind === 'dropoff' || stop.autoStop === 'prague-dropoff';
+  }
+
+  /**
+   * Day-one pick-up and last-day drop-off lines.
+   * Street comes from a catalogue address, then a known hotel. Nothing else.
+   */
+  function hotelLines(stop, places, dayIndex, dayCount) {
+    var index = Number(dayIndex);
+    var last = Number(dayCount) - 1;
+    var show = (index === 0 && isHotelPickup(stop)) || (index === last && isHotelDropoff(stop));
+    if (!show) return null;
+    var rows = stayRows(stop);
+    if (!rows.length) return null;
+    return rows.map(function (row) {
+      var address = catalogueAddress(row.hotel, places);
+      if (!address && root.PragueExit && PragueExit.placeFor) {
+        var known = PragueExit.placeFor(row.hotel);
+        if (known) address = known.address;
+      }
+      var parts = address && root.PragueExit && PragueExit.streetParts ? PragueExit.streetParts(address) : null;
+      return {
+        hotel: shortHotelName(row.hotel),
+        street: parts ? parts.street : '',
+        house: parts ? parts.house : '',
+        time: shortClock(row.time),
+        address: address || '',
+        missing: !parts,
+      };
+    });
+  }
+
   function displayStopTitle(stop, place) {
     var title = String(stop && stop.title || '').trim();
     var hotel = String(stop && stop.hotelName || '').trim();
@@ -502,7 +605,7 @@
       arrivalDate: '2027-05-10',
       departureDate: '2027-05-14',
       tourHotelName: 'Park Hotel',
-      pragueHotel: { name: 'Hotel Axa', address: 'Na Poříčí 9, Prague', pickupTime: '08:00' },
+      pragueHotel: { name: 'Hotel Axa', address: 'Na Poříčí 40, Prague', pickupTime: '08:00' },
       roughNotes: 'Sample week. Nothing is saved.',
       guests: [
         { id: 'g1', name: 'Jennifer Lindsay' },
@@ -588,6 +691,7 @@
     groupPlaces: groupPlaces,
     placeLabel: placeLabel,
     displayStopTitle: displayStopTitle,
+    hotelLines: hotelLines,
     usedPlaceIds: usedPlaceIds,
     placeUseMark: placeUseMark,
     primaryType: primaryType,

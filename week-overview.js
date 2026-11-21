@@ -315,6 +315,7 @@
         blocks: laid.blocks.map(function (block) {
           var cue = cueOf(block.stop) || defaultCue(block.stop);
           var tone = String(cue.id || cue.tone || 'other').replace(/[^a-z0-9-]/g, '') || 'other';
+          var lines = typeof opts.hotelLines === 'function' ? opts.hotelLines(block.stop, index, days.length) : null;
           return {
             id: block.stop.id,
             time: formatMinutes(block.start),
@@ -327,6 +328,7 @@
             height: block.height,
             lane: block.lane,
             lanes: block.lanes,
+            lines: Array.isArray(lines) && lines.length ? lines : null,
           };
         }),
         untimed: laid.untimed.map(function (stop) {
@@ -362,16 +364,43 @@
     return 'min(' + (2 + step * OVERLAP_SHIFT_PX) + 'px, 46%)';
   }
 
+  function hotelLineHtml(line) {
+    var hotel = esc(line.hotel || 'Hotel');
+    var street = line.missing
+      ? '<span class="ov-street is-missing">(address not confirmed)</span>'
+      : '<span class="ov-street">' + esc(line.street) + (line.house ? '<span class="ov-house"> ' + esc(line.house) + '</span>' : '') + '</span>';
+    var time = line.time ? '<span class="ov-line-time">' + esc(line.time) + '</span>' : '';
+    var title = line.missing
+      ? (line.hotel || 'Hotel') + ', address not confirmed'
+      : [line.hotel, line.street, line.house, line.time].filter(Boolean).join(' ');
+    return '<span class="ov-hotel-stay" title="' + esc(title) + '">'
+      + '<span class="ov-hotel-line"><span class="ov-hotel-name">' + hotel + '</span>'
+      + (time ? '<span class="ov-hotel-sep"> · </span>' + time : '') + '</span>'
+      + '<span class="ov-hotel-line">' + street + '</span>'
+      + '</span>';
+  }
+
   function blockHtml(block) {
     var lane = Math.max(0, Number(block.lane) || 0);
     var shift = blockShift(lane);
+    var hotel = block.lines && block.lines.length;
     var style = 'top:' + roundPx(block.top) + 'px;min-height:' + roundPx(block.height) + 'px;height:auto;'
-      + 'left:' + shift + ';width:max-content;max-width:calc(100% - ' + shift + ' - 4px);z-index:' + (2 + lane) + ';';
+      + 'left:' + shift + ';'
+      + (hotel ? 'width:calc(100% - ' + shift + ' - 4px);max-width:calc(100% - ' + shift + ' - 4px);' : 'width:max-content;max-width:calc(100% - ' + shift + ' - 4px);')
+      + 'z-index:' + (2 + lane) + ';';
     var guests = block.guests ? '<span class="ov-guests">' + esc(block.guests) + '</span>' : '';
     var approx = block.approx ? '<span class="ov-approx" title="Approximate time">≈</span>' : '';
-    return '<div class="ov-stop stop-tone-' + esc(block.tone) + '" role="button" tabindex="0" data-ov-stop="' + esc(block.id) + '" style="' + style + '" title="' + esc(block.time + ' ' + block.label) + '">'
-      + '<span class="ov-time">' + approx + esc(block.time) + '</span>'
-      + '<span class="ov-name">' + (block.emoji ? '<span class="ov-emoji" aria-hidden="true">' + esc(block.emoji) + '</span>' : '') + esc(block.label) + '</span>'
+    var body = hotel
+      ? '<span class="ov-hotel-lines">' + block.lines.map(hotelLineHtml).join('') + '</span>'
+      : '<span class="ov-time">' + approx + esc(block.time) + '</span>'
+        + '<span class="ov-name">' + (block.emoji ? '<span class="ov-emoji" aria-hidden="true">' + esc(block.emoji) + '</span>' : '') + esc(block.label) + '</span>';
+    var title = hotel
+      ? block.lines.map(function (line) {
+        return line.missing ? (line.hotel + ', address not confirmed') : [line.hotel, line.street, line.time].filter(Boolean).join(', ');
+      }).join(' · ')
+      : (block.time + ' ' + block.label);
+    return '<div class="ov-stop' + (hotel ? ' ov-hotel-stop' : '') + ' stop-tone-' + esc(block.tone) + '" role="button" tabindex="0" data-ov-stop="' + esc(block.id) + '" style="' + style + '" title="' + esc(title) + '">'
+      + body
       + guests
       + '<span class="ov-x" role="button" tabindex="-1" data-ov-remove="' + esc(block.id) + '" aria-label="Remove ' + esc(block.label) + '">×</span>'
       + '</div>';

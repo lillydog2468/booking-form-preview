@@ -147,6 +147,38 @@ body.is-resizing, body.is-resizing * { cursor: col-resize; -webkit-user-select: 
 .ov-time { display: inline; margin-right: 4px; font-weight: 700; font-size: 11px; font-variant-numeric: tabular-nums; }
 .ov-name { display: inline; font-weight: 650; white-space: normal; overflow: visible; text-overflow: unset; }
 .ov-guests { display: block; font-size: 10px; color: #5c574e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-hotel-stop { display: block; container-type: inline-size; }
+.ov-hotel-lines { display: block; min-width: 0; max-width: 100%; }
+.ov-hotel-stay { display: block; min-width: 0; max-width: 100%; }
+.ov-hotel-stay + .ov-hotel-stay { margin-top: 3px; }
+.ov-hotel-line {
+  display: flex; align-items: baseline; gap: 0; min-width: 0; max-width: 100%;
+  white-space: nowrap; overflow: hidden;
+}
+.ov-hotel-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.ov-street { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #3f3a33; }
+.ov-hotel-sep, .ov-line-time { flex: 0 0 auto; }
+@container (max-width: 150px) {
+  .ov-house { display: none; }
+}
+.ov-line-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ov-street.is-missing { color: #8a847a; font-weight: 500; font-style: italic; }
+.p2-hotel-address { margin: 8px 0 0; font-size: 14px; font-weight: 650; color: #1c1b19; }
+.p2-hotel-map {
+  position: relative; width: 256px; height: 180px; max-width: 100%; margin-top: 8px;
+  overflow: hidden; border-radius: 10px; background: #e7eef2;
+}
+.p2-hotel-map img { position: absolute; left: 0; top: 0; width: 256px; height: 256px; }
+.p2-map-pin {
+  position: absolute; width: 16px; height: 16px; margin: -16px 0 0 -8px; border-radius: 8px 8px 8px 0;
+  background: #9a3412; border: 2px solid #fff; transform: rotate(-45deg); box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+.p2-map-pop {
+  position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px);
+  padding: 4px 8px; border-radius: 8px; background: #fff; color: #1c1b19;
+  font-size: 12px; font-weight: 700; line-height: 1.3; box-shadow: 0 2px 8px rgba(0,0,0,.16);
+}
+.p2-sheet-card { max-height: min(88vh, 720px); overflow: auto; }
 .ov-x { position: absolute; top: 2px; right: 3px; width: 16px; height: 16px; text-align: center; color: #8a847a; cursor: pointer; }
 .ov-pin { left: 3px; right: 3px; height: 28px; z-index: 3; width: auto; max-width: none; }
 .ov-snap {
@@ -205,6 +237,8 @@ body.is-resizing, body.is-resizing * { cursor: col-resize; -webkit-user-select: 
 }
 .p2-nav-label { margin: 10px 0 0; font-size: 12px; font-weight: 700; color: #5c574e; }
 @media (max-width: 760px) {
+  .ov-house { display: none; }
+  .ov-hotel-line { font-size: 11px; }
   html, body { overflow-x: hidden; max-width: 100%; }
   .p2-top h1 { font-size: 22px; }
   .p2-days { display: flex; }

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
+require('./prague-exit.js');
 require('./handover-stops.js');
 require('./place-pin.js');
 
@@ -52,6 +53,46 @@ test('a saved pin, a map link, typed coordinates, then Jablonec', () => {
   assert.equal(P.needsLookup(typedAddress), false);
   assert.equal(P.zoomFor(P.centreForPlace(pinned)), 16);
   assert.equal(P.zoomFor(P.centreForPlace({ address: '' })), 13);
+});
+
+test('axa, hotel axa and Hotel AXA sit on Na Poříčí 40, ahead of a cached geocode', async () => {
+  P.resetForTests();
+  ['axa', 'hotel axa', 'Hotel AXA'].forEach(function (name) {
+    const found = P.resolveHotel(name, { geocodeLat: 50.0510146, geocodeLng: 14.4360697, geocodeQuery: 'axa, Czech Republic' });
+    assert.equal(found.address, 'Na Poříčí 40, Praha 1');
+    assert.equal(found.source, 'known');
+    assert.ok(Math.abs(found.lat - 50.0898903) < 0.0001);
+    assert.ok(Math.abs(found.lng - 14.435736) < 0.0001);
+  });
+  const stale = {
+    name: 'Hotel AXA',
+    address: '50.0894,14.4392',
+    geocodeLat: 50.0510146,
+    geocodeLng: 14.4360697,
+    geocodeQuery: '50.0894,14.4392',
+  };
+  const centre = P.centreForPlace(stale);
+  assert.equal(centre.source, 'known');
+  assert.ok(Math.abs(centre.lng - 14.435736) < 0.0001);
+  const pinned = P.resolveHotel('axa', {
+    places: [{ name: 'Hotel AXA', nickname: 'axa', address: 'Na Příkopě 12, Praha 1', pinLat: 50.085, pinLng: 14.426 }],
+    geocodeLat: 50.051, geocodeLng: 14.436,
+  });
+  assert.equal(pinned.source, 'pin');
+  assert.equal(pinned.lat, 50.085);
+  assert.equal(pinned.address, 'Na Příkopě 12, Praha 1');
+  let called = false;
+  const looked = await P.geocodeHotel('axa', { fetch: function () { called = true; return Promise.resolve({ ok: false }); } });
+  assert.equal(called, false);
+  assert.equal(looked.address, 'Na Poříčí 40, Praha 1');
+  P.setGeocodeGap(0);
+  const fetch = function (url) {
+    assert.match(decodeURIComponent(url), /Pension Rosa, Prague, Czechia/);
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve([{ lat: '50.08', lon: '14.42' }]); } });
+  };
+  const other = await P.geocodeHotel('Pension Rosa', { fetch: fetch });
+  assert.deepEqual(other, { lat: 50.08, lng: 14.42 });
+  P.resetForTests();
 });
 
 test('Navigate prefers a stop pin, then the linked place pin, then the address', () => {

@@ -184,11 +184,84 @@
   function geocodeQuery(address) {
     var text = String(address || '').trim();
     if (!text) return '';
-    if (/\bczech\b|\bčesk|\bcesk/i.test(text)) return text;
+    if (/\bczech|\bčesk|\bcesk/i.test(text)) return text;
     return text + ', Czech Republic';
   }
 
+  function pragueHotelQuery(name) {
+    var text = String(name || '').trim();
+    if (!text) return '';
+    if (/\bprague\b|\bpraha\b/i.test(text) && /\bczech|\bčesk|\bcesk/i.test(text)) return text;
+    return text + ', Prague, Czechia';
+  }
+
+  function knownHotel(text) {
+    var PX = root.PragueExit;
+    if (!PX || !PX.placeFor) return null;
+    return PX.placeFor(text);
+  }
+
+  function nameHit(left, right) {
+    var a = String(left || '').trim().toLowerCase();
+    var b = String(right || '').trim().toLowerCase();
+    if (!a || !b) return false;
+    if (a === b) return true;
+    function hasWord(text, word) {
+      return new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(text);
+    }
+    return hasWord(a, b) || hasWord(b, a);
+  }
+
+  /**
+   * Where a Prague pick-up or drop-off should sit.
+   * A catalogue pin wins, then a known hotel, then a Prague search.
+   * A remembered geocode never overrides a known hotel.
+   */
+  function resolveHotel(name, options) {
+    var opts = options || {};
+    var hotel = String(name || opts.name || '').trim();
+    var places = opts.places || [];
+    var i;
+    var catalogueAddress = '';
+    for (i = 0; i < places.length; i++) {
+      var place = places[i];
+      if (!place) continue;
+      if (!nameHit(place.name, hotel) && !nameHit(place.nickname, hotel)) continue;
+      var pin = readPin(place);
+      var addr = String(place.address || '').trim();
+      if (addr && !/^[+-]?\d+(?:\.\d+)?\s*,\s*[+-]?\d+(?:\.\d+)?$/.test(addr)) catalogueAddress = addr;
+      if (pin) {
+        var knownPin = knownHotel(hotel);
+        return {
+          lat: Number(pin.lat),
+          lng: Number(pin.lng),
+          address: catalogueAddress || (knownPin && knownPin.address) || '',
+          source: 'pin',
+        };
+      }
+    }
+    var known = knownHotel(hotel);
+    if (known) {
+      return {
+        lat: known.lat,
+        lng: known.lng,
+        address: catalogueAddress || known.address,
+        source: catalogueAddress ? 'catalogue' : 'known',
+      };
+    }
+    var cachedLat = numberOrNull(opts.geocodeLat);
+    var cachedLng = numberOrNull(opts.geocodeLng);
+    var cachedQuery = String(opts.geocodeQuery || '').trim();
+    if (knownHotel(cachedQuery)) { cachedLat = null; cachedLng = null; }
+    if (cachedLat != null && cachedLng != null) {
+      return { lat: cachedLat, lng: cachedLng, address: catalogueAddress || pragueHotelQuery(hotel), source: 'geocode' };
+    }
+    var query = catalogueAddress ? geocodeQuery(catalogueAddress) : pragueHotelQuery(hotel);
+    return { query: query, address: catalogueAddress, source: 'query' };
+  }
+
   function cachedGeocode(place) {
+    if (knownHotel(place && (place.name || place.hotelName || place.nickname || place.address || place.geocodeQuery))) return null;
     var addr = String(place && place.address || '').trim();
     if (!addr) return null;
     if (place && place.geocodeQuery === addr) {
@@ -205,6 +278,8 @@
   function centreForPlace(place) {
     var pin = readPin(place);
     if (pin) return { lat: Number(pin.lat), lng: Number(pin.lng), source: 'pin' };
+    var known = knownHotel(place && (place.name || place.hotelName || place.nickname)) || knownHotel(place && place.address);
+    if (known) return { lat: known.lat, lng: known.lng, source: 'known', address: known.address };
     var addr = String(place && place.address || '').trim();
     var parsed = addr ? addressPoint(addr) : null;
     if (parsed) return { lat: parsed.lat, lng: parsed.lng, source: 'address' };
@@ -222,6 +297,7 @@
 
   function needsLookup(place) {
     if (readPin(place)) return false;
+    if (knownHotel(place && (place.name || place.hotelName || place.nickname || place.address))) return false;
     var addr = String(place && place.address || '').trim();
     if (!addr) return false;
     if (addressPoint(addr) || isMapLinkWithoutCoords(addr)) return false;
@@ -259,8 +335,16 @@
     }).catch(function () { finish(null); });
   }
 
+  function geocodeHotel(name, options) {
+    var known = knownHotel(name);
+    if (known) return Promise.resolve({ lat: known.lat, lng: known.lng, address: known.address });
+    return geocodeAddress(pragueHotelQuery(name), options);
+  }
+
   function geocodeAddress(address, options) {
     var query = String(address || '').trim();
+    var known = knownHotel(query);
+    if (known) return Promise.resolve({ lat: known.lat, lng: known.lng });
     if (!query || isMapLinkWithoutCoords(query) || addressPoint(query)) return Promise.resolve(addressPoint(query));
     var key = geocodeQuery(query).toLowerCase();
     if (geocodeCache[key]) return Promise.resolve(geocodeCache[key]);
@@ -430,7 +514,10 @@
     zoomFor: zoomFor,
     needsLookup: needsLookup,
     geocodeAddress: geocodeAddress,
+    geocodeHotel: geocodeHotel,
     geocodeQuery: geocodeQuery,
+    pragueHotelQuery: pragueHotelQuery,
+    resolveHotel: resolveHotel,
     rememberGeocode: rememberGeocode,
     navigationQuery: navigationQuery,
     applePinHref: applePinHref,
