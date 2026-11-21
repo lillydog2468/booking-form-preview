@@ -22,6 +22,39 @@ test('the rough week uses the old planner place slots and the day pattern', () =
   assert.equal(R.slotTime('17:30'), null);
 });
 
+test('an empty week is suggested as before, and an existing plan asks before replan or delete', () => {
+  const empty = { groupName: 'Sharon Harris', days: [{ date: '2027-05-10', blocks: [] }, { date: '2027-05-11', blocks: [] }] };
+  assert.equal(R.hasPlan(empty), false);
+  assert.equal(R.suggestAction(empty), 'suggest');
+  const places = [{ id: 'kf01', name: 'Rutkovsky', type: 'factory' }];
+  const suggested = R.applySuggestChoice(empty, places, 'suggest', false);
+  assert.equal(suggested.action, 'suggest');
+  assert.ok(empty.days[0].blocks.length > 0);
+  const kept = empty.days[0].blocks.map(function (stop) { return stop.title; });
+
+  const planned = globalThis.Planner2.samplePlan();
+  planned.groupName = 'Jennifer Lindsay';
+  const before = planned.days[1].blocks.map(function (stop) { return stop.id; });
+  assert.equal(R.suggestAction(planned), 'menu');
+  assert.equal(R.applySuggestChoice(planned, places, 'cancel', true).action, 'cancel');
+  assert.deepEqual(planned.days[1].blocks.map(function (stop) { return stop.id; }), before);
+  assert.equal(R.applySuggestChoice(planned, places, 'replan', false).action, 'replan-ask');
+  assert.deepEqual(planned.days[1].blocks.map(function (stop) { return stop.id; }), before);
+  assert.match(R.replanMessage(planned), /Replan the week for Jennifer Lindsay\? This replaces the stops already on the plan\./);
+  const replanned = R.applySuggestChoice(planned, places, 'replan', true);
+  assert.equal(replanned.action, 'replan');
+  assert.notDeepEqual(planned.days[1].blocks.map(function (stop) { return stop.id; }), before);
+  assert.equal(R.applySuggestChoice(planned, places, 'delete', false).action, 'delete-ask');
+  assert.ok(R.hasPlan(planned));
+  assert.match(R.deleteMessage(planned), /Delete all planned stops for Jennifer Lindsay\? This can't be undone\./);
+  const removed = R.applySuggestChoice(planned, places, 'delete', true);
+  assert.equal(removed.action, 'delete');
+  assert.ok(removed.removed > 0);
+  assert.equal(R.hasPlan(planned), false);
+  assert.ok(planned.days.every(function (day) { return day.blocks.length === 0; }));
+  assert.deepEqual(empty.days[0].blocks.map(function (stop) { return stop.title; }), kept);
+});
+
 test('suggest fills quiet days and Prague ends keep other stops', () => {
   const plan = globalThis.Planner2.samplePlan();
   const before = plan.days[1].blocks.length;

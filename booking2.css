@@ -82,6 +82,37 @@ body {
   font: inherit; font-size: 14px; font-weight: 500; color: #1c1b19;
   padding: 7px 8px; border-radius: 8px; border: 1px solid #e2ddd4; background: #faf9f7;
 }
+.b2-suggest-menu {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(28, 27, 25, 0.45);
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+.b2-suggest-menu[hidden] { display: none !important; }
+.b2-suggest-card {
+  width: min(420px, 100%);
+  background: #fff; color: #1c1b19; border-radius: 16px;
+  padding: 16px 16px 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+.b2-suggest-card h2 { margin: 0 0 6px; font-size: 20px; }
+.b2-suggest-note { margin: 0 0 12px; color: #5c574e; font-size: 15px; }
+.b2-suggest-choice {
+  display: block; width: 100%; min-height: 48px; margin: 0 0 8px;
+  border-radius: 12px; border: 1px solid #c4b49a; background: #fff; color: #1c1b19;
+  font: 700 17px/1.2 'DM Sans', system-ui, sans-serif; cursor: pointer;
+  touch-action: manipulation;
+}
+.b2-suggest-choice.is-danger { background: #fdecec; border-color: #e7b4b4; color: #9b1c1c; }
+@media (min-width: 761px) {
+  .b2-suggest-menu { align-items: center; }
+}
+@media (max-width: 760px) {
+  .b2-suggest-menu { align-items: flex-end; }
+}
 .b2-switcher {
   position: fixed; inset: 0; z-index: 90;
   display: flex; align-items: flex-end; justify-content: center;

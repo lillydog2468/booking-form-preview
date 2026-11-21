@@ -118,6 +118,45 @@
     renderDayChips(days);
     renderTray();
     bindGrid();
+    paintSuggestButton();
+  }
+
+  function paintSuggestButton() {
+    var suggest = $('b2Suggest');
+    if (!suggest || !window.RoughWeek) return;
+    var planned = RoughWeek.hasPlan(state.plan);
+    suggest.textContent = planned ? 'Replan / clear week' : 'Suggest a rough week';
+    suggest.title = planned
+      ? 'Replan this week from the usual places, or clear the stops.'
+      : 'Lay down a draft week from the usual places. You can edit everything after.';
+  }
+
+  function suggestNow() {
+    var busy = RoughWeek.busyDays(state.plan);
+    var replaceBusy = true;
+    if (busy.length) {
+      replaceBusy = window.confirm('Day ' + busy.join(', ') + ' already has several stops.\n\nOK replaces those days with the rough draft.\nCancel only fills the quieter days.');
+    }
+    RoughWeek.apply(state.plan, state.places || [], { replaceBusy: replaceBusy });
+    afterEdit();
+  }
+
+  function closeSuggestMenu() {
+    var box = $('b2SuggestMenu');
+    if (box) box.hidden = true;
+  }
+
+  function openSuggestMenu() {
+    var box = $('b2SuggestMenu');
+    if (!box) return;
+    box.hidden = false;
+    var cancel = $('b2SuggestCancel');
+    if (cancel) cancel.focus();
+  }
+
+  function planGroupName() {
+    var title = $('b2Title');
+    return (state.plan && state.plan.groupName) || (title && title.textContent) || '';
   }
 
   function markLastDay() {
@@ -1060,15 +1099,43 @@
     if (suggest) {
       suggest.addEventListener('click', function () {
         if (!window.RoughWeek || !state.plan) return;
-        var busy = RoughWeek.busyDays(state.plan);
-        var replaceBusy = true;
-        if (busy.length) {
-          replaceBusy = window.confirm('Day ' + busy.join(', ') + ' already has several stops.\n\nOK replaces those days with the rough draft.\nCancel only fills the quieter days.');
-        }
-        RoughWeek.apply(state.plan, state.places || [], { replaceBusy: replaceBusy });
+        if (RoughWeek.suggestAction(state.plan) === 'suggest') suggestNow();
+        else openSuggestMenu();
+      });
+    }
+    var replan = $('b2SuggestReplan');
+    if (replan) {
+      replan.addEventListener('click', function () {
+        if (!window.RoughWeek || !state.plan) return;
+        var ok = window.confirm(RoughWeek.replanMessage(state.plan, planGroupName()));
+        if (!ok) return;
+        closeSuggestMenu();
+        RoughWeek.applySuggestChoice(state.plan, state.places || [], 'replan', true);
         afterEdit();
       });
     }
+    var wipe = $('b2SuggestDelete');
+    if (wipe) {
+      wipe.addEventListener('click', function () {
+        if (!window.RoughWeek || !state.plan) return;
+        var ok = window.confirm(RoughWeek.deleteMessage(state.plan, planGroupName()));
+        if (!ok) return;
+        closeSuggestMenu();
+        RoughWeek.applySuggestChoice(state.plan, state.places || [], 'delete', true);
+        afterEdit();
+      });
+    }
+    var suggestCancel = $('b2SuggestCancel');
+    if (suggestCancel) suggestCancel.addEventListener('click', closeSuggestMenu);
+    var suggestMenu = $('b2SuggestMenu');
+    if (suggestMenu) {
+      suggestMenu.addEventListener('click', function (event) {
+        if (event.target === suggestMenu) closeSuggestMenu();
+      });
+    }
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && suggestMenu && !suggestMenu.hidden) closeSuggestMenu();
+    });
     var ends = $('b2PragueEnds');
     if (ends) {
       ends.addEventListener('click', function () {

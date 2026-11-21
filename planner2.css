@@ -255,7 +255,10 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
   body { display: block; background: #f4f3f0; }
   .b2-back, .b2-kicker, .b2-dates { display: block; }
   .b2-summary { display: block; }
-  .b2-details-toggle, .b2-brief, .b2-tools { display: none; }
+  .b2-details-toggle, .b2-brief { display: none; }
+  .b2-tools { display: flex; width: 100%; margin: 8px 0 0; }
+  #b2PragueEnds { display: none; }
+  .b2-tool { min-height: 44px; padding: 8px 14px; font-size: 16px; }
   .p2-main { min-height: 0; gap: 10px; padding: 0 12px 24px; }
   .p2-split { display: none; }
   .p2-tray, .p2-scroll { position: static; width: 100%; height: auto; max-height: none; flex: none; overflow: visible; }

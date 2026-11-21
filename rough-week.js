@@ -108,6 +108,59 @@
     return type === 'handover' || type === 'pickup' || type === 'travel' || stop.handoverKind === 'dropoff' || stop.handoverKind === 'pickup';
   }
 
+  function hasPlan(plan) {
+    return (plan && plan.days || []).some(function (day) {
+      return (day && day.blocks || []).some(function (stop) {
+        return !!(stop && (text(stop.title) || text(stop.id) || text(stop.type) || text(stop.hotelName)));
+      });
+    });
+  }
+
+  function suggestAction(plan) {
+    return hasPlan(plan) ? 'menu' : 'suggest';
+  }
+
+  function groupName(plan, fallback) {
+    return text(plan && plan.groupName) || text(fallback) || 'this group';
+  }
+
+  function replanMessage(plan, fallback) {
+    return 'Replan the week for ' + groupName(plan, fallback) + '? This replaces the stops already on the plan.';
+  }
+
+  function deleteMessage(plan, fallback) {
+    return 'Delete all planned stops for ' + groupName(plan, fallback) + '? This can\'t be undone.';
+  }
+
+  function clearStops(plan) {
+    var removed = 0;
+    (plan && plan.days || []).forEach(function (day) {
+      if (!day) return;
+      if (!Array.isArray(day.blocks)) day.blocks = [];
+      removed += day.blocks.filter(Boolean).length;
+      day.blocks = [];
+    });
+    return removed;
+  }
+
+  function applySuggestChoice(plan, places, choice, confirmed) {
+    var action = text(choice);
+    if (!plan || action === 'cancel') return { action: 'cancel' };
+    if (suggestAction(plan) === 'suggest') {
+      return { action: 'suggest', result: apply(plan, places, { replaceBusy: true }) };
+    }
+    if (!action) return { action: 'cancel' };
+    if (action === 'replan') {
+      if (!confirmed) return { action: 'replan-ask' };
+      return { action: 'replan', result: apply(plan, places, { replaceBusy: true }) };
+    }
+    if (action === 'delete') {
+      if (!confirmed) return { action: 'delete-ask' };
+      return { action: 'delete', removed: clearStops(plan) };
+    }
+    return { action: 'cancel' };
+  }
+
   function busyDays(plan) {
     var found = [];
     (plan && plan.days || []).forEach(function (day, index) {
@@ -342,6 +395,12 @@
     AIRPORT: AIRPORT,
     busyDays: busyDays,
     hasEnds: hasEnds,
+    hasPlan: hasPlan,
+    suggestAction: suggestAction,
+    replanMessage: replanMessage,
+    deleteMessage: deleteMessage,
+    clearStops: clearStops,
+    applySuggestChoice: applySuggestChoice,
     apply: apply,
     addEnds: addEnds,
     hotelBefore: hotelBefore,
