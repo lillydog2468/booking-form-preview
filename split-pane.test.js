@@ -44,6 +44,10 @@ test('the wide planner has a drag handle and the phone hides it', () => {
   assert.match(css, /col-resize/);
   assert.match(css, /--p2-places/);
   assert.match(css, /max-width:\s*760px\)[\s\S]*\.p2-split\s*\{\s*display:\s*none/);
+  assert.match(css, /\.p2-tray\s*\{[\s\S]*min-width:\s*0[\s\S]*min-height:\s*0[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.p2-groups\s*\{[\s\S]*min-height:\s*0[\s\S]*overflow-y:\s*auto/);
+  assert.match(css, /minmax\(0,\s*1fr\)/);
+  assert.match(css, /max-width:\s*760px\)[\s\S]*\.p2-tray\s*\{[\s\S]*overflow:\s*hidden[\s\S]*overflow-y:\s*auto/);
   assert.match(app, /pointerdown/);
   assert.match(app, /dblclick/);
   assert.match(app, /SplitPane/);

@@ -68,19 +68,22 @@ body {
   cursor: pointer;
 }
 .p2-pickbar {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin: 0 0 6px; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin: 0 0 6px; min-width: 0;
 }
-.p2-pickbar button {
-  border: 0; background: transparent; color: #1a3d5c; font: 700 13px/1 'DM Sans', system-ui, sans-serif;
-  min-height: 44px; padding: 8px 4px; cursor: pointer;
+#p2PickCount { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 700; color: #5c574e; }
+#p2PlaceSelected, #p2PickClear {
+  flex: 0 0 auto; width: auto; min-height: 32px; margin: 0; padding: 4px 10px;
+  border-radius: 999px; font: 700 12px/1.2 'DM Sans', system-ui, sans-serif;
+  cursor: pointer; touch-action: manipulation;
 }
-#p2PlaceSelected {
-  width: 100%; min-height: 44px; margin: 0 0 6px; border-radius: 10px;
-  border: 1px solid #1a3d5c; background: #1a3d5c; color: #fff;
-  font: 700 15px/1.2 'DM Sans', system-ui, sans-serif; cursor: pointer;
-}
+#p2PlaceSelected { border: 1px solid #1a3d5c; background: #1a3d5c; color: #fff; }
+#p2PickClear { border: 1px solid #c4b49a; background: #fff; color: #1a3d5c; }
+#p2PickClear[hidden] { display: none; }
 #p2PlaceSelected:disabled { opacity: .45; cursor: default; }
+@media (max-width: 760px) {
+  .p2-pickbar, .p2-tick, .p2-edit, .p2-place-note { display: none !important; }
+}
 .p2-place-note { margin: 0 0 8px; font-size: 13px; color: #5c574e; }
 .p2-card.is-used-many { color: #fff; }
 .p2-card.is-used-many .p2-card-name { color: #fff; }
@@ -242,18 +245,23 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
   .p2-main { flex: 1 1 auto; min-height: 0; gap: 0; padding: 0; align-items: stretch; }
   .p2-tray {
     position: relative; top: auto; right: auto; bottom: auto; left: auto;
-    flex: 0 0 var(--p2-places, 380px); width: var(--p2-places, 380px); height: auto; max-height: none;
+    flex: 0 0 var(--p2-places, 380px); width: var(--p2-places, 380px);
+    min-width: 0; min-height: 0; height: auto; max-height: 100%;
     align-self: stretch; margin: 0; border-radius: 0; border: 0;
     display: flex; flex-direction: column; overflow: hidden;
   }
-  .p2-groups { flex: 1 1 auto; min-height: 0; overflow: auto; display: block; }
-  .p2-group { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin: 4px 0 2px; }
+  .p2-groups {
+    flex: 1 1 auto; min-height: 0; min-width: 0;
+    overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: block;
+  }
+  .p2-group { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 8px; margin: 4px 0 2px; min-width: 0; }
   .p2-group h3 { grid-column: 1 / -1; margin: 0; font-size: 10px; }
   .p2-card { padding: 0 2px; margin: 0; min-height: 16px; font-size: 11px; line-height: 1.1; }
   .p2-used { display: none; }
   .p2-split {
-    flex: 0 0 12px; width: 12px; cursor: col-resize; touch-action: none;
-    position: relative; background: #fff; z-index: 3;
+    flex: 0 0 12px; width: 12px; min-width: 12px; cursor: col-resize; touch-action: none;
+    position: relative; background: #fff; z-index: 1;
   }
   .p2-split::before {
     content: ''; position: absolute; top: 0; bottom: 0; left: 5px; width: 2px; background: #e2ddd4;
@@ -287,9 +295,14 @@ html.is-phone .ov-day ~ .ov-day { display: none; }
   .b2-tools { display: flex; width: 100%; margin: 8px 0 0; }
   #b2PragueEnds { display: none; }
   .b2-tool { min-height: 44px; padding: 8px 14px; font-size: 16px; }
-  .p2-main { min-height: 0; gap: 10px; padding: 0 12px 24px; }
+  .p2-main { min-height: 0; min-width: 0; gap: 10px; padding: 0 12px 24px; }
   .p2-split { display: none; }
-  .p2-tray, .p2-scroll { position: static; width: 100%; height: auto; max-height: none; flex: none; overflow: visible; }
+  .p2-scroll { position: static; width: 100%; height: auto; max-height: none; flex: none; overflow: visible; }
+  .p2-tray {
+    position: static; display: flex; flex-direction: column;
+    width: 100%; max-height: 46vh; min-height: 0; flex: none; overflow: hidden;
+  }
+  .p2-groups { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; }
 }
 .place-pop { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
 .place-pop-note, .place-pop-muted { margin: 0; font-size: 12px; color: #6e695f; }

@@ -258,7 +258,7 @@
         : group.id;
       var cards = group.places.map(function (place) {
         var on = state.selected === place.id ? ' on' : '';
-        var picked = (state.picked || []).indexOf(String(place.id)) !== -1;
+        var picked = !state.phone && (state.picked || []).indexOf(String(place.id)) !== -1;
         var count = used[String(place.id)] || 0;
         var use = Planner2.placeUseMark(count);
         var useClass = use === 'once' ? ' is-used-once' : (use === 'many' ? ' is-used-many' : '');
@@ -489,6 +489,11 @@
         clearDrag();
         if (decided === 'scroll') return;
         if (decided !== 'drag') {
+          var tapped = state.places.find(function (item) { return item.id === id; });
+          if (phoneNow()) {
+            openPlaceEditor(tapped);
+            return;
+          }
           if (window.PlacePlan) state.picked = PlacePlan.toggle(state.picked, id);
           renderTray();
           return;
@@ -965,7 +970,7 @@
     state.bookingId = id;
     setStatus('Loading booking ' + id + '…');
     var booking = await state.sb.from('bookings')
-      .select('id, group_name, tour_arrival_date, departure_date, hotels(name)')
+      .select('id, group_name, tour_arrival_date, departure_date, extra_notes, hotels(name)')
       .eq('id', id)
       .maybeSingle();
     if (booking.error) throw booking.error;
@@ -989,6 +994,11 @@
       .select('id, first_name, last_name, prague_stays, arrival_date, departure_date, arrival_flight, departure_flight, arrival_time, departure_time')
       .eq('booking_id', id);
     state.members = !members.error && members.data ? members.data : [];
+    state.extras = {};
+    if (window.BookingExtras && booking.data && booking.data.extra_notes) {
+      var split = BookingExtras.splitNotesAndExtras(booking.data.extra_notes);
+      state.extras = split.extras || {};
+    }
     if (!state.places || !state.places.length) {
       var places = await state.sb.from('planner_places')
         .select('*')
@@ -997,10 +1007,18 @@
     }
     state.savedPlan = JSON.parse(JSON.stringify(state.plan));
     state.seenUpdatedAt = state.row && state.row.updated_at;
+    var addedPickup = ensurePraguePickup();
     setStatus(state.row ? ('Booking ' + id + ' loaded') : 'No saved plan yet — edits will create one');
     paintSaveStatus('current', state.plan);
     watchPlan();
-    render();
+    if (addedPickup) afterEdit();
+    else render();
+  }
+
+  function ensurePraguePickup() {
+    if (state.sample || !window.RoughWeek || !state.plan || RoughWeek.hasDayOnePickup(state.plan)) return false;
+    var added = RoughWeek.addEnds(state.plan, state.members || [], state.extras, state.places || []);
+    return !!(added && added.pickups);
   }
 
   function planIsDirty() {
@@ -1232,7 +1250,7 @@
           var ok = window.confirm('This replaces the Prague pick-ups and drop-offs already on the week. Other appointments stay.');
           if (!ok) return;
         }
-        var result = RoughWeek.addEnds(state.plan, state.members || []);
+        var result = RoughWeek.addEnds(state.plan, state.members || [], state.extras, state.places || []);
         if (!result.pickups && !result.dropoffs) {
           setStatus('No Prague hotel on this booking');
           return;

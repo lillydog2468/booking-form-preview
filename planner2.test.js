@@ -259,6 +259,9 @@ test('the page saves the open booking and leaves the bookings table alone', () =
   assert.match(bookingHtml, /Clear selection/);
   assert.match(bookingHtml, /src="place-plan\.js"/);
   assert.match(app, /PlacePlan\.toggle/);
+  assert.match(app, /phoneNow\(\)/);
+  assert.match(app, /if \(phoneNow\(\)\) \{\s*openPlaceEditor\(tapped\);/);
+  assert.match(css, /max-width:\s*760px\)[\s\S]*\.p2-pickbar[\s\S]*display:\s*none !important/);
   assert.match(app, /PlacePlan\.place/);
   assert.match(app, /replaceVisits: true/);
   assert.match(app, /\.from\('planner_plans'\)\.select\('booking_id, payload'\)/);

@@ -6,6 +6,7 @@ const path = require('node:path');
 require('./prague-exit.js');
 require('./rough-week.js');
 require('./planner2-model.js');
+require('./booking-extras.js');
 
 const R = globalThis.RoughWeek;
 const planner = fs.readFileSync(path.join(__dirname, 'tour-planner.js'), 'utf8');
@@ -53,6 +54,64 @@ test('an empty week is suggested as before, and an existing plan asks before rep
   assert.equal(R.hasPlan(planned), false);
   assert.ok(planned.days.every(function (day) { return day.blocks.length === 0; }));
   assert.deepEqual(empty.days[0].blocks.map(function (stop) { return stop.title; }), kept);
+});
+
+test('booking 297 falls back to the Prague hotel on the booking when guests have no stay', () => {
+  const notes = '<<<BOOKING_EXTRAS_JSON>>>\n' + JSON.stringify({
+    travel: { pickupPoint: 'prague_hotel', pickupPlace: 'axa', pickupTime: '08:00' },
+    extraStays: { pragueNights: '1', pragueHotel: 'hotel axa' },
+    samePrague: true,
+  }) + '\n<<<END_BOOKING_EXTRAS>>>';
+  const extras = globalThis.BookingExtras.splitNotesAndExtras(notes).extras;
+  assert.equal(extras.travel.pickupPlace, 'axa');
+  assert.equal(extras.samePrague, true);
+  const axa = globalThis.PragueExit.coordFor('axa');
+  const named = globalThis.PragueExit.coordFor('hotel axa');
+  assert.equal(axa.lat, named.lat);
+  assert.equal(axa.lng, 14.4392);
+  assert.equal(R.resolveHotelPoint('axa', []), axa.lat + ',' + axa.lng);
+  const pinned = R.resolveHotelPoint('axa', [
+    { name: 'Hotel Axa', address: 'Na Poříčí 40, Prague 1', pinLat: 50.091, pinLng: 14.44 },
+  ]);
+  assert.equal(pinned, '50.091,14.44');
+  const plan = globalThis.Planner2.emptyPlanFromBooking({
+    id: 297,
+    group_name: 'Heather Kingsley Heath',
+    tour_arrival_date: '2027-04-11',
+    departure_date: '2027-04-16',
+  });
+  const people = [{ id: 1, first_name: 'Heather', last_name: 'Kingsley Heath', prague_stays: null }];
+  const added = R.addEnds(plan, people, extras, []);
+  assert.equal(added.pickups, 1);
+  assert.equal(added.dropoffs, 1);
+  const pickup = plan.days[0].blocks[0];
+  assert.equal(pickup.time, '08:00');
+  assert.equal(pickup.hotelName, 'axa');
+  assert.match(pickup.title, /Heather Kingsley Heath/);
+  assert.equal(pickup.address, axa.lat + ',' + axa.lng);
+  assert.equal(pickup.praguePickups[0].address, pickup.address);
+  const rows = globalThis.Planner2.pickupRows(plan.days[0]);
+  assert.equal(rows[0].point, pickup.address);
+  assert.equal(rows[0].label, 'axa');
+  const guestPlan = globalThis.Planner2.emptyPlanFromBooking({
+    id: 297, group_name: 'Heather Kingsley Heath', tour_arrival_date: '2027-04-11', departure_date: '2027-04-16',
+  });
+  R.addEnds(guestPlan, [{
+    first_name: 'Heather', last_name: 'Kingsley Heath',
+    prague_stays: [{ hotel: 'U Obecního dvora', check_in: '', check_out: '' }],
+  }], extras, []);
+  assert.equal(guestPlan.days[0].blocks[0].hotelName, 'U Obecního dvora');
+  const shared = globalThis.Planner2.emptyPlanFromBooking({
+    id: 20, group_name: 'Shared stay', tour_arrival_date: '2027-06-01', departure_date: '2027-06-06',
+  });
+  R.addEnds(shared, [{ first_name: 'Ann', last_name: 'Guest', prague_stays: null }], {
+    samePrague: true,
+    travel: { pickupPoint: '', pickupPlace: '', pickupTime: '' },
+    extraStays: { pragueHotel: 'Hotel Josef' },
+  }, []);
+  assert.equal(shared.days[0].blocks[0].hotelName, 'Hotel Josef');
+  assert.equal(shared.days[0].blocks[0].time, '08:00');
+  assert.match(shared.days[shared.days.length - 1].blocks[0].title, /Hotel Josef/);
 });
 
 test('suggest fills quiet days and Prague ends keep other stops', () => {

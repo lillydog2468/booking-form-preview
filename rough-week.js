@@ -311,7 +311,72 @@
     return groups;
   }
 
-  function addEnds(plan, people) {
+  function wordHit(hay, needle) {
+    var left = keyOf(hay);
+    var right = keyOf(needle);
+    if (!left || !right) return false;
+    if (left === right) return true;
+    function hasWord(text, word) {
+      return new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(text);
+    }
+    return hasWord(left, right) || hasWord(right, left);
+  }
+
+  function placePin(place) {
+    var lat = Number(place && (place.pinLat != null ? place.pinLat : place.pin_lat));
+    var lng = Number(place && (place.pinLng != null ? place.pinLng : place.pin_lng));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
+    return lat + ',' + lng;
+  }
+
+  function resolveHotelPoint(name, places) {
+    var hotel = text(name);
+    if (!hotel) return '';
+    var matches = (places || []).filter(function (place) {
+      return wordHit(place && place.name, hotel) || wordHit(place && place.nickname, hotel) || wordHit(place && place.address, hotel);
+    });
+    matches.sort(function (a, b) { return (placePin(b) ? 1 : 0) - (placePin(a) ? 1 : 0); });
+    if (matches.length) {
+      var pin = placePin(matches[0]);
+      if (pin) return pin;
+      if (text(matches[0].address)) return text(matches[0].address);
+    }
+    if (root.PragueExit && PragueExit.coordFor) {
+      var coord = PragueExit.coordFor(hotel);
+      if (coord) return coord.lat + ',' + coord.lng;
+    }
+    return '';
+  }
+
+  function bookingHotel(extras) {
+    var details = extras || {};
+    var travel = details.travel || {};
+    var stays = details.extraStays || {};
+    var shared = text(stays.pragueHotel);
+    var time = text(travel.pickupTime) || '08:00';
+    if (travel.pickupPoint === 'prague_hotel') {
+      var named = text(travel.pickupPlace) || shared;
+      if (named) return { hotel: named, time: time };
+    }
+    if (details.samePrague === true && shared) return { hotel: shared, time: time };
+    return null;
+  }
+
+  function fallbackGroups(extras, people) {
+    var hotel = bookingHotel(extras);
+    if (!hotel) return [];
+    var guests = (people || []).map(personName).filter(Boolean);
+    return [{ key: keyOf(hotel.hotel), hotel: hotel.hotel, guests: guests, time: hotel.time }];
+  }
+
+  function hasDayOnePickup(plan) {
+    var day = plan && plan.days && plan.days[0];
+    return (day && day.blocks || []).some(function (stop) {
+      return !!(stop && (stop.autoStop === 'prague-pickup' || stop.handoverKind === 'pickup'));
+    });
+  }
+
+  function addEnds(plan, people, extras, places) {
     var days = plan && plan.days || [];
     if (!days.length) return { pickups: 0, dropoffs: 0 };
     var first = days[0];
@@ -329,13 +394,16 @@
       return stop.autoStop !== 'prague-dropoff' && stop.autoStop !== 'airport-dropoff';
     });
     var pickups = groupsFor(people, 'pickup', arrival);
+    if (!pickups.length) pickups = fallbackGroups(extras, people);
     var dropoffs = mirrorDropoffs(pickups);
     if (pickups.length) {
+      var baseTime = pickups.length === 1 && pickups[0].time ? pickups[0].time : '08:00';
       var rows = pickups.map(function (group, index) {
+        var point = resolveHotelPoint(group.hotel, places);
         return {
           hotel: group.hotel,
-          time: addMinutes('08:00', index * 5),
-          address: '',
+          time: addMinutes(baseTime, index * 5),
+          address: point || group.hotel,
           guests: group.guests.join(' and '),
         };
       });
@@ -348,9 +416,9 @@
         handoverKind: 'pickup',
         placeKind: 'hotel',
         autoStop: 'prague-pickup',
-        time: '08:00',
+        time: rows[0].time,
         hotelName: rows[0].hotel,
-        address: rows[0].hotel,
+        address: rows[0].address,
         title: 'Pick-up · ' + schedule,
         praguePickups: rows,
       });
@@ -359,6 +427,7 @@
     dropoffs.forEach(function (group, index) {
       var when = dropoffs.length > 1 ? addMinutes('18:00', index * 5) : '18:00';
       var who = group.guests.join(' and ');
+      var point = resolveHotelPoint(group.hotel, places);
       last.blocks.push({
         id: nextId(),
         type: 'handover',
@@ -367,12 +436,12 @@
         autoStop: 'prague-dropoff',
         time: when,
         hotelName: group.hotel,
-        address: group.hotel,
+        address: point || group.hotel,
         title: 'Drop-off · ' + when + ' ' + group.hotel + (who ? (' – ' + who) : ''),
         praguePickups: [{
           hotel: group.hotel,
           time: when,
-          address: group.hotel,
+          address: point || group.hotel,
           guests: who,
         }],
       });
@@ -403,6 +472,9 @@
     applySuggestChoice: applySuggestChoice,
     apply: apply,
     addEnds: addEnds,
+    resolveHotelPoint: resolveHotelPoint,
+    hasDayOnePickup: hasDayOnePickup,
+    bookingHotel: bookingHotel,
     hotelBefore: hotelBefore,
     hotelAfter: hotelAfter,
     slotTime: slotTime,
