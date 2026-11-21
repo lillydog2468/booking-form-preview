@@ -22,6 +22,10 @@ test('a known Prague hotel shows a match and does not ask', () => {
   assert.equal(axa.address, 'Na Poříčí 40, Praha 1');
   assert.equal(ctx.PragueHotelMatch.matchedLine(axa), 'Matched: Hotel AXA, Na Poříčí 40, Praha 1');
   assert.equal(ctx.PragueExit.matchHotel('axa').name, 'Hotel AXA');
+  const atrium = ctx.PragueExit.matchHotel('Hilton Prague Atrium');
+  assert.equal(atrium.name, 'Hilton Prague Atrium');
+  assert.equal(atrium.address, 'Pobřežní 1, Praha 8');
+  assert.equal(ctx.PragueHotelMatch.matchedLine(atrium), 'Matched: Hilton Prague Atrium, Pobřežní 1, Praha 8');
   assert.equal(ctx.PragueExit.matchHotel('Pension Slunce'), null);
   assert.equal(ctx.PragueHotelMatch.shouldSearchOnInput(), false);
   assert.equal(ctx.PragueHotelMatch.shouldSearchOnBlur(), true);
@@ -120,6 +124,47 @@ test('unknown hotels ask Nominatim, a tick saves the pin, and none of these save
   assert.equal(ctx.PragueExit.matchHotel('Pension Slunce').source, 'place');
   assert.equal(ctx.PragueExit.matchHotel('Hotel AXA').source, 'known');
   assert.equal(ctx.PragueHotelMatch.choiceResult('none', 'Somewhere else', found[0]).save, false);
+});
+
+test('a blocked Nominatim answer is not treated as no addresses', async () => {
+  const ctx = loadMatch();
+  const calls = [];
+  ctx.PragueHotelMatch.setFetch(async (url) => {
+    calls.push(url);
+    if (url.indexOf('photon.komoot.io') >= 0) {
+      return {
+        ok: true,
+        json: async () => ({
+          features: [{
+            geometry: { coordinates: [14.4396649, 50.0933467] },
+            properties: { name: 'Hilton Prague Atrium', street: 'Pobřežní', housenumber: '1', city: 'Prague', country: 'Czechia' },
+          }],
+        }),
+      };
+    }
+    return { ok: false, status: 429, json: async () => ({ error: 'blocked' }) };
+  });
+  const found = await ctx.PragueHotelMatch.lookup('Mystery Inn');
+  assert.ok(calls.some(url => /Prague%2C%20Czechia|Prague,\+Czechia/.test(url)));
+  assert.ok(calls.some(url => url.indexOf('Praha') >= 0));
+  assert.ok(calls.some(url => url.indexOf('photon.komoot.io') >= 0));
+  assert.match(found[0].label, /Pobřežní/);
+  assert.equal(found[0].lat, 50.0933467);
+
+  ctx.PragueHotelMatch.clearCache();
+  ctx.PragueHotelMatch.setFetch(async () => ({ ok: true, json: async () => [] }));
+  const empty = await ctx.PragueHotelMatch.search('Nowhere Inn');
+  assert.equal(empty.list.length, 0);
+  assert.equal(empty.message, 'No matches, try a different spelling');
+
+  ctx.PragueHotelMatch.clearCache();
+  ctx.PragueHotelMatch.setFetch(async () => { throw new Error('offline'); });
+  const down = await ctx.PragueHotelMatch.search('Offline Inn');
+  assert.equal(down.list.length, 0);
+  assert.equal(down.message, 'Could not look up addresses. Try again in a moment.');
+  const css = fs.readFileSync(path.join(__dirname, 'booking-form.css'), 'utf8');
+  assert.match(css, /\.prague-address-ask \{[\s\S]*width: 100%/);
+  assert.match(css, /\.prague-address-choice span \{[\s\S]*overflow-wrap: anywhere/);
 });
 
 test('each guest confirms alone, and the group tick covers everyone', () => {

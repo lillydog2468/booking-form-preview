@@ -11,6 +11,7 @@
   // Street addresses are what Keith sees. The coordinates sit on the building,
   // not a nearby bus station or a namesake office.
   var KNOWN = [
+    { test: /hilton prague atrium|\bprague atrium\b/, name: 'Hilton Prague Atrium', address: 'Pobřežní 1, Praha 8', street: 'Pobřežní', house: '1', lat: 50.0933467, lng: 14.4396649 },
     { test: /\baxa\b|na porici 40\b/, name: 'Hotel AXA', address: 'Na Poříčí 40, Praha 1', street: 'Na Poříčí', house: '40', lat: 50.0898903, lng: 14.435736 },
     { test: /\batlantic\b|na porici 9\b/, name: 'Hotel Atlantic', address: 'Na Poříčí 9, Praha 1', street: 'Na Poříčí', house: '9', lat: 50.0898424, lng: 14.4316578 },
     { test: /\bjosef\b|\brybna\b/, name: 'Hotel Josef', address: 'Rybná 20, Praha 1', street: 'Rybná', house: '20', lat: 50.0900889, lng: 14.4264446 },

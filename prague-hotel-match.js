@@ -9,8 +9,6 @@
   var GAP_MS = 1100;
   var BLUR_MS = 400;
   var cache = Object.create(null);
-  var jobs = [];
-  var pumping = false;
   var lastRun = 0;
   var client = null;
   var fetchImpl = null;
@@ -75,12 +73,48 @@
   function shouldSearchOnInput() { return false; }
   function shouldSearchOnBlur() { return true; }
 
-  function nominatimUrl(name) {
-    var query = String(name || '').trim() + ', Prague, Czechia';
+  function nominatimUrl(name, bounded) {
+    var query = String(name || '').trim();
+    if (!/,/.test(query)) query = query + ', Prague, Czechia';
+    var box = bounded === false ? '' : '&bounded=1&viewbox=14.22,50.18,14.71,49.94';
     return 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5'
-      + '&accept-language=en&countrycodes=cz&bounded=1'
-      + '&viewbox=14.22,50.18,14.71,49.94'
+      + '&accept-language=en&countrycodes=cz' + box
       + '&q=' + encodeURIComponent(query);
+  }
+
+  function photonUrl(name) {
+    return 'https://photon.komoot.io/api/?lang=en&limit=5&lat=50.087&lon=14.421&q='
+      + encodeURIComponent(String(name || '').trim());
+  }
+
+  function strippedHotelName(name) {
+    return String(name || '').replace(/\b(hotel|the)\b/ig, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function searchPlan(name) {
+    var raw = String(name || '').trim().replace(/\s+/g, ' ');
+    var stripped = strippedHotelName(raw);
+    var steps = [];
+    function add(kind, url) {
+      if (!url || steps.some(function (step) { return step.url === url; })) return;
+      steps.push({ kind: kind, url: url });
+    }
+    if (!raw) return steps;
+    add('nominatim', nominatimUrl(raw + ', Prague, Czechia', true));
+    add('nominatim', nominatimUrl(raw + ', Praha', false));
+    if (stripped && fold(stripped) !== fold(raw)) {
+      add('nominatim', nominatimUrl(stripped + ', Praha', false));
+      add('nominatim', nominatimUrl(stripped + ', Prague, Czechia', false));
+    }
+    add('photon', photonUrl(raw));
+    if (stripped && fold(stripped) !== fold(raw)) add('photon', photonUrl(stripped));
+    return steps;
+  }
+
+  function outcomeMessage(list, anyOk) {
+    if (list && list.length) return '';
+    if (!anyOk) return 'Could not look up addresses. Try again in a moment.';
+    return 'No matches, try a different spelling';
   }
 
   function mapHref(candidate) {
@@ -94,11 +128,33 @@
 
   function candidatesFromNominatim(rows) {
     var out = [];
-    (rows || []).forEach(function (row) {
+    if (!Array.isArray(rows)) return out;
+    rows.forEach(function (row) {
       if (out.length >= 5 || !row) return;
       var lat = Number(row.lat);
       var lng = Number(row.lon != null ? row.lon : row.lng);
       var label = String(row.display_name || '').trim();
+      if (!label || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+      out.push({ label: label, lat: lat, lng: lng });
+    });
+    return out;
+  }
+
+  function candidatesFromPhoton(data) {
+    var out = [];
+    var features = data && Array.isArray(data.features) ? data.features : [];
+    features.forEach(function (feature) {
+      if (out.length >= 5 || !feature) return;
+      var coords = feature.geometry && feature.geometry.coordinates;
+      var lng = coords ? Number(coords[0]) : NaN;
+      var lat = coords ? Number(coords[1]) : NaN;
+      var props = feature.properties || {};
+      var street = [props.street, props.housenumber].filter(Boolean).join(' ');
+      var label = [props.name, street, props.city || props.locality || props.district, props.postcode, props.country]
+        .map(function (part) { return String(part || '').trim(); })
+        .filter(Boolean)
+        .join(', ');
       if (!label || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
       if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
       out.push({ label: label, lat: lat, lng: lng });
@@ -160,57 +216,65 @@
     return null;
   }
 
-  function pump() {
-    if (pumping || !jobs.length) return;
-    pumping = true;
-    var wait = Math.max(0, GAP_MS - (Date.now() - lastRun));
-    setTimeout(function () {
-      var job = jobs.shift();
-      pumping = false;
-      lastRun = Date.now();
-      if (job) runJob(job);
-      if (jobs.length) pump();
-    }, wait);
+  function readBody(res, kind) {
+    if (!res || !res.ok) return Promise.resolve(null);
+    return Promise.resolve(res.json ? res.json() : []).then(function (body) {
+      var list = kind === 'photon' ? candidatesFromPhoton(body) : candidatesFromNominatim(body);
+      return { ok: true, list: list };
+    }).catch(function () { return null; });
   }
 
-  function runJob(job) {
-    var go = fetcher();
-    if (!go) {
-      job.resolve([]);
-      return;
+  function pause(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function search(name) {
+    var key = hotelKey(name);
+    var raw = String(name || '').trim();
+    if (!raw) return Promise.resolve({ list: [], message: '', failed: false });
+    if (Object.prototype.hasOwnProperty.call(cache, key)) {
+      return Promise.resolve({ list: cache[key], message: '', failed: false });
     }
-    Promise.resolve(go(job.url, {
-      headers: {
-        Accept: 'application/json',
-        'Accept-Language': 'en',
-        'User-Agent': 'KeithBookingForm/1.0 (tour planning; hotel address check)',
-      },
-    })).then(function (res) {
-      if (!res || !res.ok) return [];
-      return res.json ? res.json() : [];
-    }).then(function (rows) {
-      var list = candidatesFromNominatim(rows);
-      cache[job.key] = list;
-      job.resolve(list);
-    }).catch(function () {
-      job.resolve([]);
-    });
+    var steps = searchPlan(raw);
+    var go = fetcher();
+    if (!go || !steps.length) {
+      return Promise.resolve({ list: [], message: outcomeMessage([], false), failed: true });
+    }
+    var anyOk = false;
+    function stepAt(index) {
+      if (index >= steps.length) {
+        return { list: [], message: outcomeMessage([], anyOk), failed: !anyOk };
+      }
+      var step = steps[index];
+      var wait = index === 0 ? 0 : Math.max(0, GAP_MS - (Date.now() - lastRun));
+      return pause(wait).then(function () {
+        lastRun = Date.now();
+        return Promise.resolve(go(step.url, {
+          headers: {
+            Accept: 'application/json',
+            'Accept-Language': 'en',
+          },
+        })).then(function (res) {
+          return readBody(res, step.kind);
+        }).catch(function () { return null; });
+      }).then(function (parsed) {
+        if (parsed && parsed.ok) anyOk = true;
+        if (parsed && parsed.list && parsed.list.length) {
+          cache[key] = parsed.list;
+          return { list: parsed.list, message: '', failed: false };
+        }
+        return stepAt(index + 1);
+      });
+    }
+    return stepAt(0);
   }
 
   function lookup(name) {
-    var key = hotelKey(name);
-    var raw = String(name || '').trim();
-    if (!raw) return Promise.resolve([]);
-    if (Object.prototype.hasOwnProperty.call(cache, key)) return Promise.resolve(cache[key]);
-    return new Promise(function (resolve) {
-      jobs.push({ key: key, url: nominatimUrl(raw), resolve: resolve });
-      pump();
-    });
+    return search(name).then(function (result) { return result.list; });
   }
 
   function clearCache() {
     cache = Object.create(null);
-    jobs = [];
   }
 
   async function loadPlaces() {
@@ -257,6 +321,10 @@
     if (field.insertAdjacentElement) field.insertAdjacentElement('afterend', slot);
     input._pragueSlot = slot;
     slot._pragueInput = input;
+    slot.addEventListener('mousedown', function (event) {
+      if (event.target.closest && event.target.closest('input, textarea, select, a, button')) return;
+      event.preventDefault();
+    });
     return slot;
   }
 
@@ -311,6 +379,7 @@
     });
     html += '<label class="prague-address-choice"><input type="radio" name="' + esc(slot.dataset.slotId) + '" value="none"' + (noneChosen ? ' checked' : '') + '> <span>None of these</span></label>';
     if (noneChosen) html += '<p class="prague-address-note">address not confirmed</p>';
+    if (candidates && !candidates.length && slot.dataset.note) html += '<p class="prague-address-note">' + esc(slot.dataset.note) + '</p>';
     html += '<button type="button" class="prague-find">Find address</button>';
     if (slot.dataset.error) html += '<p class="prague-address-note">' + esc(slot.dataset.error) + '</p>';
     html += '</div>';
@@ -351,23 +420,32 @@
   function searchNow(input) {
     var slot = slotOf(input);
     if (!slot || input.dataset.pragueActive !== '1') return;
+    if (slot._blurTimer) {
+      clearTimeout(slot._blurTimer);
+      slot._blurTimer = null;
+    }
     var name = String(input.value || '').trim();
     if (!name || matchHotel(name)) {
       paint(input);
       return;
     }
     var key = hotelKey(name);
+    var generation = (Number(slot.dataset.generation) || 0) + 1;
+    slot.dataset.generation = String(generation);
     slot.dataset.query = key;
     slot.dataset.choice = '';
     slot.dataset.busy = '1';
     slot.dataset.error = '';
+    slot.dataset.note = '';
     slot._candidates = null;
     paint(input);
-    lookup(name).then(function (list) {
+    search(name).then(function (result) {
+      if (String(generation) !== slot.dataset.generation) return;
       if (hotelKey(input.value) !== key) return;
       slot.dataset.busy = '';
-      slot._candidates = list;
+      slot._candidates = result.list || [];
       slot.dataset.query = key;
+      slot.dataset.note = result.message || '';
       paint(input);
     });
   }
@@ -443,6 +521,11 @@
     shouldSearchOnInput: shouldSearchOnInput,
     shouldSearchOnBlur: shouldSearchOnBlur,
     nominatimUrl: nominatimUrl,
+    photonUrl: photonUrl,
+    search: search,
+    searchPlan: searchPlan,
+    outcomeMessage: outcomeMessage,
+    candidatesFromPhoton: candidatesFromPhoton,
     mapHref: mapHref,
     candidatesFromNominatim: candidatesFromNominatim,
     buildPlaceInsert: buildPlaceInsert,

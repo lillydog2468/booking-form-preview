@@ -1369,6 +1369,15 @@
       grid-template-columns: minmax(360px, 1.15fr) minmax(480px, 1.55fr) minmax(320px, .95fr);
       align-items: start;
     }
+    @media (min-width: 1200px) {
+      .layout-grid {
+        grid-template-columns: minmax(460px, 1.4fr) minmax(420px, 1.25fr) minmax(280px, .8fr);
+      }
+      .tab-panel.layout-mode .members-list.resizable-box {
+        max-height: none;
+        overflow: visible;
+      }
+    }
 
     .layout-col {
       display: flex;
@@ -1997,34 +2006,77 @@
     .guest-prague-group .guest-prague-stay {
       padding: 6px 0;
     }
-    .prague-address-slot { flex: 1 1 100%; min-width: 0; }
+    .member-row .guest-fold,
+    .guest-prague-editor,
+    .guest-prague-own,
+    .guest-prague-group,
+    .guest-prague-stay,
+    .guest-sync-bar [id$="_shared_prague"] {
+      flex: 1 1 100%;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    .layout-panel.lp-members { overflow: visible; }
+    .prague-address-slot {
+      flex: 1 0 100%;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
     .prague-address-slot[hidden] { display: none !important; }
     .prague-matched {
-      margin: 4px 0 0;
-      font-size: 12px;
+      display: block;
+      width: 100%;
+      margin: 6px 0 0;
+      font-size: 15px;
+      line-height: 1.4;
       font-weight: 700;
       color: #166534;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
     .prague-address-ask {
-      margin: 6px 0 0;
-      padding: 8px 10px;
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      margin: 8px 0 0;
+      padding: 12px 14px;
       border: 1px solid #bbf7d0;
       border-radius: 10px;
       background: #f0fdf4;
-      font-size: 13px;
+      font-size: 15px;
+      line-height: 1.45;
     }
-    .prague-address-ask p { margin: 0 0 6px; font-weight: 700; }
+    .prague-address-ask p { margin: 0 0 8px; font-weight: 700; }
     .prague-address-choice {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px 6px;
-      align-items: flex-start;
-      margin: 0 0 6px;
+      display: block;
+      width: 100%;
+      margin: 0 0 12px;
+      font-size: 15px;
       font-weight: 600;
+      line-height: 1.45;
       cursor: pointer;
     }
-    .prague-address-choice input { margin-top: 3px; }
-    .prague-map-link { font-size: 12px; font-weight: 700; }
+    .prague-address-choice input {
+      margin: 3px 8px 0 0;
+      vertical-align: top;
+    }
+    .prague-address-choice span {
+      display: inline;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .prague-map-link {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
     .prague-find {
       margin-top: 2px;
       border: 1px dashed var(--border);
