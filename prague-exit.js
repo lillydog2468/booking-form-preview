@@ -11,15 +11,101 @@
   // Street addresses are what Keith sees. The coordinates sit on the building,
   // not a nearby bus station or a namesake office.
   var KNOWN = [
-    { test: /\baxa\b|na porici 40\b/, address: 'Na Poříčí 40, Praha 1', street: 'Na Poříčí', house: '40', lat: 50.0898903, lng: 14.435736 },
-    { test: /\batlantic\b|na porici 9\b/, address: 'Na Poříčí 9, Praha 1', street: 'Na Poříčí', house: '9', lat: 50.0898424, lng: 14.4316578 },
-    { test: /\bjosef\b|\brybna\b/, address: 'Rybná 20, Praha 1', street: 'Rybná', house: '20', lat: 50.0900889, lng: 14.4264446 },
-    { test: /obecniho domu|namesti republiky/, address: 'náměstí Republiky 5, Praha 1', street: 'náměstí Republiky', house: '5', lat: 50.0877557, lng: 14.4277637 },
-    { test: /obecniho dvora/, address: 'U Obecního dvora 7, Praha 1', street: 'U Obecního dvora', house: '7', lat: 50.0912537, lng: 14.4230426 },
+    { test: /\baxa\b|na porici 40\b/, name: 'Hotel AXA', address: 'Na Poříčí 40, Praha 1', street: 'Na Poříčí', house: '40', lat: 50.0898903, lng: 14.435736 },
+    { test: /\batlantic\b|na porici 9\b/, name: 'Hotel Atlantic', address: 'Na Poříčí 9, Praha 1', street: 'Na Poříčí', house: '9', lat: 50.0898424, lng: 14.4316578 },
+    { test: /\bjosef\b|\brybna\b/, name: 'Hotel Josef', address: 'Rybná 20, Praha 1', street: 'Rybná', house: '20', lat: 50.0900889, lng: 14.4264446 },
+    { test: /obecniho domu|namesti republiky/, name: 'Obecní dům', address: 'náměstí Republiky 5, Praha 1', street: 'náměstí Republiky', house: '5', lat: 50.0877557, lng: 14.4277637 },
+    { test: /obecniho dvora/, name: 'U Obecního dvora', address: 'U Obecního dvora 7, Praha 1', street: 'U Obecního dvora', house: '7', lat: 50.0912537, lng: 14.4230426 },
   ];
+  var remembered = [];
 
   function fold(text) {
     return String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function hotelKey(text) {
+    return fold(text).replace(/\b(hotel|the)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function isHotelPlace(place) {
+    if (!place) return false;
+    var type = String(place.place_type || place.type || '').toLowerCase();
+    if (type === 'hotel') return true;
+    var types = place.place_types || place.types || [];
+    var i;
+    for (i = 0; i < types.length; i++) {
+      if (String(types[i]).toLowerCase() === 'hotel') return true;
+    }
+    return false;
+  }
+
+  function finiteCoord(value) {
+    var n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function rememberHotels(places) {
+    remembered = [];
+    (places || []).forEach(function (place) {
+      if (!isHotelPlace(place)) return;
+      var name = String(place.name || '').trim();
+      var nick = String(place.nickname || '').trim();
+      var keys = [];
+      [name, nick].forEach(function (part) {
+        var key = hotelKey(part);
+        if (key && keys.indexOf(key) < 0) keys.push(key);
+      });
+      if (!keys.length) return;
+      var lat = finiteCoord(place.pin_lat != null ? place.pin_lat : place.pinLat);
+      var lng = finiteCoord(place.pin_lng != null ? place.pin_lng : place.pinLng);
+      remembered.push({
+        keys: keys,
+        name: name,
+        address: String(place.address || '').trim(),
+        lat: lat,
+        lng: lng,
+      });
+    });
+  }
+
+  function rememberedMatch(text) {
+    var key = hotelKey(text);
+    if (!key) return null;
+    var i;
+    for (i = 0; i < remembered.length; i++) {
+      if (remembered[i].keys.indexOf(key) >= 0) {
+        return {
+          name: remembered[i].name,
+          address: remembered[i].address,
+          lat: remembered[i].lat,
+          lng: remembered[i].lng,
+          source: 'place',
+        };
+      }
+    }
+    return null;
+  }
+
+  function knownListMatch(text) {
+    var folded = fold(text);
+    if (!folded) return null;
+    var i;
+    for (i = 0; i < KNOWN.length; i++) {
+      if (KNOWN[i].test.test(folded)) {
+        return {
+          name: KNOWN[i].name || '',
+          address: KNOWN[i].address || '',
+          lat: KNOWN[i].lat,
+          lng: KNOWN[i].lng,
+          source: 'known',
+        };
+      }
+    }
+    return null;
+  }
+
+  function matchHotel(text) {
+    return rememberedMatch(text) || knownListMatch(text);
   }
 
   function haversine(a, b) {
@@ -77,8 +163,16 @@
     return { street: head, house: house, address: raw };
   }
 
+  function savedPin(text) {
+    var saved = rememberedMatch(text);
+    if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lng)) return { lat: saved.lat, lng: saved.lng };
+    return null;
+  }
+
   function coordFor(point) {
     if (point && typeof point === 'object') {
+      var savedObj = savedPin(point.hotel || point.name || point.nickname || point.label || point.address || point.point || '');
+      if (savedObj) return savedObj;
       var named = matchKnown(point.hotel || point.name || point.nickname || point.label || '');
       if (!named) named = matchKnown(point.address || point.point || '');
       if (named) return { lat: named.lat, lng: named.lng };
@@ -87,6 +181,8 @@
       if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat: lat, lng: lng };
       point = point.point || point.address || point.hotel || point.label || '';
     }
+    var saved = savedPin(point);
+    if (saved) return saved;
     var hit = matchKnown(point);
     return hit ? { lat: hit.lat, lng: hit.lng } : null;
   }
@@ -161,5 +257,8 @@
     placeFor: placeFor,
     streetParts: streetParts,
     order: order,
+    hotelKey: hotelKey,
+    rememberHotels: rememberHotels,
+    matchHotel: matchHotel,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

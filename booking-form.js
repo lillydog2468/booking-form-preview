@@ -1190,12 +1190,17 @@
     if (!session) {
       cloudReady = false;
       AuthGate.useLocalData(sb);
+      if (window.PragueHotelMatch) PragueHotelMatch.setClient(null);
       loadHotelsFromStorage();
       loadLocalBookings();
       openEditor('', '');
       return;
     }
     cloudReady = true;
+    if (window.PragueHotelMatch) {
+      PragueHotelMatch.setClient(sb);
+      PragueHotelMatch.loadPlaces();
+    }
     let role = 'user';
     try {
       const { data: profile } = await sb.from('profiles')
@@ -1659,7 +1664,7 @@
               <label class="day-trip-toggle"><input type="checkbox" id="t${t}_same_prague" onchange="toggleSamePrague('${t}')"> Whole group in the same Prague hotel</label>
               <div id="t${t}_shared_prague" hidden>
                 <div id="t${t}_shared_prague_list"></div>
-                <button type="button" class="member-add" onclick="addSharedPragueStay('${t}')">Add another stay</button>
+                <button type="button" class="member-add" id="t${t}_shared_prague_add" onclick="addSharedPragueStay('${t}')">Add a stay</button>
               </div>
             </div>
             <div class="members-list member-pay-closed resizable-box" id="t${t}_members_list"></div>
@@ -3515,10 +3520,16 @@
         </div>
       </details>
       <details class="fold guest-fold" data-fold="guest-prague">
-        <summary><span class="guest-fold-label">Prague hotel</span> <span class="guest-prague-summary"></span></summary>
+        <summary class="guest-prague-summary-line"><span class="guest-fold-label">Prague hotel</span> <span class="guest-prague-summary"></span><span class="guest-prague-affordance" hidden aria-hidden="true">✎ ›</span></summary>
         <div class="fold-body guest-prague-editor">
-          <div class="guest-prague-list">${stays}</div>
-          <button type="button" class="member-add guest-prague-add">Add another stay</button>
+          <div class="guest-prague-group" hidden>
+            <div class="guest-prague-group-bar"><strong>Group Prague hotel</strong><button type="button" class="guest-prague-sheet-close">Close</button></div>
+            <div class="guest-prague-group-editor"></div>
+          </div>
+          <div class="guest-prague-own">
+            <div class="guest-prague-list">${stays}</div>
+            <button type="button" class="member-add guest-prague-add">Add another stay</button>
+          </div>
         </div>
       </details>`;
   }
@@ -3803,13 +3814,241 @@
     });
   }
 
-  function bindPragueStayRow(stayRow, tabId) {
+  function sharedPragueAddLabel(count) {
+    if (window.PragueHotelMatch && PragueHotelMatch.stayAddLabel) return PragueHotelMatch.stayAddLabel(count);
+    return count > 0 ? 'Add another stay' : 'Add a stay';
+  }
+
+  function sharedPragueList(tabId) {
+    return document.getElementById('t' + tabId + '_shared_prague_list');
+  }
+
+  function sharedPragueStayRows(tabId) {
+    const list = sharedPragueList(tabId);
+    return list ? [...list.querySelectorAll('.guest-prague-stay')] : [];
+  }
+
+  function paintSharedPragueAddLabel(tabId) {
+    const btn = document.getElementById('t' + tabId + '_shared_prague_add');
+    if (btn) btn.textContent = sharedPragueAddLabel(sharedPragueStayRows(tabId).length);
+  }
+
+  function ensureSharedPragueBlank(tabId) {
+    const list = sharedPragueList(tabId);
+    if (!list) return;
+    if (!list.querySelector('.guest-prague-stay')) {
+      list.insertAdjacentHTML('beforeend', pragueStayRowHTML({}));
+      bindPragueStayRow(list.lastElementChild, tabId);
+    }
+    paintSharedPragueAddLabel(tabId);
+  }
+
+  function sharedStaySnapshots(tabId) {
+    return sharedPragueStayRows(tabId).map(row => ({
+      hotel: row.querySelector('.guest-stay-hotel')?.value || '',
+      check_in: row.querySelector('.guest-stay-in')?.value || '',
+      check_out: row.querySelector('.guest-stay-out')?.value || '',
+      note: row.querySelector('.guest-stay-note')?.value || '',
+    }));
+  }
+
+  function groupStayField(row, key) {
+    if (key === 'hotel') return row.querySelector('.guest-stay-hotel');
+    if (key === 'in') return row.querySelector('.guest-stay-in');
+    if (key === 'out') return row.querySelector('.guest-stay-out');
+    return row.querySelector('.guest-stay-note');
+  }
+
+  function copyStayField(fromRow, toRow, key) {
+    const source = groupStayField(fromRow, key);
+    const target = groupStayField(toRow, key);
+    if (!source || !target || target === source || document.activeElement === target) return;
+    if (target.value !== source.value) target.value = source.value;
+  }
+
+  function syncSharedStayRow(tabId, sharedRow) {
+    const index = sharedPragueStayRows(tabId).indexOf(sharedRow);
+    if (index < 0) return;
+    memberRows(tabId).forEach(guest => {
+      const mirror = guest.querySelectorAll('.guest-prague-group-editor .guest-prague-stay')[index];
+      if (!mirror) return;
+      ['hotel', 'in', 'out', 'note'].forEach(key => copyStayField(sharedRow, mirror, key));
+      updatePragueStayNights(mirror);
+    });
+  }
+
+  function writeSharedStayField(tabId, index, key, value, source) {
+    const shared = sharedPragueStayRows(tabId)[index];
+    const input = shared && groupStayField(shared, key);
+    if (input && input !== source && input.value !== value) input.value = value;
+    if (shared) updatePragueStayNights(shared);
+    memberRows(tabId).forEach(guest => {
+      const mirror = guest.querySelectorAll('.guest-prague-group-editor .guest-prague-stay')[index];
+      const field = mirror && groupStayField(mirror, key);
+      if (!field || field === source || document.activeElement === field) return;
+      if (field.value !== value) field.value = value;
+      updatePragueStayNights(mirror);
+    });
+  }
+
+  function refreshOpenGroupEditors(tabId) {
+    memberRows(tabId).forEach(guest => {
+      const panel = guest.querySelector('.guest-prague-group');
+      if (!panel || panel.hidden) return;
+      renderGroupPragueEditor(tabId, guest, true);
+    });
+  }
+
+  function renderGroupPragueEditor(tabId, guestRow, force) {
+    const host = guestRow.querySelector('.guest-prague-group-editor');
+    if (!host) return;
+    const snaps = sharedStaySnapshots(tabId);
+    const sameCount = host.querySelectorAll('.guest-prague-stay').length === snaps.length;
+    if (!force && sameCount && host.dataset.ready === '1') return;
+    host.innerHTML = snaps.map(stay => pragueStayRowHTML(stay)).join('')
+      + '<button type="button" class="member-add guest-group-add">Add another stay</button>';
+    host.dataset.ready = '1';
+    host.querySelectorAll('.guest-prague-stay').forEach((stayRow, index) => bindGroupStayRow(stayRow, tabId, index));
+    host.querySelector('.guest-group-add')?.addEventListener('click', () => {
+      addSharedPragueStay(tabId);
+      memberRows(tabId).forEach(guest => {
+        const editor = guest.querySelector('.guest-prague-group-editor');
+        if (editor) editor.dataset.ready = '';
+      });
+      refreshOpenGroupEditors(tabId);
+    });
+    watchPragueHotelInputs(tabId);
+  }
+
+  function bindGroupStayRow(stayRow, tabId, index) {
     if (!stayRow) return;
+    const fields = [['.guest-stay-hotel', 'hotel'], ['.guest-stay-in', 'in'], ['.guest-stay-out', 'out'], ['.guest-stay-note', 'note']];
+    fields.forEach(([sel, key]) => {
+      const input = stayRow.querySelector(sel);
+      if (!input) return;
+      const fire = () => {
+        writeSharedStayField(tabId, index, key, input.value, input);
+        updatePragueStayNights(stayRow);
+        refreshGuestTravel(tabId);
+        onTabInput(tabId);
+      };
+      input.addEventListener('input', fire);
+      input.addEventListener('change', fire);
+    });
     stayRow.querySelector('.guest-stay-remove')?.addEventListener('click', () => {
-      stayRow.remove();
+      const shared = sharedPragueStayRows(tabId)[index];
+      if (shared) shared.remove();
+      paintSharedPragueAddLabel(tabId);
+      memberRows(tabId).forEach(guest => {
+        const editor = guest.querySelector('.guest-prague-group-editor');
+        if (editor) editor.dataset.ready = '';
+      });
+      refreshOpenGroupEditors(tabId);
       refreshGuestTravel(tabId);
       onTabInput(tabId);
     });
+    updatePragueStayNights(stayRow);
+  }
+
+  function closeGroupPragueSheet() {
+    document.querySelectorAll('.guest-prague-sheet-backdrop').forEach(node => node.remove());
+    document.querySelectorAll('.guest-prague-group.is-sheet').forEach(panel => {
+      panel.classList.remove('is-sheet');
+      panel.hidden = true;
+    });
+  }
+
+  function toggleGroupPragueEditor(tabId, guestRow) {
+    const panel = guestRow && guestRow.querySelector('.guest-prague-group');
+    const details = guestRow && guestRow.querySelector('details[data-fold="guest-prague"]');
+    if (!panel) return;
+    if (!panel.hidden) {
+      panel.hidden = true;
+      panel.classList.remove('is-sheet');
+      if (details) details.open = false;
+      closeGroupPragueSheet();
+      return;
+    }
+    closeGroupPragueSheet();
+    ensureSharedPragueBlank(tabId);
+    const editor = guestRow.querySelector('.guest-prague-group-editor');
+    if (editor) editor.dataset.ready = '';
+    renderGroupPragueEditor(tabId, guestRow, true);
+    panel.hidden = false;
+    if (details) details.open = true;
+    const phone = document.documentElement.classList.contains('is-phone') || window.innerWidth <= 700;
+    panel.classList.toggle('is-sheet', phone);
+    if (phone) {
+      const backdrop = document.createElement('button');
+      backdrop.type = 'button';
+      backdrop.className = 'guest-prague-sheet-backdrop';
+      backdrop.setAttribute('aria-label', 'Close group hotel');
+      backdrop.addEventListener('click', () => toggleGroupPragueEditor(tabId, guestRow));
+      document.body.appendChild(backdrop);
+    }
+    const hotel = panel.querySelector('.guest-stay-hotel');
+    if (panel.scrollIntoView) {
+      try { panel.scrollIntoView({ block: 'nearest' }); } catch (err) { /* older browsers */ }
+    }
+    if (hotel) {
+      try { hotel.focus({ preventScroll: true }); }
+      catch (err) { hotel.focus(); }
+    }
+  }
+
+  function watchPragueHotelInputs(tabId) {
+    if (!window.PragueHotelMatch) return;
+    const scope = PragueHotelMatch.addressScope(samePragueOn(tabId));
+    const panel = document.getElementById('tabPanel_' + tabId);
+    if (!panel) return;
+    panel.querySelectorAll('.guest-stay-hotel').forEach(input => {
+      const inShared = !!input.closest('[id$="_shared_prague_list"]');
+      const inGroup = !!input.closest('.guest-prague-group');
+      const inGuest = !!input.closest('.guest-prague-list');
+      const active = (scope.shared && inShared) || (scope.groupEditor && inGroup) || (scope.guest && inGuest);
+      if (active) PragueHotelMatch.watch(input, { active: true });
+      else PragueHotelMatch.unwatch(input);
+    });
+    const extra = tEl(tabId, 'prague_hotel');
+    if (extra) {
+      if (PragueHotelMatch.extraAddressActive('prague-hotel')) PragueHotelMatch.watch(extra, { active: true });
+      else PragueHotelMatch.unwatch(extra);
+    }
+    const pickup = tEl(tabId, 'pickup_place');
+    const point = tEl(tabId, 'pickup_point')?.value || '';
+    if (pickup) {
+      if (PragueHotelMatch.extraAddressActive('pickup', point)) PragueHotelMatch.watch(pickup, { active: true });
+      else PragueHotelMatch.unwatch(pickup);
+    }
+  }
+
+  function bindPragueStayRow(stayRow, tabId) {
+    if (!stayRow) return;
+    stayRow.querySelector('.guest-stay-remove')?.addEventListener('click', () => {
+      const shared = !!stayRow.closest('[id$="_shared_prague_list"]');
+      stayRow.remove();
+      if (shared) {
+        paintSharedPragueAddLabel(tabId);
+        memberRows(tabId).forEach(guest => {
+          const editor = guest.querySelector('.guest-prague-group-editor');
+          if (editor) editor.dataset.ready = '';
+        });
+        refreshOpenGroupEditors(tabId);
+      }
+      refreshGuestTravel(tabId);
+      onTabInput(tabId);
+    });
+    if (stayRow.closest('[id$="_shared_prague_list"]')) {
+      stayRow.querySelectorAll('input').forEach(input => {
+        const copy = () => {
+          syncSharedStayRow(tabId, stayRow);
+          refreshGuestTravel(tabId);
+          onTabInput(tabId);
+        };
+        input.addEventListener('input', copy);
+        input.addEventListener('change', copy);
+      });
+    }
   }
 
   function updatePragueStayNights(stayRow) {
@@ -3862,17 +4101,60 @@
 
   function applySamePragueChrome(tabId) {
     const on = samePragueOn(tabId);
-    const shared = readPragueStays(document.getElementById('t' + tabId + '_shared_prague_list'));
+    const shared = readPragueStays(sharedPragueList(tabId));
     const sharedText = guestPragueSummary(shared).replace(/^Own Prague hotel: /, '');
     const box = document.getElementById('t' + tabId + '_shared_prague');
     if (box) box.hidden = !on;
+    paintSharedPragueAddLabel(tabId);
     memberRows(tabId).forEach(row => {
+      const own = row.querySelector('.guest-prague-own');
+      if (own) own.hidden = on;
       const editor = row.querySelector('.guest-prague-editor');
-      if (editor) editor.hidden = on;
+      if (editor) editor.hidden = false;
+      const affordance = row.querySelector('.guest-prague-affordance');
+      if (affordance) affordance.hidden = !on;
+      const line = row.querySelector('.guest-prague-summary-line');
+      if (line) {
+        line.classList.toggle('is-group-stay', on);
+        if (on) line.setAttribute('aria-label', 'Edit the group Prague hotel');
+        else line.removeAttribute('aria-label');
+      }
       const summary = row.querySelector('.guest-prague-summary');
-      if (!summary) return;
-      summary.textContent = on ? ('With the group: ' + (sharedText === 'No own Prague stay' ? 'No Prague stay yet' : sharedText)) : guestPragueSummary(readPragueStays(row));
+      if (summary) {
+        summary.textContent = on ? ('With the group: ' + (sharedText === 'No own Prague stay' ? 'No Prague stay yet' : sharedText)) : guestPragueSummary(readPragueStays(row));
+      }
+      if (line && !line.dataset.groupBound) {
+        line.dataset.groupBound = '1';
+        line.addEventListener('click', (event) => {
+          if (!samePragueOn(tabId) || !PragueHotelMatchAllowsGroupEditor()) return;
+          event.preventDefault();
+          toggleGroupPragueEditor(tabId, row);
+        });
+      }
+      const closeBtn = row.querySelector('.guest-prague-sheet-close');
+      if (closeBtn && !closeBtn.dataset.bound) {
+        closeBtn.dataset.bound = '1';
+        closeBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          const panel = row.querySelector('.guest-prague-group');
+          if (panel && !panel.hidden) toggleGroupPragueEditor(tabId, row);
+        });
+      }
+      if (!on) {
+        const panel = row.querySelector('.guest-prague-group');
+        if (panel) {
+          panel.hidden = true;
+          panel.classList.remove('is-sheet');
+        }
+      }
     });
+    if (!on) closeGroupPragueSheet();
+    watchPragueHotelInputs(tabId);
+  }
+
+  function PragueHotelMatchAllowsGroupEditor() {
+    if (window.PragueHotelMatch && PragueHotelMatch.groupLineOpensEditor) return PragueHotelMatch.groupLineOpensEditor(true);
+    return true;
   }
 
   function refreshGuestTravel(tabId) {
@@ -3884,6 +4166,11 @@
     applySameFlightChrome(tabId);
     applySamePragueChrome(tabId);
     refreshOwnPragueLine(tabId);
+    const pickup = tEl(tabId, 'pickup_point');
+    if (pickup && !pickup.dataset.pragueWatch) {
+      pickup.dataset.pragueWatch = '1';
+      pickup.addEventListener('change', () => watchPragueHotelInputs(tabId));
+    }
   }
 
   function refreshOwnPragueLine(tabId) {
@@ -3936,11 +4223,13 @@
         box.checked = false;
         return;
       }
-      const sharedList = document.getElementById('t' + tabId + '_shared_prague_list');
+      const sharedList = sharedPragueList(tabId);
       if (sharedList && !readPragueStays(sharedList).length) {
-        const first = memberRows(tabId)[0];
-        writePragueStays(sharedList, first ? readPragueStays(first) : [], tabId);
+        const seeded = memberRows(tabId).map(row => readPragueStays(row)).find(stays => stays.length) || [];
+        if (seeded.length) writePragueStays(sharedList, seeded, tabId);
+        else ensureSharedPragueBlank(tabId);
       }
+      paintSharedPragueAddLabel(tabId);
     } else {
       const shared = readPragueStays(document.getElementById('t' + tabId + '_shared_prague_list'));
       memberRows(tabId).forEach(row => writePragueStays(row.querySelector('.guest-prague-list'), shared, tabId));
@@ -3950,12 +4239,22 @@
   }
 
   function addSharedPragueStay(tabId) {
-    const stayList = document.getElementById('t' + tabId + '_shared_prague_list');
+    const stayList = sharedPragueList(tabId);
     if (!stayList) return;
     stayList.insertAdjacentHTML('beforeend', pragueStayRowHTML({}));
-    bindPragueStayRow(stayList.lastElementChild, tabId);
+    const row = stayList.lastElementChild;
+    bindPragueStayRow(row, tabId);
+    paintSharedPragueAddLabel(tabId);
     refreshGuestTravel(tabId);
     onTabInput(tabId);
+    const input = row && row.querySelector('.guest-stay-hotel');
+    if (row && row.scrollIntoView) {
+      try { row.scrollIntoView({ block: 'nearest' }); } catch (err) { /* keep going */ }
+    }
+    if (input) {
+      try { input.focus({ preventScroll: true }); }
+      catch (err) { input.focus(); }
+    }
   }
 
   function fillPragueFromGuests(tabId) {
@@ -4351,10 +4650,10 @@
     if (sameFlights) sameFlights.checked = x.sameFlights === true;
     if (samePrague) samePrague.checked = x.samePrague === true;
     if (x.samePrague === true) {
-      const firstStayRow = memberRows(tabId)[0];
-      const seeded = firstStayRow ? readPragueStays(firstStayRow) : [];
-      const sharedList = document.getElementById('t' + tabId + '_shared_prague_list');
-      if (sharedList && !readPragueStays(sharedList).length) writePragueStays(sharedList, seeded, tabId);
+      const seeded = memberRows(tabId).map(row => readPragueStays(row)).find(stays => stays.length) || [];
+      const sharedList = sharedPragueList(tabId);
+      if (sharedList && !readPragueStays(sharedList).length && seeded.length) writePragueStays(sharedList, seeded, tabId);
+      ensureSharedPragueBlank(tabId);
     }
     if (typeof refreshGuestTravel === 'function') refreshGuestTravel(tabId);
     const placeSel = tEl(tabId, 'tour_place');

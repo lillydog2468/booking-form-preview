@@ -1036,6 +1036,7 @@
         .order('sort_order', { ascending: true });
       if (!places.error && places.data) state.places = places.data.map(placeFromRow);
     }
+    if (window.PragueExit && PragueExit.rememberHotels) PragueExit.rememberHotels(state.places);
     state.savedPlan = JSON.parse(JSON.stringify(state.plan));
     state.seenUpdatedAt = state.row && state.row.updated_at;
     var addedPickup = ensurePraguePickup();

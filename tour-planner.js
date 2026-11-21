@@ -4840,6 +4840,17 @@ if (typeof PlanningHide !== 'undefined' && PlanningHide.oldPlanningHidden()) {
     const list = Array.isArray(places) ? places : ((typeof state !== 'undefined' && state && state.catalogue) || []);
     const exact = list.find(place => String(place && place.name || '').trim().toLowerCase().replace(/\s+/g, ' ') === wanted);
     if (exact) return exact;
+    const loose = (window.PragueExit && PragueExit.hotelKey) ? PragueExit.hotelKey(wanted) : '';
+    if (loose) {
+      const hits = list.filter(place => {
+        const nameKey = PragueExit.hotelKey(place && place.name);
+        const nickKey = PragueExit.hotelKey(place && place.nickname);
+        return nameKey === loose || nickKey === loose;
+      });
+      const pinned = hits.filter(place => pinFromHotelPlace(place));
+      if (pinned.length === 1) return pinned[0];
+      if (hits.length === 1) return hits[0];
+    }
     if (Array.isArray(places)) return null;
     return typeof matchHotelPlaceFromText === 'function' ? matchHotelPlaceFromText(name) : null;
   }
@@ -13827,6 +13838,7 @@ function renderDayTabs() {
     // Old seed name left in this browser beside the renamed km04 cloud row.
     // In memory only — planner_places rows are not deleted.
     state.catalogue = (state.catalogue || []).filter(p => !(p && p.name === 'Old museum of cars in Smržovka'));
+    if (window.PragueExit && PragueExit.rememberHotels) PragueExit.rememberHotels(state.catalogue);
     state.catalogue = normalizeCatalogue(state.catalogue);
     if (ensureKnownTourHotelAddresses()) {
       syncEmptyStopAddressesFromCatalogue();
