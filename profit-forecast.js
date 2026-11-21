@@ -180,45 +180,55 @@
       .replace(/"/g, '&quot;');
   }
 
-  function chartSvg(rows, currentPeople) {
-    var width = 360;
-    var rowH = 28;
-    var head = 22;
-    var gap = 16;
-    var labelW = 18;
-    var valueW = 78;
-    var barMax = width - 16 - labelW - valueW;
-    var blockH = head + rows.length * rowH;
-    var height = blockH * 2 + gap;
+  function chartSvg(rows, currentPeople, wide) {
+    var rowH = 16;
+    var head = 14;
+    var labelW = 14;
+    var valueW = 56;
     var parts = [];
-    parts.push('<svg class="forecast-chart" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Profit and profit per person for groups of 2 to 7">');
-    function block(title, key, y0) {
+    function block(title, key, x0, panelW, y0, series) {
       var max = 0;
       rows.forEach(function (row) { if (row[key] > max) max = row[key]; });
       if (max <= 0) max = 1;
-      parts.push('<text class="chart-title" x="8" y="' + (y0 + 14) + '">' + escapeXml(title) + '</text>');
+      var barMax = panelW - 10 - labelW - valueW;
+      parts.push('<text class="chart-title" x="' + (x0 + 4) + '" y="' + (y0 + 11) + '">' + escapeXml(title) + '</text>');
       rows.forEach(function (row, i) {
         var y = y0 + head + i * rowH;
         var current = row.people === currentPeople;
         var barW = Math.max(2, Math.round((Math.max(row[key], 0) / max) * barMax));
+        var mark = (series ? ' ppp' : '') + (current ? ' is-current' : '');
         if (current) {
-          parts.push('<rect class="chart-current" x="4" y="' + y + '" width="' + (width - 8) + '" height="' + (rowH - 4) + '" rx="6"></rect>');
+          parts.push('<rect class="chart-current' + (series ? ' ppp' : '') + '" x="' + x0 + '" y="' + (y - 1) + '" width="' + panelW + '" height="' + (rowH - 1) + '" rx="3"></rect>');
         }
-        parts.push('<text class="chart-size" x="8" y="' + (y + 16) + '">' + row.people + '</text>');
-        parts.push('<rect class="chart-bar' + (current ? ' is-current' : '') + '" x="' + (8 + labelW) + '" y="' + (y + 5) + '" width="' + barW + '" height="14" rx="4"></rect>');
-        parts.push('<text class="chart-value" x="' + (width - 8) + '" y="' + (y + 16) + '" text-anchor="end">' + escapeXml(formatPounds(row[key])) + '</text>');
+        parts.push('<text class="chart-size" x="' + (x0 + 4) + '" y="' + (y + 10) + '">' + row.people + '</text>');
+        parts.push('<rect class="chart-bar' + mark + '" x="' + (x0 + 4 + labelW) + '" y="' + (y + 3) + '" width="' + barW + '" height="8" rx="2"></rect>');
+        parts.push('<text class="chart-value" x="' + (x0 + panelW - 4) + '" y="' + (y + 10) + '" text-anchor="end">' + escapeXml(formatPounds(row[key])) + '</text>');
       });
     }
-    block('Profit', 'profit', 0);
-    block('Profit per person', 'profitPerPerson', blockH + gap);
+    var height = head + rows.length * rowH + 2;
+    var width;
+    if (wide) {
+      var panelW = 248;
+      var gap = 10;
+      width = panelW * 2 + gap;
+      parts.push('<svg class="forecast-chart" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Profit and profit per person for groups of 2 to 7">');
+      block('Profit', 'profit', 0, panelW, 0, false);
+      block('Profit per person', 'profitPerPerson', panelW + gap, panelW, 0, true);
+    } else {
+      var gapN = 8;
+      width = 360;
+      parts.push('<svg class="forecast-chart" viewBox="0 0 ' + width + ' ' + (height * 2 + gapN) + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Profit and profit per person for groups of 2 to 7">');
+      block('Profit', 'profit', 0, width, 0, false);
+      block('Profit per person', 'profitPerPerson', 0, width, height + gapN, true);
+    }
     parts.push('</svg>');
     return parts.join('');
   }
 
   function roomPhrase(row) {
     var guests = row.guestRooms === 1 ? '1 single' : row.guestRooms + ' singles';
-    if (row.keithRooms) return row.rooms + ' rooms (' + guests + ' and Keith\u2019s room)';
-    return row.rooms + (row.rooms === 1 ? ' room' : ' rooms') + ' (' + guests + ')';
+    if (row.keithRooms) return guests + ' + Keith';
+    return guests;
   }
 
   function hotelPhrase(row) {
@@ -246,7 +256,7 @@
       state.lengths.forEach(function (row) {
         var opt = doc.createElement('option');
         opt.value = String(row.days);
-        opt.textContent = row.label + ' \u2014 ' + formatPounds(row.price) + ' a person';
+        opt.textContent = row.label + ' \u2014 ' + formatPounds(row.price);
         if (String(row.days) === selected) opt.selected = true;
         length.appendChild(opt);
       });
@@ -309,16 +319,16 @@
       doc.getElementById('hotel').textContent = formatPounds(row.hotel);
       doc.getElementById('hotelDetail').textContent = hotelPhrase(row);
       doc.getElementById('fuelOut').textContent = formatPounds(row.fuel);
-      doc.getElementById('fuelDetail').textContent = fuelLine(row, fuelTouched);
+      doc.getElementById('fuelDetail').textContent = row.vehicle;
+      var fuelHint = doc.getElementById('fuelHint');
+      if (fuelHint) fuelHint.textContent = fuelLine(row, fuelTouched);
       doc.getElementById('profit').textContent = formatPounds(row.profit);
       doc.getElementById('profitEach').textContent = formatPounds(row.profitPerPerson);
-      doc.getElementById('vehicle').textContent = row.vehicle;
-      doc.getElementById('vehicleDetail').textContent = row.people <= 4
-        ? 'Up to 4 guests, plus Keith'
-        : '5 to 7 guests, plus Keith';
-      chart.innerHTML = chartSvg(series, count);
+      var wide = doc.documentElement && doc.documentElement.clientWidth >= 800;
+      chart.innerHTML = chartSvg(series, count, wide);
     }
 
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', paint);
     people.addEventListener('input', paint);
     length.addEventListener('change', paint);
     leader.addEventListener('change', paint);

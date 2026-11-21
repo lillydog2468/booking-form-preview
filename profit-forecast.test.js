@@ -94,7 +94,13 @@ test('the page title is exact and the link is only inside More', () => {
   const page = fs.readFileSync(path.join(root, 'profit-forecast.html'), 'utf8');
   assert.match(page, /<title>Profit, size of tour forecast<\/title>/);
   assert.match(page, /<h1>Profit, size of tour forecast<\/h1>/);
-  assert.match(page, /This estimate covers the hotel and fuel only\. Meals and entries are not recorded\./);
+  assert.match(page, /<details class="adjust">\s*<summary>Adjust<\/summary>/);
+  assert.equal(/<details class="adjust"[^>]*\sopen/.test(page), false);
+  assert.ok(page.indexOf('id="people"') < page.indexOf('<details class="adjust">'));
+  const fold = page.slice(page.indexOf('<details class="adjust">'), page.indexOf('</details>'));
+  assert.match(fold, /This estimate covers the hotel and fuel only\. Meals and entries are not recorded\./);
+  assert.match(fold, /id="hotelRate"/);
+  assert.match(fold, /id="fuel"/);
   assert.match(page, /AuthGate\.require\(/);
   const js = fs.readFileSync(path.join(root, 'profit-forecast.js'), 'utf8');
   assert.match(js, /\.select\('book'\)/);
