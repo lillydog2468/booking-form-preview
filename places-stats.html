@@ -17,6 +17,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="booking-config.js"></script>
   <script src="planning-hide.js"></script>
+  <script src="prague-exit.js"></script>
+  <script src="prague-hotel-ratings.js"></script>
+  <script src="prague-hotel-history.js"></script>
   <script src="place-categories.js"></script>
   <script src="place-visits.js"></script>
   <script src="place-pin.js"></script>
@@ -370,7 +373,10 @@
   <main class="wrap">
     <div class="view-switch">
       <button type="button" class="btn" id="historyToggle" aria-expanded="false" aria-controls="placesHistory">Places history</button>
+      <button type="button" class="btn" id="pragueHotelsToggle" aria-expanded="false" aria-controls="pragueHotelsPanel">Prague hotels</button>
     </div>
+
+    <section id="pragueHotelsPanel" hidden></section>
 
     <section id="placesHistory" hidden>
       <div class="cards" id="summaryCards">
@@ -836,6 +842,7 @@
         console.error(err);
         setStatus(err.message || 'Failed to load', 'err');
       });
+      loadPragueHotelsPanel();
     });
     document.getElementById('searchBox').addEventListener('input', () => { renderList(); renderTable(); });
     document.getElementById('typeFilter').addEventListener('change', () => {
@@ -850,6 +857,20 @@
       const btn = document.getElementById('historyToggle');
       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       btn.classList.toggle('on', open);
+    });
+    async function loadPragueHotelsPanel() {
+      const panel = document.getElementById('pragueHotelsPanel');
+      if (!panel || panel.hidden || !window.PragueHotelHistory) return;
+      await PragueHotelHistory.mount(panel, { sb });
+    }
+    document.getElementById('pragueHotelsToggle').addEventListener('click', () => {
+      const panel = document.getElementById('pragueHotelsPanel');
+      const open = panel.hidden;
+      panel.hidden = !open;
+      const btn = document.getElementById('pragueHotelsToggle');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.classList.toggle('on', open);
+      if (open) loadPragueHotelsPanel();
     });
 
     fixExternalNavLinks();

@@ -702,6 +702,9 @@
       await yieldToBrowser();
       rebuildDirectory();
       renderHotelsUsed();
+      if (window.PragueHotelHistory) {
+        PragueHotelHistory.mount(document.getElementById('pragueHistory'), { sb: cloudReady ? sb : null });
+      }
     }
 
     function yearChoices() {

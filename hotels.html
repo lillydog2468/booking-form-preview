@@ -19,6 +19,9 @@
   <script src="planning-hide.js"></script>
   <script src="booking-format.js"></script>
   <script src="place-categories.js"></script>
+  <script src="prague-exit.js"></script>
+  <script src="prague-hotel-ratings.js"></script>
+  <script src="prague-hotel-history.js"></script>
   <script src="hotel-directory.js"></script>
   <script src="global-search.js"></script>
   <script src="auth-gate.js"></script>
@@ -75,6 +78,7 @@
     </details>
     <p class="jumps">
       <a href="#stays">Stays</a>
+      <a href="#prague-history">Prague history</a>
       <a href="#hotels-used">Hotels used</a>
     </p>
     <section id="stays" aria-labelledby="staysHeading">
@@ -93,6 +97,17 @@
       <p class="stay-stats" id="stayStats" hidden></p>
       <p class="stay-hotel-nights" id="stayHotelNights" hidden></p>
       <div class="cards" id="stayList"><p class="empty">Loading…</p></div>
+    </section>
+
+    <section id="prague-history" aria-labelledby="pragueHistoryHeading">
+      <h2 class="section-title" id="pragueHistoryHeading">Prague hotel history</h2>
+      <details class="page-help">
+        <summary>Help</summary>
+        <div class="page-help-body">
+          <p>Past Prague hotels from each guest’s own stay, joined to the booking. A cancelled booking is left out. The same hotel is one row when the name only differs by capitals, the word hotel, or spacing, and when it matches a saved hotel place or a known Prague hotel such as Axa. Ratings are yours. Guests do not see this page.</p>
+        </div>
+      </details>
+      <div id="pragueHistory"><p class="empty">Loading…</p></div>
     </section>
 
     <section id="hotels-used" aria-labelledby="hotelsUsedHeading">

@@ -1215,6 +1215,7 @@
     } catch (_) { /* the sign-in is enough to open the form */ }
     openEditor(session.user.email, role);
     loadSharedPriceBook();
+    if (window.PragueHotelHistory) PragueHotelHistory.preload(sb);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -4020,6 +4021,7 @@
       if (PragueHotelMatch.extraAddressActive('pickup', point)) PragueHotelMatch.watch(pickup, { active: true });
       else PragueHotelMatch.unwatch(pickup);
     }
+    attachPragueSuggestions(tabId);
   }
 
   function bindPragueStayRow(stayRow, tabId) {
@@ -4171,6 +4173,18 @@
       pickup.dataset.pragueWatch = '1';
       pickup.addEventListener('change', () => watchPragueHotelInputs(tabId));
     }
+    attachPragueSuggestions(tabId);
+  }
+
+  function attachPragueSuggestions(tabId) {
+    if (!window.PragueHotelHistory) return;
+    const hotelEl = tEl(tabId, 'prague_hotel');
+    if (hotelEl) PragueHotelHistory.attachSuggestions(hotelEl);
+    memberRows(tabId).forEach(row => {
+      row.querySelectorAll('.guest-stay-hotel').forEach(input => PragueHotelHistory.attachSuggestions(input));
+    });
+    const shared = document.getElementById('t' + tabId + '_shared_prague_list');
+    if (shared) shared.querySelectorAll('.guest-stay-hotel').forEach(input => PragueHotelHistory.attachSuggestions(input));
   }
 
   function refreshOwnPragueLine(tabId) {
