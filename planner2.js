@@ -1,5 +1,5 @@
 /*
- * Week planner for the booking named in the address.
+ * Week planner for the booking named in the address, or the one Planning passes in.
  * Wide screens show the whole week. A phone shows one day and swipes.
  * Saves that booking's planner_plans row when the week is edited. It does not write the bookings table. Opening a booking with no plan keeps an empty week on screen until an edit is saved.
  */
@@ -9,9 +9,8 @@
   function bookingId() {
     if (state.bookingId) return state.bookingId;
     var params = new URLSearchParams(location.search);
-    var named = params.get('booking');
-    if (named) return Planner2.bookingNumber(named);
-    return Planner2.BOOKING_ID;
+    if (params.get('home') === '1') return null;
+    return Planner2.bookingNumber(params.get('booking'));
   }
 
   var state = {
@@ -876,10 +875,12 @@
       .select('id, first_name, last_name, prague_stays, arrival_date, departure_date, arrival_flight, departure_flight, arrival_time, departure_time')
       .eq('booking_id', id);
     state.members = !members.error && members.data ? members.data : [];
-    var places = await state.sb.from('planner_places')
-      .select('*')
-      .order('sort_order', { ascending: true });
-    if (!places.error && places.data) state.places = places.data.map(placeFromRow);
+    if (!state.places || !state.places.length) {
+      var places = await state.sb.from('planner_places')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      if (!places.error && places.data) state.places = places.data.map(placeFromRow);
+    }
     state.savedPlan = JSON.parse(JSON.stringify(state.plan));
     state.seenUpdatedAt = state.row && state.row.updated_at;
     setStatus(state.row ? ('Booking ' + id + ' loaded') : 'No saved plan yet — edits will create one');
@@ -892,6 +893,41 @@
     if (state.unsaved) return true;
     if (!state.savedPlan || !window.PlanSync) return false;
     return !PlanSync.sameSchedule(state.savedPlan, state.plan);
+  }
+
+  async function flushSave() {
+    if (state.sample) return true;
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    var guard = 0;
+    while (state.saving && guard < 80) {
+      await new Promise(function (resolve) { setTimeout(resolve, 50); });
+      guard += 1;
+    }
+    if (planIsDirty() || state.unsaved) await savePlan();
+    return !(planIsDirty() || state.unsaved);
+  }
+
+  async function open(id) {
+    var next = Planner2.bookingNumber(id);
+    if (!next) return;
+    if (state.stopWatch) {
+      state.stopWatch();
+      state.stopWatch = null;
+    }
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    state.bookingId = next;
+    state.row = null;
+    state.savedPlan = null;
+    state.unsaved = false;
+    state.plan = null;
+    state.members = [];
+    state.day = 0;
+    state.selected = null;
+    state.editingStop = null;
+    closeEditor();
+    await loadLive();
   }
 
   function applyRemoteRow(row) {
@@ -1095,6 +1131,7 @@
     state.started = true;
     state.embedded = !!document.getElementById('b2Summary');
     if (options.sb) state.sb = options.sb;
+    if (options.bookingId) state.bookingId = Planner2.bookingNumber(options.bookingId);
     bindChrome();
     var params = new URLSearchParams(location.search);
     state.refused = params.get('booking') && !Planner2.isAllowedBooking(params.get('booking'));
@@ -1124,6 +1161,6 @@
     });
   }
 
-  window.Planner2Page = { mount: mount };
+  window.Planner2Page = { mount: mount, open: open, flushSave: flushSave };
   if (document.getElementById('p2Scroll') && !document.getElementById('b2Summary')) mount();
 }());

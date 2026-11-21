@@ -181,6 +181,14 @@ test('a new place and a last-day drop-off use the same clock', () => {
   assert.equal(app.includes('place.nickname || place.name'), false);
 });
 
+test('switching group reloads that booking and does not fall back to 310', () => {
+  assert.match(app, /flushSave/);
+  assert.match(app, /open: open/);
+  assert.match(app, /options\.bookingId/);
+  assert.equal(app.includes('return Planner2.BOOKING_ID'), false);
+  assert.match(app, /state\.bookingId = next/);
+});
+
 test('the page saves the open booking and leaves the bookings table alone', () => {
   assert.match(app, /booking_id: id/);
   assert.equal(app.includes("eq('booking_id', 310)"), false);

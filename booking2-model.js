@@ -104,6 +104,123 @@
     return day(a) + ' ' + mon(a) + ' – ' + day(b) + ' ' + mon(b);
   }
 
+  function todayIso(now) {
+    var date = now instanceof Date ? now : new Date();
+    var y = date.getFullYear();
+    var m = String(date.getMonth() + 1);
+    var d = String(date.getDate());
+    if (m.length < 2) m = '0' + m;
+    if (d.length < 2) d = '0' + d;
+    return y + '-' + m + '-' + d;
+  }
+
+  function isCancelledStatus(status) {
+    var text = String(status || '').trim().toLowerCase();
+    return text === 'cancelled' || text === 'canceled';
+  }
+
+  function endIso(row) {
+    return isoDate(row && row.departure_date) || isoDate(row && row.tour_arrival_date);
+  }
+
+  function startIso(row) {
+    return isoDate(row && row.tour_arrival_date) || isoDate(row && row.departure_date);
+  }
+
+  function isUpcoming(row, today) {
+    if (!row || bookingNumber(row.id) == null) return false;
+    if (isCancelledStatus(row.status)) return false;
+    var end = endIso(row);
+    var day = isoDate(today);
+    if (!end || !day) return false;
+    return end >= day;
+  }
+
+  function upcomingBookings(rows, today) {
+    return (Array.isArray(rows) ? rows : []).filter(function (row) {
+      return isUpcoming(row, today);
+    }).sort(function (a, b) {
+      var startA = startIso(a);
+      var startB = startIso(b);
+      if (startA !== startB) return startA < startB ? -1 : 1;
+      var endA = endIso(a);
+      var endB = endIso(b);
+      if (endA !== endB) return endA < endB ? -1 : 1;
+      return bookingNumber(a.id) - bookingNumber(b.id);
+    });
+  }
+
+  function choosePlanningBooking(rows, preferredId, today) {
+    var upcoming = upcomingBookings(rows, today);
+    var preferred = bookingNumber(preferredId);
+    var kept = upcoming.find(function (row) { return bookingNumber(row.id) === preferred; });
+    if (kept) return bookingNumber(kept.id);
+    if (!upcoming.length) return null;
+    return bookingNumber(upcoming[0].id);
+  }
+
+  function formatTourDates(arrival, departure) {
+    var start = utcDate(arrival);
+    var end = utcDate(departure);
+    var one = function (date) {
+      return date.getUTCDate() + ' ' + MONTHS[date.getUTCMonth()] + ' ' + date.getUTCFullYear();
+    };
+    if (start && end) {
+      var sameMonth = start.getUTCFullYear() === end.getUTCFullYear() && start.getUTCMonth() === end.getUTCMonth();
+      if (sameMonth && start.getUTCDate() === end.getUTCDate()) return one(start);
+      if (sameMonth) {
+        return start.getUTCDate() + '–' + end.getUTCDate() + ' ' + MONTHS[start.getUTCMonth()] + ' ' + start.getUTCFullYear();
+      }
+      if (start.getUTCFullYear() === end.getUTCFullYear()) {
+        return start.getUTCDate() + ' ' + MONTHS[start.getUTCMonth()] + ' – '
+          + end.getUTCDate() + ' ' + MONTHS[end.getUTCMonth()] + ' ' + start.getUTCFullYear();
+      }
+      return one(start) + ' – ' + one(end);
+    }
+    if (start || end) return one(start || end);
+    return '';
+  }
+
+  function headcountLabel(value) {
+    var text = String(value == null ? '' : value).trim();
+    if (!text) return '';
+    var n = Number(text);
+    if (!Number.isFinite(n)) return text;
+    return n + (n === 1 ? ' person' : ' people');
+  }
+
+  function groupLabel(row) {
+    var id = bookingNumber(row && row.id);
+    var name = String(row && row.group_name || '').trim();
+    return name || (id ? ('Booking ' + id) : 'Group');
+  }
+
+  function describeUpcoming(rows, today) {
+    return upcomingBookings(rows, today).map(function (row) {
+      var dates = formatTourDates(row.tour_arrival_date, row.departure_date);
+      var headcount = headcountLabel(row.no_people);
+      return {
+        id: bookingNumber(row.id),
+        name: groupLabel(row),
+        dates: dates,
+        headcount: headcount,
+        meta: [dates, headcount].filter(Boolean).join(' · '),
+      };
+    });
+  }
+
+  function planningTarget(search) {
+    var text = String(search || '');
+    if (/(?:\?|&|^)preview=mock(?:&|$)/.test(text)) return { mode: 'sample' };
+    var params = new URLSearchParams(text.charAt(0) === '?' ? text : ('?' + text));
+    var raw = params.get('booking');
+    if (params.get('home') === '1') return { mode: 'resolve' };
+    if (raw && bookingNumber(raw) == null) return { mode: 'refused' };
+    var named = bookingNumber(raw);
+    if (named) return { mode: 'booking', id: named };
+    return { mode: 'resolve' };
+  }
+
   function money(value) {
     if (value == null || String(value).trim() === '') return '';
     var n = Number(value);
@@ -268,5 +385,14 @@
     money: money,
     present: present,
     sample: sample,
+    todayIso: todayIso,
+    isCancelledStatus: isCancelledStatus,
+    upcomingBookings: upcomingBookings,
+    choosePlanningBooking: choosePlanningBooking,
+    formatTourDates: formatTourDates,
+    headcountLabel: headcountLabel,
+    groupLabel: groupLabel,
+    describeUpcoming: describeUpcoming,
+    planningTarget: planningTarget,
   };
 }(typeof window !== 'undefined' ? window : globalThis));

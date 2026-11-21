@@ -79,3 +79,72 @@ test('the real booking is never written, and the old pages stay put', () => {
   assert.match(oldPlanner, /href="booking2\.html"/);
   assert.equal(oldPlanner.includes('booking2.js'), false);
 });
+
+test('upcoming groups are the ones still to leave, soonest first', () => {
+  var today = '2026-11-21';
+  assert.equal(B.todayIso(new Date(2026, 10, 21, 15, 30)), '2026-11-21');
+  assert.equal(B.isCancelledStatus('Cancelled'), true);
+  assert.equal(B.isCancelledStatus(' canceled '), true);
+  assert.equal(B.isCancelledStatus('Booked'), false);
+  assert.equal(B.isCancelledStatus(''), false);
+  var rows = [
+    { id: 1, group_name: 'Later', tour_arrival_date: '2027-06-01', departure_date: '2027-06-07', no_people: 4, status: '' },
+    { id: 2, group_name: 'Past', tour_arrival_date: '2026-05-01', departure_date: '2026-05-06', no_people: 8, status: '' },
+    { id: 3, group_name: 'Cancelled week', tour_arrival_date: '2027-04-01', departure_date: '2027-04-07', no_people: 5, status: 'cancelled' },
+    { id: 4, group_name: '', tour_arrival_date: '2026-11-18', departure_date: today, no_people: 1, status: 'Booked' },
+    { id: 5, group_name: 'No dates', status: '' },
+    { id: 6, group_name: 'Arrives only', tour_arrival_date: '2027-01-04', no_people: '2', status: '' },
+    { id: 'nope', group_name: 'Bad id', departure_date: '2027-08-01', status: '' },
+    { id: 7, group_name: 'Already left', tour_arrival_date: '2026-11-01', departure_date: '2026-11-20', status: '' },
+  ];
+  var described = B.describeUpcoming(rows, today);
+  assert.deepEqual(described.map(function (row) { return row.id; }), [4, 6, 1]);
+  assert.equal(described[0].name, 'Booking 4');
+  assert.equal(described[0].headcount, '1 person');
+  assert.equal(described[0].dates, '18–21 Nov 2026');
+  assert.equal(described[1].meta, '4 Jan 2027 · 2 people');
+  assert.equal(described[2].dates, '1–7 Jun 2027');
+  assert.equal(B.formatTourDates('2026-12-28', '2027-01-03'), '28 Dec 2026 – 3 Jan 2027');
+  assert.equal(B.choosePlanningBooking(rows, 2, today), 4);
+  assert.equal(B.choosePlanningBooking(rows, 1, today), 1);
+  assert.equal(B.choosePlanningBooking(rows, null, today), 4);
+  assert.equal(B.choosePlanningBooking([{ id: 9, group_name: 'Old', departure_date: '2020-01-01', status: 'cancelled' }], null, today), null);
+  assert.deepEqual(B.planningTarget('?home=1'), { mode: 'resolve' });
+  assert.deepEqual(B.planningTarget('?home=1&booking=310'), { mode: 'resolve' });
+  assert.deepEqual(B.planningTarget('?booking=28'), { mode: 'booking', id: 28 });
+  assert.deepEqual(B.planningTarget(''), { mode: 'resolve' });
+  assert.deepEqual(B.planningTarget('?booking=nope'), { mode: 'refused' });
+  assert.deepEqual(B.planningTarget('?preview=mock'), { mode: 'sample' });
+  assert.deepEqual(B.planningTarget('?booking=28&preview=mock'), { mode: 'sample' });
+});
+
+test('the group name opens upcoming groups and a home screen link stays on planning', () => {
+  assert.match(html, /id="b2TitleBtn"/);
+  assert.match(html, /id="b2Switcher"/);
+  assert.match(html, /id="b2SwitcherClose"/);
+  assert.match(html, /Upcoming groups/);
+  assert.match(html, /apple-mobile-web-app-title" content="Planning"/);
+  assert.match(html, /class="b2-back-link" href="booking-form\.html"/);
+  assert.match(css, /env\(safe-area-inset-top\)/);
+  assert.match(css, /env\(safe-area-inset-bottom\)/);
+  assert.match(css, /min-height:\s*44px/);
+  assert.match(css, /-webkit-overflow-scrolling:\s*touch/);
+  assert.match(css, /\.b2-switcher-list[\s\S]*overflow:\s*auto/);
+  assert.match(css, /@media \(max-width: 760px\)/);
+  assert.match(css, /@media \(min-width: 761px\)/);
+  assert.match(css, /\.b2-switch-item\.is-current/);
+  assert.match(css, /\.b2-switcher\[hidden\]/);
+  assert.match(app, /describeUpcoming/);
+  assert.match(app, /choosePlanningBooking/);
+  assert.match(app, /writeBookingUrl/);
+  assert.match(app, /planning_last_booking/);
+  assert.match(app, /Planner2Page\.open/);
+  assert.match(app, /Planner2Page\.flushSave/);
+  assert.match(app, /This plan is not saved to the cloud\. Switch group anyway\?/);
+  assert.match(app, /home=1/);
+  assert.equal(app.includes("eq('id', 310)"), false);
+  assert.equal(/\.(update|insert|delete)\s*\(/.test(app), false);
+  assert.match(form, /href="booking2\.html"/);
+  assert.match(plannerHtml, /home=1/);
+  assert.match(plannerHtml, /location\.replace\('booking2\.html'/);
+});

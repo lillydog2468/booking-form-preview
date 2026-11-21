@@ -6,10 +6,14 @@
   <title>Jennifer Lindsay — week plan</title>
   <script src="booking-config.js"></script>
   <script>
-    location.replace('booking2.html' + (location.search || ''));
+    var search = location.search || '';
+    if (!/[?&]home=1(?:&|$)/.test(search) && !/[?&]booking=/.test(search) && !/[?&]preview=mock(?:&|$)/.test(search)) {
+      search = search ? (search + '&home=1') : '?home=1';
+    }
+    location.replace('booking2.html' + search);
   </script>
 </head>
 <body>
-  <p>The week plan is on the <a href="booking2.html">booking page</a>.</p>
+  <p>The week plan is on the <a href="booking2.html?home=1">booking page</a>.</p>
 </body>
 </html>

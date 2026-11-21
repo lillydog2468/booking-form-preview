@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no">
-  <title>Jennifer Lindsay — test booking</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Planning">
+  <title>Planning</title>
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="place-categories.js"></script>
@@ -24,8 +27,8 @@
   <button type="button" id="planSaveStatus" class="plan-save-status" hidden></button>
   <header class="b2-top">
     <p class="b2-back"><a class="b2-back-link" href="booking-form.html">Back to bookings</a></p>
-    <p class="b2-kicker">Test booking</p>
-    <h1><a class="b2-home" id="b2Home" href="booking-form.html">Back to bookings</a> <span id="b2Title">Jennifer Lindsay</span> <span class="b2-brief" id="b2Brief"></span> <span class="b2-inline-status" id="b2Status"></span><span class="b2-inline-status" id="p2Status"></span></h1>
+    <p class="b2-kicker">Planning</p>
+    <h1><a class="b2-home" id="b2Home" href="booking-form.html">Back to bookings</a> <button type="button" class="b2-title-btn" id="b2TitleBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="b2Switcher"><span id="b2Title">Planning</span><span class="b2-title-caret" aria-hidden="true">▾</span></button> <span class="b2-brief" id="b2Brief"></span> <span class="b2-inline-status" id="b2Status"></span><span class="b2-inline-status" id="p2Status"></span></h1>
     <div class="b2-tools">
       <button type="button" class="b2-tool" id="b2Suggest" title="Lay down a draft week from the usual places. You can edit everything after.">Suggest a rough week</button>
       <button type="button" class="b2-tool" id="b2PragueEnds" title="Day one pick-ups from 08:00. Last day drop-off at 18:00.">Prague pick-ups &amp; drop-offs</button>
@@ -56,6 +59,15 @@
         <button type="button" class="p2-btn" id="p2SheetClose">Close</button>
       </div>
       <div id="p2SheetBody"></div>
+    </div>
+  </div>
+  <div class="b2-switcher" id="b2Switcher" hidden>
+    <div class="b2-switcher-card" role="dialog" aria-modal="true" aria-labelledby="b2SwitcherTitle">
+      <div class="b2-switcher-head">
+        <h2 id="b2SwitcherTitle">Upcoming groups</h2>
+        <button type="button" class="b2-switcher-close" id="b2SwitcherClose">Close</button>
+      </div>
+      <div class="b2-switcher-list" id="b2SwitcherList" role="listbox" aria-label="Upcoming groups"></div>
     </div>
   </div>
   <script src="split-pane.js"></script>
