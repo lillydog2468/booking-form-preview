@@ -62,11 +62,6 @@ body {
   font-size: 14px; font-weight: 800; line-height: 1;
 }
 .p2-card.is-picked .p2-tick { background: #1a3d5c; color: #fff; }
-.p2-edit {
-  flex: 0 0 auto; border: 0; background: transparent; color: #5c574e;
-  font: 700 12px/1 'DM Sans', system-ui, sans-serif; min-height: 32px; padding: 4px;
-  cursor: pointer;
-}
 .p2-pickbar {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
   margin: 0 0 6px; min-width: 0;
@@ -82,7 +77,7 @@ body {
 #p2PickClear[hidden] { display: none; }
 #p2PlaceSelected:disabled { opacity: .45; cursor: default; }
 @media (max-width: 760px) {
-  .p2-pickbar, .p2-tick, .p2-edit, .p2-place-note { display: none !important; }
+  .p2-pickbar, .p2-tick, .p2-place-note { display: none !important; }
 }
 .p2-place-note { margin: 0 0 8px; font-size: 13px; color: #5c574e; }
 .p2-card.is-used-many { color: #fff; }

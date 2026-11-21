@@ -209,7 +209,9 @@ test('the page saves the open booking and leaves the bookings table alone', () =
   assert.equal(P.placeGesture(20, 4, 40), 'drag');
   assert.equal(P.placeGesture(2, 2, 320), 'drag');
   assert.equal(P.placeGesture(4, 4, 80), 'wait');
-  assert.match(app, /PlaceEditor\.open/);
+  assert.equal(app.includes('class="p2-edit"'), false);
+  assert.equal(app.includes('contextmenu'), false);
+  assert.equal(app.includes('PlaceEditor.open'), false);
   assert.match(app, /placeGesture/);
   assert.match(app, /gesture === 'scroll'/);
   assert.match(app, /Jennifer Lindsay/);
@@ -260,7 +262,8 @@ test('the page saves the open booking and leaves the bookings table alone', () =
   assert.match(bookingHtml, /src="place-plan\.js"/);
   assert.match(app, /PlacePlan\.toggle/);
   assert.match(app, /phoneNow\(\)/);
-  assert.match(app, /if \(phoneNow\(\)\) \{\s*openPlaceEditor\(tapped\);/);
+  assert.match(app, /if \(phoneNow\(\)\) return;/);
+  assert.match(app, /openEditor\(stopId\)/);
   assert.match(css, /max-width:\s*760px\)[\s\S]*\.p2-pickbar[\s\S]*display:\s*none !important/);
   assert.match(app, /PlacePlan\.place/);
   assert.match(app, /replaceVisits: true/);

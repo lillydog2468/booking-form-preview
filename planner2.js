@@ -270,8 +270,7 @@
         return '<div role="button" tabindex="0" aria-pressed="' + (picked ? 'true' : 'false') + '" class="p2-card' + on + useClass + (picked ? ' is-picked' : '') + '" data-place="' + esc(place.id) + '" data-used="' + count + '" title="' + esc(hint) + '">'
           + '<span class="p2-grip" aria-hidden="true"></span>'
           + '<span class="p2-tick" aria-hidden="true">✓</span>'
-          + '<span class="p2-card-name">' + esc(label) + '</span>'
-          + '<button type="button" class="p2-edit">Edit</button></div>';
+          + '<span class="p2-card-name">' + esc(label) + '</span></div>';
       }).join('');
       return '<section class="p2-group"><h3>' + esc(heading) + '</h3>' + cards + '</section>';
     }).join('') : '<p class="p2-note">No places.</p>';
@@ -293,14 +292,6 @@
         card.style.boxShadow = 'inset 4px 0 0 ' + tone.palette.stripe;
       }
       bindPlacePointer(card);
-      var edit = card.querySelector('.p2-edit');
-      if (edit) {
-        edit.addEventListener('click', function (event) {
-          event.preventDefault();
-          event.stopPropagation();
-          openPlaceEditor(place);
-        });
-      }
     });
     paintPickBar();
     $('p2Types').querySelectorAll('[data-type]').forEach(function (btn) {
@@ -372,32 +363,9 @@
     if (button) button.disabled = count === 0;
   }
 
-  function openPlaceEditor(place) {
-    if (!place || !window.PlaceEditor) return;
-    PlaceEditor.open({
-      sb: state.sb,
-      place: place,
-      readOnly: state.sample,
-      onSaved: function (saved) {
-        place.place_type = saved.place_type;
-        place.type = saved.place_type;
-        place.place_types = (saved.place_types || []).slice();
-        place.types = place.place_types.slice();
-        place.name = saved.name;
-        place.nickname = saved.nickname;
-        place.notes = saved.notes;
-        place.icon = saved.icon;
-        place.address = saved.address;
-        place.updated_at = saved.updated_at;
-        renderTray();
-      },
-    });
-  }
-
   function bindPlacePointer(card) {
     card.addEventListener('pointerdown', function (event) {
       if (event.button != null && event.button !== 0) return;
-      if (event.target.closest && event.target.closest('.p2-edit')) return;
       if (event.pointerType === 'mouse') event.preventDefault();
       var id = card.getAttribute('data-place');
       var pointer = event.pointerId;
@@ -489,11 +457,7 @@
         clearDrag();
         if (decided === 'scroll') return;
         if (decided !== 'drag') {
-          var tapped = state.places.find(function (item) { return item.id === id; });
-          if (phoneNow()) {
-            openPlaceEditor(tapped);
-            return;
-          }
+          if (phoneNow()) return;
           if (window.PlacePlan) state.picked = PlacePlan.toggle(state.picked, id);
           renderTray();
           return;
