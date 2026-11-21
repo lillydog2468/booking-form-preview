@@ -2010,6 +2010,13 @@
     return arrival || departure || 'No date';
   }
 
+  function yearTourDepositCover(tour) {
+    if (typeof depositCoverOf !== 'function') return null;
+    const booking = (yearTourShown || []).find(row => String(row.id) === String(tour && tour.id));
+    if (!booking) return null;
+    return depositCoverOf(booking);
+  }
+
   function yearTourItemHTML(tour) {
     const bits = [];
     const people = Number(tour.people);
@@ -2017,11 +2024,16 @@
     if (tour.hotel) bits.push(tour.hotel);
     const id = Number(tour.id);
     const open = Number.isFinite(id) && id > 0 ? ` onclick="openYearTourBooking(${id}, event)"` : '';
+    const cover = yearTourDepositCover(tour);
+    const deposit = cover && cover.label
+      ? (typeof depositBadgeHTML === 'function' ? depositBadgeHTML(cover) : `<span class="deposit-badge deposit-${escapeHtml(cover.tone)}">${escapeHtml(cover.label)}</span>`)
+      : '';
     return `<button type="button" class="year-tour-item${tour.cancelled ? ' cancelled' : ''}"${open}>
       <span class="year-tour-dates">${escapeHtml(yearTourDateLabel(tour))}</span>
       <span class="year-tour-name">${escapeHtml(tour.title)}</span>
       ${tour.cancelled ? '<span class="cancelled-tag">Cancelled</span>' : ''}
       ${tour.full ? '<span class="year-tour-full">FULL</span>' : ''}
+      ${deposit}
       ${bits.length ? `<span class="year-tour-meta">${escapeHtml(bits.join(' · '))}</span>` : ''}
     </button>`;
   }
@@ -2140,7 +2152,11 @@
       }
       const heat = yearTourDayHeat(tours, scale);
       const ids = tours.map(tour => Number(tour.id)).filter(id => Number.isFinite(id) && id > 0);
-      const names = tours.map(tour => tour.title + ' · ' + yearTourPeopleLabel(yearTourHeadcount(tour))).join('; ');
+      const names = tours.map(tour => {
+        const cover = yearTourDepositCover(tour);
+        const deposit = cover && cover.label ? ' · ' + cover.label : '';
+        return tour.title + ' · ' + yearTourPeopleLabel(yearTourHeadcount(tour)) + deposit;
+      }).join('; ');
       const isStart = tours.some(tour => tour.arrival === iso);
       const isEnd = tours.some(tour => (tour.departure || tour.arrival) === iso);
       const classes = ['yc-cell', 'tour', 'year-tour-day', heat.dayTrip ? 'day-trip' : 'overnight', isStart ? 'start' : '', isEnd ? 'end' : '', tours.every(tour => tour.cancelled) ? 'cancelled' : ''].filter(Boolean).join(' ');
@@ -2154,7 +2170,9 @@
       const click = Number.isFinite(id) && id > 0 ? ` onclick="openYearTourBooking(${id}, event)"` : '';
       const shade = yearTourShade(!!tour.dayTrip, yearTourHeatAmount(yearTourHeadcount(tour), scale));
       const fullMark = tour.full ? ' <span class="year-tour-full">FULL</span>' : '';
-      return `<button type="button" class="year-tour-chip${tour.cancelled ? ' cancelled' : ''}${tour.dayTrip ? ' day-trip' : ''}" style="--yt-bg:${shade.bg};--yt-ink:${shade.ink}"${click}>${escapeHtml(yearTourDateLabel(tour))} · ${escapeHtml(tour.title)} · ${escapeHtml(yearTourPeopleLabel(yearTourHeadcount(tour)))}${fullMark}</button>`;
+      const cover = yearTourDepositCover(tour);
+      const deposit = cover && cover.label ? ' · ' + escapeHtml(cover.label) : '';
+      return `<button type="button" class="year-tour-chip${tour.cancelled ? ' cancelled' : ''}${tour.dayTrip ? ' day-trip' : ''}" style="--yt-bg:${shade.bg};--yt-ink:${shade.ink}"${click}>${escapeHtml(yearTourDateLabel(tour))} · ${escapeHtml(tour.title)} · ${escapeHtml(yearTourPeopleLabel(yearTourHeadcount(tour)))}${deposit}${fullMark}</button>`;
     }).join('');
     return `<div class="yc-month year-tour-cal"><div class="yc-weekdays">${weekdayRow}</div><div class="yc-grid">${cells.join('')}</div>${chips ? `<div class="year-tour-chips">${chips}</div>` : ''}</div>`;
   }
@@ -2432,11 +2450,22 @@
         const titleParts = [];
         const nightOwner = hotelNights.get(iso) || null;
         const departOwner = (!nightOwner && isEnd) ? hotelDepartureSpillIndex(hotelNights, iso) : null;
-        if (inOpenTour) titleParts.push(openTourName ? `Open tour: ${openTourName}` : 'Open tour');
+        const currentBooking = currentBookingId
+          ? (allBookings || []).find(row => bookingIdsMatch(row.id, currentBookingId))
+          : null;
+        const openDeposit = currentBooking && typeof depositCoverOf === 'function' ? depositCoverOf(currentBooking) : null;
+        if (inOpenTour) {
+          const openLabel = openTourName ? `Open tour: ${openTourName}` : 'Open tour';
+          titleParts.push(openDeposit && openDeposit.label ? openLabel + ' · ' + openDeposit.label : openLabel);
+        }
         if (nightOwner) titleParts.push(nightOwner.label);
         else if (departOwner && departOwner.label) titleParts.push(departOwner.label + ' · leaving in the morning');
         if (otherCount) {
-          const names = otherTours.slice(0, 6).map(t => t.title);
+          const names = otherTours.slice(0, 6).map(t => {
+            const booking = (allBookings || []).find(row => bookingIdsMatch(row.id, t.id));
+            const cover = booking && typeof depositCoverOf === 'function' ? depositCoverOf(booking) : null;
+            return cover && cover.label ? t.title + ' · ' + cover.label : t.title;
+          });
           titleParts.push(names.join(', ') + (otherCount > 6 ? ` (+${otherCount - 6} more)` : ''));
         }
         const titleAttr = titleParts.length ? ` title="${escapeHtml(titleParts.join(' • '))}"` : '';
@@ -7153,44 +7182,52 @@
     return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
   }
 
+  function depositMoneySame(stored, shown) {
+    const left = stored == null || String(stored).trim() === '' ? null : Number(stored);
+    const right = shown == null || String(shown).trim() === '' ? null : Number(shown);
+    if (left == null && right == null) return true;
+    if (left == null || right == null || !Number.isFinite(left) || !Number.isFinite(right)) return false;
+    return Math.abs(left - right) <= 0.009;
+  }
+
   function depositCoverFromTab(tabId) {
     const guests = perGuestRowsFromDom(tabId);
     if (!window.BookingExtras || !BookingExtras.depositCover) {
-      return { waived: false, paid: 0, expected: 0, mismatch: false, missing: false, tone: 'neutral', label: 'Deposits 0/0', note: '' };
+      return { waived: false, paid: 0, expected: 0, mismatch: false, missing: false, fullPayment: false, tone: 'neutral', label: 'Deposits 0/0', note: '' };
+    }
+    const depositMade = tEl(tabId, 'depositmade')?.value || '';
+    const finalPayment = tEl(tabId, 'finalpayment')?.value || '';
+    const tourPrice = tEl(tabId, 'beading_tour_price')?.value || '';
+    const tab = tabs.get(tabId);
+    const loaded = tab && tab.bookingId
+      ? (allBookings || []).find(row => bookingIdsMatch(row.id, tab.bookingId))
+      : null;
+    let leftToPay = '';
+    if (loaded && depositMoneySame(loaded.depositmade, depositMade)
+      && depositMoneySame(loaded.finalpayment, finalPayment)
+      && depositMoneySame(loaded.beading_tour_price, tourPrice)) {
+      leftToPay = loaded.left_to_pay == null ? '' : loaded.left_to_pay;
     }
     return BookingExtras.depositCover({
       noDepositExpected: !!tEl(tabId, 'no_deposit_expected')?.checked,
       headcount: tEl(tabId, 'no_people')?.value || '',
       guests,
       hasPerGuest: guests.length > 0,
-      depositMade: tEl(tabId, 'depositmade')?.value || '',
+      depositMade,
+      finalPayment,
+      leftToPay,
+      tourPrice,
+      pricePerPerson: tEl(tabId, 'price_per_person')?.value || '',
+      leaderHalfPrice: leaderHalfPriceOn(tabId),
+      groupPrice: groupPriceOn(tabId),
     });
   }
 
   function depositCoverOf(record) {
-    if (!window.BookingExtras || !BookingExtras.depositCover) {
-      return { waived: false, paid: 0, expected: 0, mismatch: false, missing: false, tone: 'neutral', label: 'Deposits 0/0', note: '' };
+    if (!window.BookingExtras || !BookingExtras.depositCoverBooking) {
+      return { waived: false, paid: 0, expected: 0, mismatch: false, missing: false, fullPayment: false, tone: 'neutral', label: 'Deposits 0/0', note: '' };
     }
-    const members = record && Array.isArray(record._members) ? record._members : [];
-    const loaded = !!(record && record._childrenLoaded);
-    const extrasGuests = record && record._extras && Array.isArray(record._extras.guests) ? record._extras.guests : [];
-    const extrasHaveDeposits = extrasGuests.some(g => g && g.deposit != null && String(g.deposit).trim() !== '');
-    let guests = [];
-    let hasPerGuest = false;
-    if (loaded && members.length) {
-      guests = members;
-      hasPerGuest = true;
-    } else if (extrasHaveDeposits) {
-      guests = extrasGuests;
-      hasPerGuest = true;
-    }
-    return BookingExtras.depositCover({
-      noDepositExpected: record && record.no_deposit_expected,
-      headcount: record && record.no_people,
-      guests,
-      hasPerGuest,
-      depositMade: record && record.depositmade,
-    });
+    return BookingExtras.depositCoverBooking(record);
   }
 
   function depositBadgeHTML(cover) {

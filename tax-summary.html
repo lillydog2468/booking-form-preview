@@ -288,6 +288,9 @@
       if (row.deposit && row.deposit.state === 'recorded') {
         bits.push('<span class="sub">Deposit ' + escapeHtml(TaxSummary.formatAmount(row.deposit.amount, row.deposit.currency)) + '</span>');
       }
+      if (row.depositCover && row.depositCover.fullPayment && !row.depositCover.missing) {
+        bits.push('<span class="sub">Deposit counted as paid</span>');
+      }
       if (row.leftToPay && row.leftToPay.state === 'recorded') {
         bits.push('<span class="sub">Left to pay ' + escapeHtml(TaxSummary.formatAmount(row.leftToPay.amount, row.leftToPay.currency)) + '</span>');
       } else if (row.leftToPay && row.leftToPay.state === 'mixed') {

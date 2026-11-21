@@ -982,17 +982,10 @@
     function stayDepositBadge(stay) {
       if (!stay || stay.deviceOnly) return '';
       if (stay.bookingId == null || String(stay.bookingId).trim() === '') return '';
-      if (!window.BookingExtras || !BookingExtras.depositCover) return '';
+      if (!window.BookingExtras || !BookingExtras.depositCoverBooking) return '';
       const booking = (loadedBookings || []).find(b => String(b.id) === String(stay.bookingId));
       if (!booking) return '';
-      const members = Array.isArray(booking._members) ? booking._members : [];
-      const cover = BookingExtras.depositCover({
-        noDepositExpected: booking.no_deposit_expected,
-        headcount: booking.no_people,
-        guests: members,
-        hasPerGuest: members.length > 0,
-        depositMade: booking.depositmade,
-      });
+      const cover = BookingExtras.depositCoverBooking(booking);
       const title = cover.note ? ' title="' + esc(cover.note) + '"' : '';
       return '<span class="deposit-badge deposit-' + esc(cover.tone) + '"' + title + '>' + esc(cover.label) + '</span>';
     }

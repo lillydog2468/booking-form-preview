@@ -1612,6 +1612,73 @@
     return Number.isFinite(n) && n > 0;
   }
 
+  // A full payment counts as the deposit. Nothing here writes a deposit field.
+  // left_to_pay of 0 counts only when there is a price or a payment, so a blank
+  // booking is not treated as paid.
+  function settledByFullPayment(left, price, paid) {
+    var priceN = finiteOrNull(price);
+    var paidN = finiteOrNull(paid);
+    var leftN = finiteOrNull(left);
+    var hasPrice = priceN != null && priceN > 0.009;
+    var hasPaid = paidN != null && paidN > 0.009;
+    if (leftN != null && leftN <= 0.009 && (hasPrice || hasPaid)) return true;
+    if (hasPrice && paidN != null && paidN + 0.009 >= priceN) return true;
+    return false;
+  }
+
+  function guestPaidTotal(guest) {
+    if (!guest || typeof guest !== 'object') return null;
+    var deposit = finiteOrNull(guest.deposit);
+    var finalRaw = guest.finalPayment != null ? guest.finalPayment : (guest.final_payment != null ? guest.final_payment : guest.paid);
+    var finalPay = finiteOrNull(finalRaw);
+    if (deposit == null && finalPay == null) return null;
+    return roundMoney((deposit || 0) + (finalPay || 0));
+  }
+
+  function guestPriceOf(guest, fallback, groupPrice) {
+    var raw = guest && (guest.price != null && String(guest.price).trim() !== '' ? guest.price : guest.pricePerPerson);
+    var n = finiteOrNull(raw);
+    if (n != null) return n;
+    if (groupPrice) return null;
+    return finiteOrNull(fallback);
+  }
+
+  function guestFullyPaid(guest, fallback, groupPrice) {
+    if (!guest || typeof guest !== 'object') return false;
+    var left = guest.leftToPay != null ? guest.leftToPay : guest.left_to_pay;
+    return settledByFullPayment(left, guestPriceOf(guest, fallback, groupPrice), guestPaidTotal(guest));
+  }
+
+  function bookingPaidTotal(src) {
+    var deposit = finiteOrNull(src.depositMade != null ? src.depositMade : src.depositmade);
+    var finalPay = finiteOrNull(src.finalPayment != null ? src.finalPayment : src.finalpayment);
+    if (deposit == null && finalPay == null) return null;
+    return roundMoney((deposit || 0) + (finalPay || 0));
+  }
+
+  function resolvedTourPrice(src, people) {
+    var extras = src.extras && typeof src.extras === 'object' ? src.extras : {};
+    var extra = {};
+    Object.keys(extras).forEach(function (key) { extra[key] = extras[key]; });
+    if (src.groupPrice === true) extra.groupPrice = true;
+    if (src.leaderHalfPrice === true || src.leader_half_price === true) extra.leaderHalfPrice = true;
+    if (people != null && (extra.headcount == null || String(extra.headcount).trim() === '')) extra.headcount = people;
+    return tourRevenue({
+      price_per_person: src.pricePerPerson != null ? src.pricePerPerson : src.price_per_person,
+      no_people: people,
+      beading_tour_price: src.tourPrice != null ? src.tourPrice : src.beading_tour_price,
+      leader_half_price: src.leaderHalfPrice === true || src.leader_half_price === true
+    }, extra);
+  }
+
+  function resolvedLeft(src) {
+    var left = finiteOrNull(src.leftToPay != null ? src.leftToPay : src.left_to_pay);
+    if (left != null) return left;
+    var money = src.extras && src.extras.money ? src.extras.money : src.money;
+    if (money) return finiteOrNull(money.balance);
+    return null;
+  }
+
   function depositCover(input) {
     var src = input && typeof input === 'object' ? input : {};
     var headRaw = src.headcount != null ? src.headcount : src.no_people;
@@ -1639,21 +1706,37 @@
         expected: expected,
         mismatch: false,
         missing: false,
+        fullPayment: false,
         tone: 'neutral',
         label: 'No deposit expected',
         note: ''
       };
     }
+    var pricePerPerson = src.pricePerPerson != null ? src.pricePerPerson : src.price_per_person;
+    var groupPrice = src.groupPrice === true || !!(src.extras && src.extras.groupPrice === true);
     var paid = 0;
+    var viaDeposit = 0;
     if (usePerGuest) {
       guests.forEach(function (guest) {
-        if (guestDepositRecorded(guest)) paid += 1;
+        var recorded = guestDepositRecorded(guest);
+        if (recorded || guestFullyPaid(guest, pricePerPerson, groupPrice)) paid += 1;
+        if (recorded) viaDeposit += 1;
       });
     } else {
       var lump = Number(src.depositMade != null ? src.depositMade : src.depositmade);
       paid = Number.isFinite(lump) && lump > 0 ? Math.floor(lump / DEPOSIT_RECORDED_GBP) : 0;
       if (expected > 0 && paid > expected) paid = expected;
+      viaDeposit = paid;
+      var settledGuests = 0;
+      guests.forEach(function (guest) {
+        if (guestFullyPaid(guest, pricePerPerson, groupPrice)) settledGuests += 1;
+      });
+      if (settledGuests > paid) paid = settledGuests;
+      if (expected > 0 && paid > expected) paid = expected;
     }
+    var beforeFullBooking = paid;
+    var bookingSettled = settledByFullPayment(resolvedLeft(src), resolvedTourPrice(src, head), bookingPaidTotal(src));
+    if (bookingSettled && expected > 0) paid = expected;
     var tone = 'neutral';
     if (expected > 0 && paid >= expected) tone = 'green';
     else if (paid > 0) tone = 'amber';
@@ -1664,10 +1747,53 @@
       expected: expected,
       mismatch: mismatch,
       missing: tone === 'red' || tone === 'amber',
+      fullPayment: paid > viaDeposit || (bookingSettled && expected > 0 && beforeFullBooking < expected),
       tone: tone,
       label: 'Deposits ' + paid + '/' + expected,
       note: mismatch ? ('Headcount ' + head + ', guest list ' + rowCount) : ''
     };
+  }
+
+  // One booking, from its saved columns and notes. Display only.
+  function depositCoverBooking(record) {
+    var booking = record && typeof record === 'object' ? record : {};
+    var extras = null;
+    if (booking._extras && typeof booking._extras === 'object') extras = booking._extras;
+    else if (booking.extra_notes) extras = splitNotesAndExtras(booking.extra_notes).extras;
+    var members = Array.isArray(booking._members) ? booking._members : [];
+    var loaded = !!booking._childrenLoaded;
+    var extrasGuests = extras && Array.isArray(extras.guests) ? extras.guests : [];
+    var extrasHaveDeposits = extrasGuests.some(function (guest) {
+      return guest && guest.deposit != null && String(guest.deposit).trim() !== '';
+    });
+    var guests = [];
+    var hasPerGuest = false;
+    if (members.length) {
+      guests = members;
+      hasPerGuest = true;
+    } else if (!loaded && extrasHaveDeposits) {
+      guests = extrasGuests;
+      hasPerGuest = true;
+    } else if (!loaded && extrasGuests.length) {
+      guests = extrasGuests;
+      hasPerGuest = false;
+    }
+    var headcount = booking.no_people;
+    if (headcount == null || String(headcount).trim() === '') headcount = extras && extras.headcount;
+    return depositCover({
+      noDepositExpected: booking.no_deposit_expected,
+      headcount: headcount,
+      guests: guests,
+      hasPerGuest: hasPerGuest,
+      depositMade: booking.depositmade,
+      finalPayment: booking.finalpayment,
+      leftToPay: booking.left_to_pay,
+      tourPrice: booking.beading_tour_price,
+      pricePerPerson: booking.price_per_person,
+      leaderHalfPrice: booking.leader_half_price === true || !!(extras && extras.leaderHalfPrice === true),
+      groupPrice: !!(extras && extras.groupPrice === true),
+      extras: extras
+    });
   }
 
   root.BookingExtras = {
@@ -1718,6 +1844,8 @@
     inferGroupPrice: inferGroupPrice,
     guestPaymentTotals: guestPaymentTotals,
     depositCover: depositCover,
+    depositCoverBooking: depositCoverBooking,
+    settledByFullPayment: settledByFullPayment,
     combinedPayMethod: combinedPayMethod,
     resolvePayMethod: resolvePayMethod,
     payMethodText: payMethodText,

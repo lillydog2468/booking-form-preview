@@ -2359,6 +2359,15 @@
       background: rgba(245, 158, 11, .16); border: 1px solid rgba(245, 158, 11, .45);
       font-size: 13px; font-weight: 650; line-height: 1.4;
     }
+    .deposit-status {
+      margin: 6px 0; font-size: 13px; font-weight: 750;
+    }
+    .deposit-status[data-deposit-status="green"] { color: #15803d; }
+    .deposit-status[data-deposit-status="amber"] { color: #92400e; }
+    .deposit-status[data-deposit-status="red"] { color: #b91c1c; }
+    [data-theme="dark"] .deposit-status[data-deposit-status="amber"] { color: #fcd34d; }
+    [data-theme="dark"] .deposit-status[data-deposit-status="red"] { color: #fca5a5; }
+    [data-theme="dark"] .deposit-status[data-deposit-status="green"] { color: #86efac; }
     .check-grid { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 6px 0 8px; }
     .check-grid label { font-weight: 650; display: flex; gap: 6px; align-items: center; }
     .side-trip { display: grid; grid-template-columns: minmax(140px, 1fr) 1.2fr 72px auto; gap: 6px; align-items: center; margin-bottom: 6px; }

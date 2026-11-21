@@ -522,6 +522,9 @@
       group: str(booking.group_name).trim(),
       income: income,
       deposit: depositOf(booking, extras),
+      depositCover: root.BookingExtras && root.BookingExtras.depositCoverBooking
+        ? root.BookingExtras.depositCoverBooking(booking)
+        : null,
       leftToPay: leftToPayOf(booking, extras),
       costs: costs,
       fuel: costs.fuel || { state: 'missing' },

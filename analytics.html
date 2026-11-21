@@ -1354,6 +1354,22 @@
       `).join('');
     }
 
+    function depositGuestCounts(bookings) {
+      const tally = { paid: 0, expected: 0, due: 0, fullPayment: 0 };
+      if (!window.BookingExtras || !BookingExtras.depositCoverBooking) return tally;
+      for (const booking of bookings || []) {
+        const cover = BookingExtras.depositCoverBooking(booking);
+        if (!cover || cover.waived) continue;
+        const expected = Number(cover.expected) || 0;
+        const paid = Number(cover.paid) || 0;
+        tally.expected += expected;
+        tally.paid += expected > 0 ? Math.min(paid, expected) : paid;
+        if (cover.missing) tally.due += 1;
+        if (cover.fullPayment) tally.fullPayment += 1;
+      }
+      return tally;
+    }
+
     function renderInsights(paidBookings, outstandingBookings) {
       const list = document.getElementById('insightsList');
       const empty = document.getElementById('insightsEmpty');
@@ -1402,6 +1418,13 @@
         items.push(`<strong>Payments:</strong> ${formatMoney(outstanding, currency)} left to pay across ${outstandingTours.length} tours ${badge}`);
       } else {
         items.push(`<strong>Payments:</strong> No outstanding balances`);
+      }
+      const depositCounts = depositGuestCounts(filterBookingsRaw());
+      if (depositCounts.expected) {
+        const fullNote = depositCounts.fullPayment
+          ? ` ${depositCounts.fullPayment} tour${depositCounts.fullPayment === 1 ? '' : 's'} counted because the tour is paid in full.`
+          : '';
+        items.push(`<strong>Deposits:</strong> ${depositCounts.paid} of ${depositCounts.expected} guests counted as paid across every year in view. ${depositCounts.due} tour${depositCounts.due === 1 ? '' : 's'} still ${depositCounts.due === 1 ? 'has' : 'have'} a deposit due.${fullNote}`);
       }
       items.push(`<strong>Expense mix:</strong> Hotels are ${formatPercent(hotelShare)} of tracked expenses`);
       {

@@ -86,10 +86,8 @@ test('a stay shows the shared deposits badge beside Booked, and a plan with no b
   const badge = render.indexOf('stayDepositBadge(s)');
   assert.ok(booked > 0 && badge > booked);
   const fn = extractFunction('stayDepositBadge');
-  assert.match(fn, /BookingExtras\.depositCover/);
+  assert.match(fn, /BookingExtras\.depositCoverBooking/);
   assert.match(fn, /stay\.deviceOnly/);
-  assert.match(fn, /booking\.no_deposit_expected/);
-  assert.match(fn, /depositMade: booking\.depositmade/);
   const extras = fs.readFileSync(path.join(__dirname, 'booking-extras.js'), 'utf8');
   const boot = { window: {}, console };
   boot.globalThis = boot;
@@ -119,6 +117,17 @@ test('a stay shows the shared deposits badge beside Booked, and a plan with no b
   assert.match(context.stayDepositBadge({ bookingId: 316 }), /Deposits 1\/4/);
   assert.match(context.stayDepositBadge({ bookingId: 400 }), /No deposit expected/);
   assert.match(context.stayDepositBadge({ bookingId: 400 }), /deposit-neutral/);
+  context.loadedBookings.push({
+    id: 501,
+    no_people: 2,
+    depositmade: null,
+    finalpayment: 1200,
+    beading_tour_price: 1200,
+    left_to_pay: 0,
+    no_deposit_expected: false,
+  });
+  assert.match(context.stayDepositBadge({ bookingId: 501 }), /deposit-green/);
+  assert.match(context.stayDepositBadge({ bookingId: 501 }), /Deposits 2\/2/);
   assert.equal(context.stayDepositBadge({ deviceOnly: true, bookingId: '' }), '');
   assert.equal(context.stayDepositBadge({ bookingId: '' }), '');
 });

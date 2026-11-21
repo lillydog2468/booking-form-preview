@@ -9940,6 +9940,22 @@ function renderDayTabs() {
           <button type="button" class="btn btn-outline btn-sm" data-side-remove="${i}">Remove</button>
         </div>`;
     }).join('');
+    const depositCover = BookingExtras.depositCover({
+      headcount: bd.headcount,
+      guests: bd.guests || [],
+      hasPerGuest: (bd.guests || []).some(guest => guest && guest.deposit != null && String(guest.deposit).trim() !== ''),
+      depositMade: bd.money.depositAmount,
+      finalPayment: bd.money.finalPayment || '',
+      leftToPay: bd.money.balance,
+      tourPrice: bd.money.total,
+      pricePerPerson: bd.money.pricePerPerson,
+      groupPrice: bd.groupPrice === true,
+      leaderHalfPrice: bd.leaderHalfPrice === true,
+      noDepositExpected: bd.noDepositExpected,
+    });
+    const depositStatus = depositCover && depositCover.label
+      ? `<p class="deposit-status" data-deposit-status="${escapeHtml(depositCover.tone)}">${escapeHtml(depositCover.label)}</p>`
+      : '';
     const depDate = bd.money.depositDate ? formatDateDMY(bd.money.depositDate) : '';
     const dueDate = bd.money.balanceDueDate ? formatDateDMY(bd.money.balanceDueDate) : '';
     return `
@@ -10009,6 +10025,7 @@ function renderDayTabs() {
           ${sideRows}
           <button type="button" class="btn btn-outline btn-sm" id="btnAddSideTrip">Add an overnight stay</button>
           <p class="muted">${escapeHtml(depositLine)}</p>
+          ${depositStatus}
           ${pageHelp('<p>Every amount on this plan is in pounds sterling.</p>')}
           <label class="field-label">Price per person (£)</label>
           <input type="number" min="0" step="0.01" data-bd="money.pricePerPerson" value="${escapeHtml(bd.money.pricePerPerson || '')}">
