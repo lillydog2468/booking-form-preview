@@ -17,6 +17,7 @@
   <script src="booking-extras.js"></script>
   <script src="booking2-model.js"></script>
   <script src="planner2-model.js"></script>
+  <script src="place-plan.js"></script>
   <script src="place-pin.js"></script>
   <script src="place-editor.js"></script>
   <link rel="stylesheet" href="planner2.css">
@@ -45,6 +46,9 @@
   <main class="p2-main b2-plan">
     <aside class="p2-tray" id="p2Tray" aria-label="Places">
       <h2 class="p2-tray-title">Places</h2>
+      <p class="p2-pickbar" id="p2PickBar"><span id="p2PickCount">0 selected</span> <button type="button" id="p2PickClear">Clear selection</button></p>
+      <button type="button" id="p2PlaceSelected" disabled>Place selected on week</button>
+      <p class="p2-place-note" id="p2PlaceNote"></p>
       <input type="search" id="p2Search" class="p2-search" placeholder="Search places" autocomplete="off">
       <div class="p2-types" id="p2Types"></div>
       <div class="p2-groups" id="p2Chips"></div>

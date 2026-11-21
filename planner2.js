@@ -25,6 +25,7 @@
     query: '',
     types: [],
     selected: null,
+    picked: [],
     sb: null,
     saving: false,
     embedded: false,
@@ -159,6 +160,53 @@
     return (state.plan && state.plan.groupName) || (title && title.textContent) || '';
   }
 
+  function todayIso() {
+    var date = new Date();
+    var month = String(date.getMonth() + 1);
+    var day = String(date.getDate());
+    if (month.length < 2) month = '0' + month;
+    if (day.length < 2) day = '0' + day;
+    return date.getFullYear() + '-' + month + '-' + day;
+  }
+
+  async function loadVisitHistory() {
+    if (state.visitHistory) return state.visitHistory;
+    state.visitHistory = [];
+    if (state.sample || !state.sb) return state.visitHistory;
+    try {
+      var today = todayIso();
+      var plans = await state.sb.from('planner_plans').select('booking_id, payload').limit(400);
+      var past = await state.sb.from('bookings').select('id, departure_date').lt('departure_date', today);
+      if (plans.error) throw plans.error;
+      var gone = {};
+      if (!past.error) (past.data || []).forEach(function (row) { gone[String(row.id)] = true; });
+      var current = String(bookingId() || '');
+      state.visitHistory = (plans.data || []).filter(function (row) {
+        var id = String(row && row.booking_id || '');
+        if (!id || id === current || !row.payload) return false;
+        if (past.error) return true;
+        return !!gone[id];
+      }).map(function (row) { return row.payload; });
+    } catch (err) {
+      console.warn(err);
+    }
+    return state.visitHistory;
+  }
+
+  async function placeSelected(options) {
+    if (!window.PlacePlan || !state.plan) return;
+    var ids = (state.picked || []).slice();
+    if (!ids.length) return;
+    var history = await loadVisitHistory();
+    var result = PlacePlan.place(state.plan, state.places || [], ids, history, options || {});
+    var placed = {};
+    result.placed.forEach(function (row) { placed[String(row.id)] = true; });
+    state.picked = state.picked.filter(function (id) { return !placed[String(id)]; });
+    var note = $('p2PlaceNote');
+    if (note) note.textContent = PlacePlan.summary(result);
+    afterEdit();
+  }
+
   function markLastDay() {
     var days = state.plan.days || [];
     var col = document.querySelector('[data-ov-col="' + (days.length - 1) + '"]');
@@ -210,6 +258,7 @@
         : group.id;
       var cards = group.places.map(function (place) {
         var on = state.selected === place.id ? ' on' : '';
+        var picked = (state.picked || []).indexOf(String(place.id)) !== -1;
         var count = used[String(place.id)] || 0;
         var use = Planner2.placeUseMark(count);
         var useClass = use === 'once' ? ' is-used-once' : (use === 'many' ? ' is-used-many' : '');
@@ -217,9 +266,12 @@
         var hint = label;
         if (count === 1) hint += ' · used once';
         else if (count > 1) hint += ' · used ' + count + ' times';
-        return '<div role="button" tabindex="0" class="p2-card' + on + useClass + '" data-place="' + esc(place.id) + '" data-used="' + count + '" title="' + esc(hint) + '">'
+        if (picked) hint += ' · selected';
+        return '<div role="button" tabindex="0" aria-pressed="' + (picked ? 'true' : 'false') + '" class="p2-card' + on + useClass + (picked ? ' is-picked' : '') + '" data-place="' + esc(place.id) + '" data-used="' + count + '" title="' + esc(hint) + '">'
           + '<span class="p2-grip" aria-hidden="true"></span>'
-          + '<span class="p2-card-name">' + esc(label) + '</span></div>';
+          + '<span class="p2-tick" aria-hidden="true">✓</span>'
+          + '<span class="p2-card-name">' + esc(label) + '</span>'
+          + '<button type="button" class="p2-edit">Edit</button></div>';
       }).join('');
       return '<section class="p2-group"><h3>' + esc(heading) + '</h3>' + cards + '</section>';
     }).join('') : '<p class="p2-note">No places.</p>';
@@ -241,7 +293,16 @@
         card.style.boxShadow = 'inset 4px 0 0 ' + tone.palette.stripe;
       }
       bindPlacePointer(card);
+      var edit = card.querySelector('.p2-edit');
+      if (edit) {
+        edit.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          openPlaceEditor(place);
+        });
+      }
     });
+    paintPickBar();
     $('p2Types').querySelectorAll('[data-type]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-type');
@@ -301,9 +362,42 @@
     snap.appendChild(clock);
   }
 
+  function paintPickBar() {
+    var count = window.PlacePlan ? PlacePlan.selectionCount(state.picked) : (state.picked || []).length;
+    var label = $('p2PickCount');
+    if (label) label.textContent = count + ' selected';
+    var clear = $('p2PickClear');
+    if (clear) clear.hidden = count === 0;
+    var button = $('p2PlaceSelected');
+    if (button) button.disabled = count === 0;
+  }
+
+  function openPlaceEditor(place) {
+    if (!place || !window.PlaceEditor) return;
+    PlaceEditor.open({
+      sb: state.sb,
+      place: place,
+      readOnly: state.sample,
+      onSaved: function (saved) {
+        place.place_type = saved.place_type;
+        place.type = saved.place_type;
+        place.place_types = (saved.place_types || []).slice();
+        place.types = place.place_types.slice();
+        place.name = saved.name;
+        place.nickname = saved.nickname;
+        place.notes = saved.notes;
+        place.icon = saved.icon;
+        place.address = saved.address;
+        place.updated_at = saved.updated_at;
+        renderTray();
+      },
+    });
+  }
+
   function bindPlacePointer(card) {
     card.addEventListener('pointerdown', function (event) {
       if (event.button != null && event.button !== 0) return;
+      if (event.target.closest && event.target.closest('.p2-edit')) return;
       if (event.pointerType === 'mouse') event.preventDefault();
       var id = card.getAttribute('data-place');
       var pointer = event.pointerId;
@@ -395,27 +489,8 @@
         clearDrag();
         if (decided === 'scroll') return;
         if (decided !== 'drag') {
-          var tapped = state.places.find(function (item) { return item.id === id; });
-          if (tapped && window.PlaceEditor) {
-            PlaceEditor.open({
-              sb: state.sb,
-              place: tapped,
-              readOnly: state.sample,
-              onSaved: function (saved) {
-                tapped.place_type = saved.place_type;
-                tapped.type = saved.place_type;
-                tapped.place_types = (saved.place_types || []).slice();
-                tapped.types = tapped.place_types.slice();
-                tapped.name = saved.name;
-                tapped.nickname = saved.nickname;
-                tapped.notes = saved.notes;
-                tapped.icon = saved.icon;
-                tapped.address = saved.address;
-                tapped.updated_at = saved.updated_at;
-                renderTray();
-              }
-            });
-          }
+          if (window.PlacePlan) state.picked = PlacePlan.toggle(state.picked, id);
+          renderTray();
           return;
         }
         if (!col || mins == null) return;
@@ -1095,6 +1170,15 @@
         render();
       });
     }
+    var placeBtn = $('p2PlaceSelected');
+    if (placeBtn) placeBtn.addEventListener('click', function () { placeSelected(); });
+    var clearPick = $('p2PickClear');
+    if (clearPick) clearPick.addEventListener('click', function () {
+      state.picked = [];
+      var note = $('p2PlaceNote');
+      if (note) note.textContent = '';
+      renderTray();
+    });
     var suggest = $('b2Suggest');
     if (suggest) {
       suggest.addEventListener('click', function () {
@@ -1110,6 +1194,10 @@
         var ok = window.confirm(RoughWeek.replanMessage(state.plan, planGroupName()));
         if (!ok) return;
         closeSuggestMenu();
+        if (state.picked && state.picked.length && window.PlacePlan) {
+          placeSelected({ replaceVisits: true });
+          return;
+        }
         RoughWeek.applySuggestChoice(state.plan, state.places || [], 'replan', true);
         afterEdit();
       });

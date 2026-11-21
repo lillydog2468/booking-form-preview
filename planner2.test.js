@@ -254,6 +254,17 @@ test('the page saves the open booking and leaves the bookings table alone', () =
   assert.match(app, /DragLabel/);
   assert.match(bookingHtml, /id="b2Home"/);
   assert.match(bookingHtml, /b2Suggest/);
+  assert.match(bookingHtml, /id="p2PlaceSelected"/);
+  assert.match(bookingHtml, /id="p2PickCount"/);
+  assert.match(bookingHtml, /Clear selection/);
+  assert.match(bookingHtml, /src="place-plan\.js"/);
+  assert.match(app, /PlacePlan\.toggle/);
+  assert.match(app, /PlacePlan\.place/);
+  assert.match(app, /replaceVisits: true/);
+  assert.match(app, /\.from\('planner_plans'\)\.select\('booking_id, payload'\)/);
+  assert.match(app, /\.from\('bookings'\)\.select\('id, departure_date'\)/);
+  assert.equal(app.includes(".from('bookings').update"), false);
+  assert.equal(app.includes('.from("bookings").insert'), false);
   assert.match(bookingHtml, /id="b2SuggestMenu"/);
   assert.match(bookingHtml, /id="b2SuggestReplan"/);
   assert.match(bookingHtml, /id="b2SuggestDelete"/);
