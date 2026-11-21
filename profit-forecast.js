@@ -72,6 +72,14 @@
     return '';
   }
 
+  function fuelVehicleName(people) {
+    return Number(people) >= 5 ? 'Mercedes Vito' : 'Tesla Model Y';
+  }
+
+  function fuelCaption(people, amount) {
+    return 'Fuel (' + fuelVehicleName(people) + ') ' + formatPounds(amount);
+  }
+
   function copyLengths() {
     return LENGTHS.map(function (row) {
       return { key: row.key, days: row.days, nights: row.nights, label: row.label, price: row.price };
@@ -318,8 +326,7 @@
       doc.getElementById('roomsDetail').textContent = roomPhrase(row);
       doc.getElementById('hotel').textContent = formatPounds(row.hotel);
       doc.getElementById('hotelDetail').textContent = hotelPhrase(row);
-      doc.getElementById('fuelOut').textContent = formatPounds(row.fuel);
-      doc.getElementById('fuelDetail').textContent = row.vehicle;
+      doc.getElementById('fuelOut').textContent = fuelCaption(row.people, row.fuel);
       var fuelHint = doc.getElementById('fuelHint');
       if (fuelHint) fuelHint.textContent = fuelLine(row, fuelTouched);
       doc.getElementById('profit').textContent = formatPounds(row.profit);
@@ -389,6 +396,7 @@
     LENGTHS: LENGTHS,
     USUAL_HOTEL_RATE: USUAL_HOTEL_RATE,
     fuelFor: fuelFor,
+    fuelCaption: fuelCaption,
     vehicleFor: vehicleFor,
     roundMoney: roundMoney,
     formatPounds: formatPounds,

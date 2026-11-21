@@ -157,7 +157,13 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    #fuelDetail { white-space: normal; overflow: visible; text-overflow: unset; }
+    .fuel-tile { grid-column: 1 / -1; }
+    .fuel-tile p {
+      font-size: 16px;
+      white-space: nowrap;
+      overflow: visible;
+      text-overflow: unset;
+    }
     .headlines .stat p {
       color: var(--accent);
       font-size: clamp(28px, 3.6vw, 40px);
@@ -309,10 +315,8 @@
         <p id="hotel">£0</p>
         <p class="detail" id="hotelDetail"></p>
       </article>
-      <article class="stat">
-        <h2>Fuel</h2>
-        <p id="fuelOut">£0</p>
-        <p class="detail" id="fuelDetail"></p>
+      <article class="stat fuel-tile">
+        <p id="fuelOut">Fuel (Tesla Model Y) £15</p>
       </article>
     </section>
 

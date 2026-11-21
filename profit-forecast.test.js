@@ -69,6 +69,19 @@ test('a what-if hotel rate and fuel replace the usual figures', () => {
   assert.equal(row.profit, 3220 - 1250 - 80);
 });
 
+test('the fuel tile names the Tesla or the Vito', () => {
+  [2, 3, 4].forEach(function (people) {
+    const row = forecastApi.forecast({ people: people, days: 6 });
+    assert.equal(row.fuel, 15);
+    assert.equal(forecastApi.fuelCaption(people, row.fuel), 'Fuel (Tesla Model Y) £15');
+  });
+  [5, 6, 7].forEach(function (people) {
+    const row = forecastApi.forecast({ people: people, days: 6 });
+    assert.equal(row.fuel, 100);
+    assert.equal(forecastApi.fuelCaption(people, row.fuel), 'Fuel (Mercedes Vito) £100');
+  });
+});
+
 test('the price book can replace 2027 prices, and a missing night stays listed', () => {
   const book = {
     parkHotelPrice: '41',
@@ -101,6 +114,9 @@ test('the page title is exact and the link is only inside More', () => {
   assert.match(fold, /This estimate covers the hotel and fuel only\. Meals and entries are not recorded\./);
   assert.match(fold, /id="hotelRate"/);
   assert.match(fold, /id="fuel"/);
+  const beforeFold = page.slice(0, page.indexOf('<details class="adjust">'));
+  assert.match(beforeFold, /id="fuelOut">Fuel \(Tesla Model Y\) £15</);
+  assert.equal(fold.includes('id="fuelOut"'), false);
   assert.match(page, /AuthGate\.require\(/);
   const js = fs.readFileSync(path.join(root, 'profit-forecast.js'), 'utf8');
   assert.match(js, /\.select\('book'\)/);
