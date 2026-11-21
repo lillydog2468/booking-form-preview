@@ -355,10 +355,18 @@
     };
   }
 
+  var OVERLAP_SHIFT_PX = 44;
+
+  function blockShift(lane) {
+    var step = Math.max(0, Number(lane) || 0);
+    return 'min(' + (2 + step * OVERLAP_SHIFT_PX) + 'px, 46%)';
+  }
+
   function blockHtml(block) {
-    var width = 100 / block.lanes;
-    var left = block.lane * width;
-    var style = 'top:' + roundPx(block.top) + 'px;min-height:' + roundPx(block.height) + 'px;height:auto;left:calc(' + left + '% + 2px);width:calc(' + width + '% - 4px);';
+    var lane = Math.max(0, Number(block.lane) || 0);
+    var shift = blockShift(lane);
+    var style = 'top:' + roundPx(block.top) + 'px;min-height:' + roundPx(block.height) + 'px;height:auto;'
+      + 'left:' + shift + ';width:max-content;max-width:calc(100% - ' + shift + ' - 4px);z-index:' + (2 + lane) + ';';
     var guests = block.guests ? '<span class="ov-guests">' + esc(block.guests) + '</span>' : '';
     var approx = block.approx ? '<span class="ov-approx" title="Approximate time">≈</span>' : '';
     return '<div class="ov-stop stop-tone-' + esc(block.tone) + '" role="button" tabindex="0" data-ov-stop="' + esc(block.id) + '" style="' + style + '" title="' + esc(block.time + ' ' + block.label) + '">'

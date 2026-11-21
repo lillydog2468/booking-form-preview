@@ -158,6 +158,32 @@ test('the week render places each stop at its time and names the hotel night', (
   assert.doesNotMatch(WO.render(focused), /data-ov-col="0"/);
 });
 
+test('a timescale block hugs its name, and a later overlap steps sideways', () => {
+  const model = WO.build({
+    days: [{
+      date: '2027-05-11',
+      blocks: [
+        { id: 'gb', time: '09:15', type: 'factory', title: 'GB Beads' },
+        { id: 'glass', time: '09:45', type: 'factory', title: 'Matubo' },
+        { id: 'lunch', time: '13:15', type: 'restaurant', title: 'Lunch' },
+      ],
+    }],
+  }, { px: 1, cue: function (stop) { return PlaceCategories.stopCue(stop); } });
+  assert.equal(model.days[0].blocks[0].lane, 0);
+  assert.equal(model.days[0].blocks[1].lane, 1);
+  assert.equal(model.days[0].blocks[2].lane, 0);
+  const html = WO.render(model);
+  assert.match(html, /data-ov-stop="gb"[^>]*width:max-content/);
+  assert.match(html, /data-ov-stop="gb"[^>]*left:min\(2px, 46%\)/);
+  assert.match(html, /data-ov-stop="glass"[^>]*left:min\(46px, 46%\)/);
+  assert.match(html, /data-ov-stop="glass"[^>]*z-index:3/);
+  assert.match(html, /data-ov-stop="lunch"[^>]*left:min\(2px, 46%\)/);
+  assert.doesNotMatch(html, /[^-]width:calc\(/);
+  const css = fs.readFileSync(path.join(__dirname, 'planner2.css'), 'utf8');
+  assert.match(css, /\.ov-stop[\s\S]*width:\s*max-content/);
+  assert.match(css, /\.ov-stop[\s\S]*max-width:\s*calc\(100% - 8px\)/);
+});
+
 test('overview is a new view and a drag writes the time through the existing save path', () => {
   assert.match(plannerHtml, /id="btnOverview"/);
   assert.match(plannerHtml, /src="week-overview\.js"/);
