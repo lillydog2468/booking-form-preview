@@ -42,12 +42,39 @@
 
   function matchedLine(match) {
     if (!match) return '';
-    var name = String(match.name || '').trim() || 'Hotel';
-    var address = String(match.address || '').trim();
-    if (name && address.toLowerCase().indexOf(name.toLowerCase()) === 0) {
-      address = address.slice(name.length).replace(/^[\s,]+/, '');
+    var described = describeHotel(match.name || match.address || '');
+    if (!described) return '';
+    return described.address ? (described.name + ', ' + described.address) : described.name;
+  }
+
+  function describeHotel(text) {
+    var raw = String(text || '').trim().replace(/\s+/g, ' ');
+    if (!raw) return null;
+    var known = matchHotel(raw);
+    if (known && (known.name || known.address)) {
+      var knownName = String(known.name || '').trim() || raw;
+      var knownAddress = String(known.address || '').trim();
+      return { name: knownName, address: knownAddress, source: known.source || 'known' };
     }
-    return address ? ('Matched: ' + name + ', ' + address) : ('Matched: ' + name);
+    var comma = raw.indexOf(',');
+    if (comma > 2) {
+      return { name: raw.slice(0, comma).trim(), address: raw.slice(comma + 1).trim(), source: 'typed' };
+    }
+    return { name: raw, address: '', source: '' };
+  }
+
+  function presentCandidate(candidate) {
+    var label = String(candidate && (candidate.label || candidate.address) || '').trim();
+    var comma = label.indexOf(',');
+    var name = comma > 0 ? label.slice(0, comma).trim() : label;
+    var address = comma > 0 ? label.slice(comma + 1).trim() : '';
+    return {
+      name: name || 'Hotel',
+      address: address || label,
+      lat: candidate ? candidate.lat : null,
+      lng: candidate ? candidate.lng : null,
+      label: label,
+    };
   }
 
   function stayAddLabel(count) {
@@ -328,6 +355,64 @@
     return slot;
   }
 
+  function savedConfirmation(input) {
+    var row = input && input.closest && input.closest('.guest-prague-stay');
+    if (!row) {
+      return {
+        address: input && input.dataset ? (input.dataset.confirmedAddress || '') : '',
+        confirmed: !!(input && input.dataset && input.dataset.addressConfirmed === '1'),
+      };
+    }
+    return {
+      address: (row.querySelector('.guest-stay-address') || {}).value || '',
+      confirmed: ((row.querySelector('.guest-stay-confirmed') || {}).value || '') === '1',
+    };
+  }
+
+  function stayRowsFor(input) {
+    var row = input && input.closest && input.closest('.guest-prague-stay');
+    if (!row) return [];
+    if (row.closest('.guest-prague-list')) return [row];
+    var shared = row.closest('[id$="_shared_prague_list"], .guest-prague-group-editor');
+    if (!shared) return [row];
+    var siblings = shared.querySelectorAll(':scope > .guest-prague-stay');
+    var index = Array.prototype.indexOf.call(siblings, row);
+    if (index < 0) return [row];
+    var rows = [];
+    var panel = row.closest('.tab-panel') || document;
+    panel.querySelectorAll('[id$="_shared_prague_list"], .guest-prague-group-editor').forEach(function (container) {
+      var match = container.querySelectorAll(':scope > .guest-prague-stay')[index];
+      if (match && rows.indexOf(match) < 0) rows.push(match);
+    });
+    return rows.length ? rows : [row];
+  }
+
+  function writeConfirmation(input, address, confirmed) {
+    stayRowsFor(input).forEach(function (row) {
+      var addr = row.querySelector('.guest-stay-address');
+      var flag = row.querySelector('.guest-stay-confirmed');
+      if (addr) addr.value = address || '';
+      if (flag) flag.value = confirmed ? '1' : '';
+    });
+    if (input && input.dataset) {
+      input.dataset.confirmedAddress = confirmed ? (address || '') : '';
+      input.dataset.addressConfirmed = confirmed ? '1' : '';
+    }
+    try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (err) { /* not in a document */ }
+  }
+
+  function currentOffer(input) {
+    var name = String(input.value || '').trim();
+    var saved = savedConfirmation(input);
+    var described = describeHotel(name) || { name: name, address: '' };
+    if (saved.confirmed && (saved.address || described.address)) {
+      return { name: described.name || name, address: saved.address || described.address, confirmed: true };
+    }
+    if (described.address) return { name: described.name || name, address: described.address, confirmed: false };
+    if (saved.address) return { name: described.name || name, address: saved.address, confirmed: false };
+    return { name: described.name || name, address: '', confirmed: false };
+  }
+
   function paint(input) {
     var slot = ensureSlot(input);
     if (!slot) return;
@@ -345,45 +430,60 @@
       slot._candidates = null;
       return;
     }
-    var known = matchHotel(name);
-    if (known) {
-      slot.innerHTML = '<p class="prague-matched">' + esc(matchedLine(known)) + '</p>';
-      return;
+    var offer = currentOffer(input);
+    var candidates = (slot.dataset.query === key && slot._candidates) ? slot._candidates : null;
+    var busy = slot.dataset.query === key && slot.dataset.busy === '1';
+    slot.innerHTML = addressCardHtml(offer) + (busy ? '<p class="prague-address-status">Looking up addresses…</p>' : '') + (candidates ? askHtml(slot, candidates, slot.dataset.choice === 'none') : '');
+    bindCard(input, slot, offer);
+  }
+
+  function addressCardHtml(offer) {
+    var html = '<div class="prague-address-card' + (offer.confirmed ? ' is-confirmed' : '') + '">';
+    html += '<p class="prague-address-name">' + esc(offer.name || 'Hotel') + '</p>';
+    if (offer.address) html += '<p class="prague-address-full">' + esc(offer.address) + '</p>';
+    else html += '<p class="prague-address-full prague-address-missing">No address yet</p>';
+    if (offer.confirmed) {
+      html += '<p class="prague-address-confirmed">✓ Address confirmed</p>';
+      html += '<button type="button" class="prague-address-change">Change address</button>';
+    } else if (offer.address) {
+      html += '<button type="button" class="prague-address-yes">Yes, this hotel address is correct</button>';
     }
-    if (slot.dataset.query === key && slot.dataset.choice === 'none') {
-      slot.innerHTML = askHtml(slot, null, true);
-      bindAsk(input, slot);
-      return;
-    }
-    if (slot.dataset.query === key && slot._candidates) {
-      slot.innerHTML = askHtml(slot, slot._candidates, false);
-      bindAsk(input, slot);
-      return;
-    }
-    if (slot.dataset.query === key && slot.dataset.busy === '1') {
-      slot.innerHTML = '<div class="prague-address-ask"><p>Which address is right?</p><p class="prague-address-status">Looking up addresses…</p></div>';
-      return;
-    }
-    slot.innerHTML = '<div class="prague-address-ask"><p>Which address is right?</p><button type="button" class="prague-find">Find address</button></div>';
-    bindAsk(input, slot);
+    html += '<button type="button" class="prague-find">Find address</button>';
+    html += '</div>';
+    return html;
   }
 
   function askHtml(slot, candidates, noneChosen) {
-    var html = '<div class="prague-address-ask"><p>Which address is right?</p>';
+    var html = '<div class="prague-address-ask"><p>Other addresses</p>';
     (candidates || []).forEach(function (candidate, index) {
+      var shown = presentCandidate(candidate);
       var href = mapHref(candidate);
       html += '<label class="prague-address-choice"><input type="radio" name="' + esc(slot.dataset.slotId) + '" value="' + index + '"> '
-        + '<span>' + esc(candidate.label) + '</span>'
+        + '<span class="prague-address-name">' + esc(shown.name) + '</span> '
+        + '<span class="prague-address-full">' + esc(shown.address) + '</span>'
         + (href ? ' <a class="prague-map-link" href="' + esc(href) + '" target="_blank" rel="noopener">open map</a>' : '')
         + '</label>';
     });
+    if (candidates && !candidates.length && slot.dataset.note) html += '<p class="prague-address-note">' + esc(slot.dataset.note) + '</p>';
     html += '<label class="prague-address-choice"><input type="radio" name="' + esc(slot.dataset.slotId) + '" value="none"' + (noneChosen ? ' checked' : '') + '> <span>None of these</span></label>';
     if (noneChosen) html += '<p class="prague-address-note">address not confirmed</p>';
-    if (candidates && !candidates.length && slot.dataset.note) html += '<p class="prague-address-note">' + esc(slot.dataset.note) + '</p>';
-    html += '<button type="button" class="prague-find">Find address</button>';
     if (slot.dataset.error) html += '<p class="prague-address-note">' + esc(slot.dataset.error) + '</p>';
     html += '</div>';
     return html;
+  }
+
+  function bindCard(input, slot, offer) {
+    var yes = slot.querySelector('.prague-address-yes');
+    if (yes) yes.addEventListener('click', function () {
+      writeConfirmation(input, offer.address, true);
+      refreshAll();
+    });
+    var change = slot.querySelector('.prague-address-change');
+    if (change) change.addEventListener('click', function () {
+      writeConfirmation(input, offer.address, false);
+      refreshAll();
+    });
+    bindAsk(input, slot);
   }
 
   function bindAsk(input, slot) {
@@ -401,9 +501,11 @@
         }
         var candidate = (slot._candidates || [])[Number(radio.value)];
         if (!candidate) return;
+        var shown = presentCandidate(candidate);
+        writeConfirmation(input, shown.address, false);
         slot.dataset.busy = '1';
         slot.dataset.error = '';
-        savePlace(input.value, candidate).then(function (result) {
+        savePlace(shown.name || input.value, candidate).then(function (result) {
           slot.dataset.busy = '';
           if (!result.saved) {
             slot.dataset.error = result.error || 'Could not save this address.';
@@ -425,7 +527,7 @@
       slot._blurTimer = null;
     }
     var name = String(input.value || '').trim();
-    if (!name || matchHotel(name)) {
+    if (!name) {
       paint(input);
       return;
     }
@@ -514,6 +616,9 @@
     titleCase: titleCase,
     matchHotel: matchHotel,
     matchedLine: matchedLine,
+    describeHotel: describeHotel,
+    presentCandidate: presentCandidate,
+    writeConfirmation: writeConfirmation,
     stayAddLabel: stayAddLabel,
     addressScope: addressScope,
     groupLineOpensEditor: groupLineOpensEditor,

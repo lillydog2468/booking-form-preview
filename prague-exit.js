@@ -15,7 +15,7 @@
     { test: /\baxa\b|na porici 40\b/, name: 'Hotel AXA', address: 'Na Poříčí 40, Praha 1', street: 'Na Poříčí', house: '40', lat: 50.0898903, lng: 14.435736 },
     { test: /\batlantic\b|na porici 9\b/, name: 'Hotel Atlantic', address: 'Na Poříčí 9, Praha 1', street: 'Na Poříčí', house: '9', lat: 50.0898424, lng: 14.4316578 },
     { test: /\bjosef\b|\brybna\b/, name: 'Hotel Josef', address: 'Rybná 20, Praha 1', street: 'Rybná', house: '20', lat: 50.0900889, lng: 14.4264446 },
-    { test: /obecniho domu|namesti republiky/, name: 'Obecní dům', address: 'náměstí Republiky 5, Praha 1', street: 'náměstí Republiky', house: '5', lat: 50.0877557, lng: 14.4277637 },
+    { test: /obecniho domu|obecni dum|namesti republiky/, name: 'Obecní dům', address: 'náměstí Republiky 5, Praha 1', street: 'náměstí Republiky', house: '5', lat: 50.0877557, lng: 14.4277637 },
     { test: /obecniho dvora/, name: 'U Obecního dvora', address: 'U Obecního dvora 7, Praha 1', street: 'U Obecního dvora', house: '7', lat: 50.0912537, lng: 14.4230426 },
   ];
   var remembered = [];

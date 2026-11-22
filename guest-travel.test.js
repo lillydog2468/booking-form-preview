@@ -40,6 +40,7 @@ function loadGuestTravel() {
     extractFunction('guestFlightSummary'),
     extractFunction('normalisePragueStay'),
     extractFunction('pragueStayHasDetail'),
+    extractFunction('pragueStayTitle'),
     extractFunction('guestPragueSummary'),
     extractFunction('guestPersonName'),
     extractFunction('ownPragueStaysLine'),
